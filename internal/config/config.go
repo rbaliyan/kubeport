@@ -61,13 +61,13 @@ func (s ServiceConfig) Target() string {
 // HookConfig defines a lifecycle hook.
 type HookConfig struct {
 	Name           string            `yaml:"name" toml:"name"`
-	Type           string            `yaml:"type" toml:"type"`                                         // "shell", "webhook", "exec"
-	Events         []string          `yaml:"events,omitempty" toml:"events,omitempty"`                 // event names to listen for
-	Timeout        string            `yaml:"timeout,omitempty" toml:"timeout,omitempty"`               // duration string (e.g., "30s")
-	FailMode       string            `yaml:"fail_mode,omitempty" toml:"fail_mode,omitempty"`           // "open" (default) or "closed"
-	Shell          map[string]string `yaml:"shell,omitempty" toml:"shell,omitempty"`                   // event_name -> shell command
-	Webhook        *WebhookConfig    `yaml:"webhook,omitempty" toml:"webhook,omitempty"`               // webhook config
-	Exec           *ExecConfig       `yaml:"exec,omitempty" toml:"exec,omitempty"`                     // exec config
+	Type           string            `yaml:"type" toml:"type"`                                           // "shell", "webhook", "exec"
+	Events         []string          `yaml:"events,omitempty" toml:"events,omitempty"`                   // event names to listen for
+	Timeout        string            `yaml:"timeout,omitempty" toml:"timeout,omitempty"`                 // duration string (e.g., "30s")
+	FailMode       string            `yaml:"fail_mode,omitempty" toml:"fail_mode,omitempty"`             // "open" (default) or "closed"
+	Shell          map[string]string `yaml:"shell,omitempty" toml:"shell,omitempty"`                     // event_name -> shell command
+	Webhook        *WebhookConfig    `yaml:"webhook,omitempty" toml:"webhook,omitempty"`                 // webhook config
+	Exec           *ExecConfig       `yaml:"exec,omitempty" toml:"exec,omitempty"`                       // exec config
 	FilterServices []string          `yaml:"filter_services,omitempty" toml:"filter_services,omitempty"` // only trigger for these services
 }
 

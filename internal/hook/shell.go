@@ -15,7 +15,7 @@ import (
 type ShellHook struct {
 	name     string
 	commands map[EventType]string // event -> shell command
-	filter   map[string]bool     // nil = all services
+	filter   map[string]bool      // nil = all services
 }
 
 // NewShellHook creates a shell hook from a map of event names to commands.
