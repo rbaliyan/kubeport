@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
+
+	version "github.com/rbaliyan/go-version"
 )
 
 func (a *app) cmdHelp() {
@@ -27,17 +30,24 @@ func (a *app) cmdHelp() {
 	fmt.Println()
 	fmt.Println("Flags:")
 	fmt.Println("  --config, -c <path>         Config file path")
-	fmt.Println("  --context <context>         Kubernetes context (overrides config/env)")
-	fmt.Println("  --namespace, -n <namespace> Kubernetes namespace (overrides config/env)")
-	fmt.Println("  --svc <spec>                Service spec (repeatable, no config file needed)")
+	fmt.Println("  --no-config                 Ignore config file, use only CLI flags")
+	fmt.Println("  --context, --kube-context   Kubernetes context (overrides config)")
+	fmt.Println("  --namespace, -n <namespace> Kubernetes namespace (overrides config)")
+	fmt.Println("  --svc <spec>                Service spec (repeatable); merges with config file")
 	fmt.Println("                              Format: name:svc/target:remoteport:localport[:namespace]")
 	fmt.Println("                                      name:pod/target:remoteport:localport[:namespace]")
+	fmt.Println("  --disable-svc <name>        Disable a service from config (repeatable)")
+	fmt.Println("  --json                      Output status as JSON (for status command)")
 	fmt.Println("  --wait                      Block until all forwards are connected (for start)")
 	fmt.Println("  --timeout <duration>        Max wait time for --wait (default: 30s, implies --wait)")
+	fmt.Println("  --help, -h                  Show this help message")
+	fmt.Println("  --version, -v               Show version information")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  kubeport start                                    # Use config file")
-	fmt.Println("  kubeport fg --context my-ctx -n dev \\")
+	fmt.Println("  kubeport start --disable-svc Vault                # Skip Vault from config")
+	fmt.Println("  kubeport start --svc \"extra:svc/foo:80:9090\"      # Add service to config")
+	fmt.Println("  kubeport fg --no-config --context my-ctx -n dev \\")
 	fmt.Println("    --svc \"web:svc/nginx:80:8080\" \\")
 	fmt.Println("    --svc \"db:pod/postgres-0:5432:5432\"              # CLI-only, no config file")
 	fmt.Println()
@@ -54,7 +64,23 @@ func (a *app) cmdHelp() {
 }
 
 func (a *app) cmdVersion() {
-	fmt.Printf("kubeport %s (commit: %s, built: %s)\n", Version, Commit, Date)
+	v := version.Get()
+	g := version.Git()
+	b := version.Build()
+
+	if v.Raw != "" {
+		fmt.Printf("kubeport %s", v.Raw)
+	} else {
+		fmt.Printf("kubeport dev")
+	}
+	if g.Commit != "" {
+		fmt.Printf(" (commit: %.7s", g.Commit)
+		if !b.Timestamp.IsZero() {
+			fmt.Printf(", built: %s", b.Timestamp.Format(time.RFC3339))
+		}
+		fmt.Print(")")
+	}
+	fmt.Println()
 }
 
 func (a *app) cmdRestart(ctx context.Context) {

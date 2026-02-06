@@ -206,6 +206,63 @@ func TestResolvePod_NoPortSpec(t *testing.T) {
 	}
 }
 
+func TestResolvePod_NamedTargetPort(t *testing.T) {
+	// When targetPort is a named port (e.g., "http"), resolvePod should
+	// look up the name in the pod's container ports to find the numeric value.
+	client := fake.NewSimpleClientset(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "atlas-app-dev",
+				Namespace: "dev",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "atlas"},
+				Ports: []corev1.ServicePort{
+					{Name: "http", Port: 80, TargetPort: intstr.FromString("http")},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "atlas-pod-xyz",
+				Namespace: "dev",
+				Labels:    map[string]string{"app": "atlas"},
+			},
+			Spec: corev1.PodSpec{
+				Containers: []corev1.Container{
+					{
+						Name: "atlas",
+						Ports: []corev1.ContainerPort{
+							{Name: "http", ContainerPort: 8061},
+							{Name: "metrics", ContainerPort: 9090},
+						},
+					},
+				},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+	)
+
+	m := &Manager{clientset: client}
+	svc := config.ServiceConfig{
+		Name:       "Atlas HTTP",
+		Service:    "atlas-app-dev",
+		RemotePort: 80,
+		LocalPort:  8061,
+	}
+
+	name, port, err := m.resolvePod(context.Background(), "dev", svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "atlas-pod-xyz" {
+		t.Fatalf("expected 'atlas-pod-xyz', got %q", name)
+	}
+	if port != 8061 {
+		t.Fatalf("expected named port 'http' to resolve to 8061, got %d", port)
+	}
+}
+
 func TestResolvePod_ServiceNoRunningPod(t *testing.T) {
 	client := fake.NewSimpleClientset(
 		&corev1.Service{

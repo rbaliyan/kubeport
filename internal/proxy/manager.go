@@ -471,14 +471,17 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 		return "", 0, fmt.Errorf("service %s has no pod selector", svc.Target())
 	}
 
-	// Resolve service port → container targetPort.
-	// kubectl port-forward does this internally, but since we forward
-	// directly to the pod via SPDY, we need the actual container port.
+	// Find the service port spec that matches remote_port
+	var namedTargetPort string
 	targetPort := svc.RemotePort
 	for _, p := range service.Spec.Ports {
 		if int(p.Port) == svc.RemotePort {
 			if p.TargetPort.IntValue() != 0 {
+				// Numeric targetPort (e.g., targetPort: 8061)
 				targetPort = p.TargetPort.IntValue()
+			} else if p.TargetPort.String() != "" && p.TargetPort.String() != "0" {
+				// Named targetPort (e.g., targetPort: "http") — resolve from pod spec
+				namedTargetPort = p.TargetPort.String()
 			}
 			break
 		}
@@ -493,12 +496,32 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 	}
 
 	for i := range pods.Items {
-		if pods.Items[i].Status.Phase == corev1.PodRunning {
-			return pods.Items[i].Name, targetPort, nil
+		if pods.Items[i].Status.Phase != corev1.PodRunning {
+			continue
 		}
+		// Resolve named targetPort from the pod's container port definitions
+		if namedTargetPort != "" {
+			if resolved := resolveNamedPort(&pods.Items[i], namedTargetPort); resolved != 0 {
+				targetPort = resolved
+			}
+		}
+		return pods.Items[i].Name, targetPort, nil
 	}
 
 	return "", 0, fmt.Errorf("no running pods for service %s (selector: %s)", svc.Target(), selector.String())
+}
+
+// resolveNamedPort looks up a named port (e.g., "http") in the pod's container
+// specs and returns the numeric containerPort. Returns 0 if not found.
+func resolveNamedPort(pod *corev1.Pod, portName string) int {
+	for _, c := range pod.Spec.Containers {
+		for _, p := range c.Ports {
+			if p.Name == portName {
+				return int(p.ContainerPort)
+			}
+		}
+	}
+	return 0
 }
 
 // Stop terminates all port forwards.

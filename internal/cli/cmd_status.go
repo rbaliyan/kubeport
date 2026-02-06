@@ -2,12 +2,34 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 )
+
+// JSON output types for --json flag.
+type statusOutput struct {
+	Running   bool                  `json:"running"`
+	Context   string                `json:"context,omitempty"`
+	Namespace string                `json:"namespace,omitempty"`
+	Config    string                `json:"config,omitempty"`
+	Forwards  []forwardStatusOutput `json:"forwards,omitempty"`
+}
+
+type forwardStatusOutput struct {
+	Name       string `json:"name"`
+	State      string `json:"state"`
+	LocalPort  int    `json:"local_port"`
+	RemotePort int    `json:"remote_port"`
+	Target     string `json:"target,omitempty"`
+	Namespace  string `json:"namespace,omitempty"`
+	Restarts   int    `json:"restarts,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
 
 func (a *app) cmdStatus() {
 	// Try gRPC first
@@ -17,7 +39,7 @@ func (a *app) cmdStatus() {
 		a.cmdStatusGRPC(dc)
 		return
 	}
-	if err != nil {
+	if err != nil && !a.statusJSON {
 		fmt.Fprintf(os.Stderr, "%sWarning: gRPC dial failed: %v%s\n", colorYellow, err, colorReset)
 	}
 
@@ -31,9 +53,27 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 
 	resp, err := dc.client.Status(ctx, &kubeportv1.StatusRequest{})
 	if err != nil {
+		if a.statusJSON {
+			a.writeJSON(statusOutput{Running: false})
+			return
+		}
 		fmt.Fprintf(os.Stderr, "gRPC status failed: %v\n", err)
 		fmt.Println("Falling back to legacy status...")
 		a.cmdStatusLegacy()
+		return
+	}
+
+	if a.statusJSON {
+		out := statusOutput{
+			Running:   true,
+			Context:   resp.Context,
+			Namespace: resp.Namespace,
+			Config:    a.configFile,
+		}
+		for _, fw := range resp.Forwards {
+			out.Forwards = append(out.Forwards, forwardFromProto(fw))
+		}
+		a.writeJSON(out)
 		return
 	}
 
@@ -57,9 +97,41 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 }
 
 func (a *app) cmdStatusLegacy() {
+	pid, running := a.isRunning()
+
+	if a.statusJSON {
+		out := statusOutput{Running: running}
+		if a.cfg != nil {
+			out.Context = a.cfg.Context
+			out.Namespace = a.cfg.Namespace
+			out.Config = a.configFile
+			for _, svc := range a.cfg.Services {
+				state := "unknown"
+				if running && isPortOpen(svc.LocalPort) {
+					state = "running"
+				} else if !running {
+					state = "stopped"
+				}
+				target := svc.Service
+				if target == "" {
+					target = svc.Pod
+				}
+				out.Forwards = append(out.Forwards, forwardStatusOutput{
+					Name:       svc.Name,
+					State:      state,
+					LocalPort:  svc.LocalPort,
+					RemotePort: svc.RemotePort,
+					Target:     target,
+					Namespace:  svc.Namespace,
+				})
+			}
+		}
+		a.writeJSON(out)
+		return
+	}
+
 	fmt.Printf("%sProxy Status%s\n\n", colorCyan, colorReset)
 
-	pid, running := a.isRunning()
 	if running {
 		fmt.Printf("Status: %sRunning%s (PID: %d)\n", colorGreen, colorReset, pid)
 	} else {
@@ -82,6 +154,30 @@ func (a *app) cmdStatusLegacy() {
 	} else {
 		fmt.Println("Use 'start' to start the proxy")
 	}
+}
+
+func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
+	svc := fw.GetService()
+	target := svc.GetService()
+	if target == "" {
+		target = svc.GetPod()
+	}
+	return forwardStatusOutput{
+		Name:       svc.GetName(),
+		State:      strings.TrimPrefix(strings.ToLower(fw.State.String()), "forward_state_"),
+		LocalPort:  int(fw.ActualPort),
+		RemotePort: int(svc.GetRemotePort()),
+		Target:     target,
+		Namespace:  svc.GetNamespace(),
+		Restarts:   int(fw.Restarts),
+		Error:      fw.Error,
+	}
+}
+
+func (a *app) writeJSON(v any) {
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	enc.Encode(v)
 }
 
 func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {

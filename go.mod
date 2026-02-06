@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/rbaliyan/go-version v1.2.3
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1

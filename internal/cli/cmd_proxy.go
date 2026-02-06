@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	version "github.com/rbaliyan/go-version"
 	"github.com/rbaliyan/kubeport/internal/daemon"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/proxy"
@@ -31,7 +32,7 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 				i++
 				a.configFile = args[i]
 			}
-		case "--context":
+		case "--context", "--kube-context":
 			if i+1 < len(args) {
 				i++
 				a.cliContext = args[i]
@@ -46,6 +47,13 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 				i++
 				a.cliServices = append(a.cliServices, args[i])
 			}
+		case "--disable-svc":
+			if i+1 < len(args) {
+				i++
+				a.disableServices = append(a.disableServices, args[i])
+			}
+		case "--no-config":
+			a.noConfig = true
 		}
 	}
 
@@ -61,7 +69,7 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 }
 
 func (a *app) runProxy(ctx context.Context, output io.Writer) {
-	fmt.Fprintf(output, "kubeport %s starting\n", Version)
+	fmt.Fprintf(output, "kubeport %s starting\n", version.Get().Raw)
 	fmt.Fprintf(output, "Context:   %s\n", a.cfg.Context)
 	fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
 	fmt.Fprintf(output, "Services:  %d\n\n", len(a.cfg.Services))

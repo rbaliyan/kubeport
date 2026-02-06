@@ -11,15 +11,15 @@ import (
 	"syscall"
 	"time"
 
+	version "github.com/rbaliyan/go-version"
 	"github.com/rbaliyan/kubeport/internal/config"
 )
 
-// Build info set via ldflags.
-var (
-	Version = "dev"
-	Commit  = "unknown"
-	Date    = "unknown"
-)
+func init() {
+	version.SetAppInfo("kubeport", "Kubernetes port-forward supervisor")
+	// Fall back to git info when running via `go run`
+	version.LoadFromGit()
+}
 
 // Terminal colors
 const (
@@ -31,13 +31,16 @@ const (
 )
 
 type app struct {
-	configFile   string
-	cfg          *config.Config
-	cliContext   string
-	cliNamespace string
-	cliServices  []string
-	startWait    bool
-	startTimeout time.Duration
+	configFile      string
+	noConfig        bool
+	cfg             *config.Config
+	cliContext      string
+	cliNamespace    string
+	cliServices     []string
+	disableServices []string
+	startWait       bool
+	startTimeout    time.Duration
+	statusJSON      bool
 }
 
 // Execute runs the CLI with the given context.
@@ -62,7 +65,7 @@ func Execute(ctx context.Context) {
 			}
 		case strings.HasPrefix(arg, "--config="):
 			a.configFile = strings.TrimPrefix(arg, "--config=")
-		case arg == "--context":
+		case arg == "--context" || arg == "--kube-context":
 			if i+1 < len(args) {
 				i++
 				a.cliContext = args[i]
@@ -72,6 +75,8 @@ func Execute(ctx context.Context) {
 			}
 		case strings.HasPrefix(arg, "--context="):
 			a.cliContext = strings.TrimPrefix(arg, "--context=")
+		case strings.HasPrefix(arg, "--kube-context="):
+			a.cliContext = strings.TrimPrefix(arg, "--kube-context=")
 		case arg == "--namespace" || arg == "-n":
 			if i+1 < len(args) {
 				i++
@@ -92,6 +97,20 @@ func Execute(ctx context.Context) {
 			}
 		case strings.HasPrefix(arg, "--svc="):
 			a.cliServices = append(a.cliServices, strings.TrimPrefix(arg, "--svc="))
+		case arg == "--disable-svc":
+			if i+1 < len(args) {
+				i++
+				a.disableServices = append(a.disableServices, args[i])
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a service name\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--disable-svc="):
+			a.disableServices = append(a.disableServices, strings.TrimPrefix(arg, "--disable-svc="))
+		case arg == "--no-config":
+			a.noConfig = true
+		case arg == "--json":
+			a.statusJSON = true
 		case arg == "--wait":
 			a.startWait = true
 		case arg == "--timeout":
@@ -116,6 +135,12 @@ func Execute(ctx context.Context) {
 			}
 			a.startTimeout = d
 			a.startWait = true
+		case arg == "--help" || arg == "-h":
+			a.cmdHelp()
+			os.Exit(0)
+		case arg == "--version" || arg == "-v":
+			a.cmdVersion()
+			os.Exit(0)
 		default:
 			if command == "" {
 				if strings.HasPrefix(arg, "-") {
@@ -178,16 +203,26 @@ func Execute(ctx context.Context) {
 }
 
 func (a *app) loadConfig() error {
-	// If --svc flags were provided, build config from CLI args (no file needed)
-	if len(a.cliServices) > 0 {
-		return a.buildConfigFromCLI()
+	// Parse CLI service specs upfront (used by both paths)
+	cliSvcs, err := a.parseCLIServices()
+	if err != nil {
+		return err
 	}
 
+	// --no-config or only --svc flags with no config file specified: pure CLI mode
+	if a.noConfig || (len(cliSvcs) > 0 && a.configFile == "" && !a.hasDiscoverableConfig()) {
+		return a.buildConfigFromCLI(cliSvcs)
+	}
+
+	// Load config file
 	path := a.configFile
-	if path == "" {
-		var err error
+	if !a.noConfig && path == "" {
 		path, err = config.Discover()
 		if err != nil {
+			// If --svc provided, fall back to CLI-only mode
+			if len(cliSvcs) > 0 {
+				return a.buildConfigFromCLI(cliSvcs)
+			}
 			return err
 		}
 	}
@@ -205,6 +240,38 @@ func (a *app) loadConfig() error {
 		cfg.Namespace = a.cliNamespace
 	}
 
+	// Apply --disable-svc: remove matching services by name
+	if len(a.disableServices) > 0 {
+		disabled := make(map[string]bool, len(a.disableServices))
+		for _, name := range a.disableServices {
+			disabled[strings.ToLower(name)] = true
+		}
+		filtered := cfg.Services[:0]
+		for _, svc := range cfg.Services {
+			if !disabled[strings.ToLower(svc.Name)] {
+				filtered = append(filtered, svc)
+			}
+		}
+		cfg.Services = filtered
+	}
+
+	// Apply --svc: override matching service names, append new ones
+	if len(cliSvcs) > 0 {
+		for _, cs := range cliSvcs {
+			found := false
+			for i, existing := range cfg.Services {
+				if strings.EqualFold(existing.Name, cs.Name) {
+					cfg.Services[i] = cs
+					found = true
+					break
+				}
+			}
+			if !found {
+				cfg.Services = append(cfg.Services, cs)
+			}
+		}
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("config validation: %w", err)
 	}
@@ -214,14 +281,9 @@ func (a *app) loadConfig() error {
 	return nil
 }
 
-func (a *app) buildConfigFromCLI() error {
-	services := make([]config.ServiceConfig, 0, len(a.cliServices))
-	for _, raw := range a.cliServices {
-		svc, err := parseSvcFlag(raw)
-		if err != nil {
-			return err
-		}
-		services = append(services, svc)
+func (a *app) buildConfigFromCLI(services []config.ServiceConfig) error {
+	if len(services) == 0 {
+		return fmt.Errorf("no services specified (use --svc or a config file)")
 	}
 
 	namespace := a.cliNamespace
@@ -236,6 +298,26 @@ func (a *app) buildConfigFromCLI() error {
 
 	a.cfg = cfg
 	return nil
+}
+
+func (a *app) parseCLIServices() ([]config.ServiceConfig, error) {
+	if len(a.cliServices) == 0 {
+		return nil, nil
+	}
+	services := make([]config.ServiceConfig, 0, len(a.cliServices))
+	for _, raw := range a.cliServices {
+		svc, err := parseSvcFlag(raw)
+		if err != nil {
+			return nil, err
+		}
+		services = append(services, svc)
+	}
+	return services, nil
+}
+
+func (a *app) hasDiscoverableConfig() bool {
+	_, err := config.Discover()
+	return err == nil
 }
 
 func parseSvcFlag(s string) (config.ServiceConfig, error) {

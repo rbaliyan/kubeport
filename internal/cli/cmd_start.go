@@ -52,7 +52,9 @@ func (a *app) cmdStart(ctx context.Context) {
 	}
 
 	daemonArgs := []string{"_daemon"}
-	if a.configFile != "" {
+	if a.noConfig {
+		daemonArgs = append(daemonArgs, "--no-config")
+	} else if a.configFile != "" {
 		daemonArgs = append(daemonArgs, "--config", a.configFile)
 	}
 	if a.cliContext != "" {
@@ -63,6 +65,9 @@ func (a *app) cmdStart(ctx context.Context) {
 	}
 	for _, svc := range a.cliServices {
 		daemonArgs = append(daemonArgs, "--svc", svc)
+	}
+	for _, name := range a.disableServices {
+		daemonArgs = append(daemonArgs, "--disable-svc", name)
 	}
 
 	logFile, err := os.OpenFile(a.cfg.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)

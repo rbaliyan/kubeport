@@ -21,9 +21,10 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/rbaliyan/kubeport/internal/cli.Version={{.Version}}
-      - -X github.com/rbaliyan/kubeport/internal/cli.Commit={{.ShortCommit}}
-      - -X github.com/rbaliyan/kubeport/internal/cli.Date={{.Date}}
+      - -X github.com/rbaliyan/go-version.VersionInfo={{.Version}}
+      - -X github.com/rbaliyan/go-version.GitCommit={{.FullCommit}}
+      - -X github.com/rbaliyan/go-version.GitBranch={{.Branch}}
+      - -X github.com/rbaliyan/go-version.BuildTimestamp={{.Date}}
     # Binary size optimization
     flags:
       - -trimpath

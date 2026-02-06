@@ -6,11 +6,11 @@ default:
 
 # Build the binary with version info
 build:
-    go build -ldflags "-s -w -X github.com/rbaliyan/kubeport/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/rbaliyan/kubeport/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -X github.com/rbaliyan/kubeport/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -trimpath -o bin/kubeport .
+    go build -ldflags "-s -w $(go-version ldflags -static)" -trimpath -o bin/kubeport .
 
 # Install to GOBIN
 install:
-    go install -ldflags "-s -w -X github.com/rbaliyan/kubeport/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/rbaliyan/kubeport/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -X github.com/rbaliyan/kubeport/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+    go install -ldflags "-s -w $(go-version ldflags -static)" .
 
 # Run tests
 test:
