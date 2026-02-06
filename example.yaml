@@ -1,0 +1,47 @@
+# kubeport configuration
+#
+# Place as kubeport.yaml in your project root, ~/.config/kubeport/, or ~/.kubeport/
+#
+# Usage:
+#   kubeport start            # Start in background
+#   kubeport status           # Check port connectivity
+#   kubeport logs             # Follow logs
+#   kubeport stop             # Stop proxy
+#   kubeport config show      # View configuration
+#
+# Environment overrides:
+#   K8S_CONTEXT   - Override the context below
+#   K8S_NAMESPACE - Override the namespace below
+
+# Kubernetes context from ~/.kube/config
+context: my-cluster-context
+
+# Default namespace (can be overridden per-service)
+namespace: default
+
+# Services to port-forward
+services:
+  # Forward a Kubernetes service (auto-resolves to a running pod)
+  - name: My API
+    service: my-api-service
+    local_port: 8080
+    remote_port: 80
+
+  # Forward a specific pod
+  - name: Redis Node 0
+    pod: redis-node-0
+    local_port: 6379
+    remote_port: 6379
+
+  # Override namespace for a specific service
+  - name: Vault
+    service: vault
+    local_port: 8200
+    remote_port: 8200
+    namespace: vault
+
+  # Dynamic port — OS assigns a random available local port
+  - name: Debug Server
+    service: debug-svc
+    local_port: 0
+    remote_port: 9090

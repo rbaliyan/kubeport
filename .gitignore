@@ -1,0 +1,22 @@
+# Build output
+bin/
+/kubeport
+
+# Runtime files
+.kubeport.pid
+.kubeport.log
+.kubeport.sock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/

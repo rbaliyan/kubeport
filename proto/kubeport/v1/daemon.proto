@@ -1,0 +1,47 @@
+syntax = "proto3";
+package kubeport.v1;
+option go_package = "github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1";
+
+import "google/protobuf/timestamp.proto";
+
+service DaemonService {
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc Stop(StopRequest) returns (StopResponse);
+}
+
+enum ForwardState {
+  FORWARD_STATE_UNSPECIFIED = 0;
+  FORWARD_STATE_STARTING = 1;
+  FORWARD_STATE_RUNNING = 2;
+  FORWARD_STATE_FAILED = 3;
+  FORWARD_STATE_STOPPED = 4;
+}
+
+message ServiceInfo {
+  string name = 1;
+  string service = 2;
+  string pod = 3;
+  int32 local_port = 4;
+  int32 remote_port = 5;
+  string namespace = 6;
+}
+
+message ForwardStatusProto {
+  ServiceInfo service = 1;
+  ForwardState state = 2;
+  string error = 3;
+  int32 restarts = 4;
+  google.protobuf.Timestamp last_start = 5;
+  bool connected = 6;
+  int32 actual_port = 7;
+}
+
+message StatusRequest {}
+message StatusResponse {
+  string context = 1;
+  string namespace = 2;
+  repeated ForwardStatusProto forwards = 3;
+}
+
+message StopRequest {}
+message StopResponse { bool success = 1; }

@@ -1,0 +1,88 @@
+package hook
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"time"
+)
+
+// WebhookHook POSTs a JSON payload to an HTTP endpoint on lifecycle events.
+type WebhookHook struct {
+	name    string
+	url     string
+	headers map[string]string
+	client  *http.Client
+	filter  map[string]bool
+}
+
+// NewWebhookHook creates a webhook hook.
+func NewWebhookHook(name, url string, headers map[string]string, filterServices []string) *WebhookHook {
+	var filter map[string]bool
+	if len(filterServices) > 0 {
+		filter = make(map[string]bool, len(filterServices))
+		for _, s := range filterServices {
+			filter[s] = true
+		}
+	}
+	return &WebhookHook{
+		name:    name,
+		url:     url,
+		headers: headers,
+		client:  &http.Client{Timeout: 30 * time.Second},
+		filter:  filter,
+	}
+}
+
+func (h *WebhookHook) Name() string { return h.name }
+
+func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
+	if h.filter != nil && event.Service != "" && !h.filter[event.Service] {
+		return nil
+	}
+
+	payload := map[string]any{
+		"event":       event.Type.String(),
+		"service":     event.Service,
+		"local_port":  event.LocalPort,
+		"remote_port": event.RemotePort,
+		"pod":         event.PodName,
+		"restarts":    event.Restarts,
+		"time":        event.Time.Format(time.RFC3339),
+	}
+	if event.Error != nil {
+		payload["error"] = event.Error.Error()
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal webhook payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create webhook request: %w", err)
+	}
+
+	for k, v := range h.headers {
+		req.Header.Set(k, v)
+	}
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("webhook POST %s: %w", h.url, err)
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("webhook %s returned HTTP %d", h.url, resp.StatusCode)
+	}
+	return nil
+}
