@@ -6,11 +6,11 @@ default:
 
 # Build the binary with version info
 build:
-    go build -ldflags "-X github.com/rbaliyan/kubeport/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/rbaliyan/kubeport/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -X github.com/rbaliyan/kubeport/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -o bin/kubeport .
+    go build -ldflags "-s -w -X github.com/rbaliyan/kubeport/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/rbaliyan/kubeport/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -X github.com/rbaliyan/kubeport/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" -trimpath -o bin/kubeport .
 
 # Install to GOBIN
 install:
-    go install .
+    go install -ldflags "-s -w -X github.com/rbaliyan/kubeport/internal/cli.Version=$(git describe --tags --always --dirty 2>/dev/null || echo dev) -X github.com/rbaliyan/kubeport/internal/cli.Commit=$(git rev-parse --short HEAD 2>/dev/null || echo unknown) -X github.com/rbaliyan/kubeport/internal/cli.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
 
 # Run tests
 test:
@@ -20,13 +20,29 @@ test:
 test-v:
     go test -v ./...
 
+# Run tests with race detector
+test-race:
+    go test -race ./...
+
+# Run tests with coverage
+test-cover:
+    go test -cover ./...
+
+# Format code
+fmt:
+    go fmt ./...
+
 # Run go vet
 lint:
     go vet ./...
 
-# Format code
-fmt:
-    gofmt -w .
+# Run vulnerability check
+vulncheck:
+    go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+# Check for outdated dependencies
+depcheck:
+    go list -m -u all | grep '\[' || echo "All dependencies are up to date"
 
 # Tidy go modules
 tidy:
@@ -34,9 +50,10 @@ tidy:
 
 # Clean build artifacts
 clean:
-    rm -rf bin/
+    rm -rf bin/ dist/
+    go clean -testcache
 
-# Build and run with example config
+# Build and run with args
 run *ARGS:
     go run . {{ARGS}}
 
@@ -50,3 +67,15 @@ proto-lint:
 
 # Check everything (fmt + lint + test)
 check: fmt lint test
+
+# Build snapshot release (for testing)
+snapshot:
+    goreleaser release --snapshot --clean
+
+# Check goreleaser config
+check-release:
+    goreleaser check
+
+# Create and push a new release tag (bumps patch version)
+release:
+    ./scripts/release.sh

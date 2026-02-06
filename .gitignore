@@ -1,5 +1,6 @@
 # Build output
 bin/
+dist/
 /kubeport
 
 # Runtime files
