@@ -106,6 +106,16 @@ type Config struct {
 	format   Format
 }
 
+// NewInMemory creates a Config from CLI arguments without a file.
+// PIDFile/LogFile/SocketFile default to CWD-relative paths.
+func NewInMemory(context, namespace string, services []ServiceConfig) *Config {
+	return &Config{
+		Context:   context,
+		Namespace: namespace,
+		Services:  services,
+	}
+}
+
 // FilePath returns the path the config was loaded from.
 func (c *Config) FilePath() string {
 	return c.filePath
@@ -281,7 +291,7 @@ func (c *Config) RemoveService(name string) error {
 }
 
 // Discover searches for a config file in standard locations.
-// Search order: CWD > ~/.config/kubeport > ~/.kubeport
+// Search order: CWD (kubeport.* then .kubeport.*) > ~/.config/kubeport > ~/.kubeport
 func Discover() (string, error) {
 	candidates := []string{
 		"kubeport.yaml",
@@ -289,14 +299,22 @@ func Discover() (string, error) {
 		"kubeport.toml",
 	}
 
-	// Check current directory
-	for _, name := range candidates {
-		if _, err := os.Stat(name); err == nil {
-			abs, err := filepath.Abs(name)
-			if err != nil {
-				return name, nil
+	dotCandidates := []string{
+		".kubeport.yaml",
+		".kubeport.yml",
+		".kubeport.toml",
+	}
+
+	// Check current directory: kubeport.* first, then .kubeport.*
+	for _, names := range [][]string{candidates, dotCandidates} {
+		for _, name := range names {
+			if _, err := os.Stat(name); err == nil {
+				abs, err := filepath.Abs(name)
+				if err != nil {
+					return name, nil
+				}
+				return abs, nil
 			}
-			return abs, nil
 		}
 	}
 

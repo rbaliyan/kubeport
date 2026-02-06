@@ -31,8 +31,13 @@ const (
 )
 
 type app struct {
-	configFile string
-	cfg        *config.Config
+	configFile   string
+	cfg          *config.Config
+	cliContext   string
+	cliNamespace string
+	cliServices  []string
+	startWait    bool
+	startTimeout time.Duration
 }
 
 // Execute runs the CLI with the given context.
@@ -57,6 +62,60 @@ func Execute(ctx context.Context) {
 			}
 		case strings.HasPrefix(arg, "--config="):
 			a.configFile = strings.TrimPrefix(arg, "--config=")
+		case arg == "--context":
+			if i+1 < len(args) {
+				i++
+				a.cliContext = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--context="):
+			a.cliContext = strings.TrimPrefix(arg, "--context=")
+		case arg == "--namespace" || arg == "-n":
+			if i+1 < len(args) {
+				i++
+				a.cliNamespace = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--namespace="):
+			a.cliNamespace = strings.TrimPrefix(arg, "--namespace=")
+		case arg == "--svc":
+			if i+1 < len(args) {
+				i++
+				a.cliServices = append(a.cliServices, args[i])
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a service spec\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--svc="):
+			a.cliServices = append(a.cliServices, strings.TrimPrefix(arg, "--svc="))
+		case arg == "--wait":
+			a.startWait = true
+		case arg == "--timeout":
+			if i+1 < len(args) {
+				i++
+				d, err := time.ParseDuration(args[i])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: invalid --timeout value %q: %v\n", args[i], err)
+					os.Exit(1)
+				}
+				a.startTimeout = d
+				a.startWait = true // --timeout implies --wait
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a duration (e.g., 30s)\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--timeout="):
+			d, err := time.ParseDuration(strings.TrimPrefix(arg, "--timeout="))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid --timeout value: %v\n", err)
+				os.Exit(1)
+			}
+			a.startTimeout = d
+			a.startWait = true
 		default:
 			if command == "" {
 				if strings.HasPrefix(arg, "-") {
@@ -119,6 +178,11 @@ func Execute(ctx context.Context) {
 }
 
 func (a *app) loadConfig() error {
+	// If --svc flags were provided, build config from CLI args (no file needed)
+	if len(a.cliServices) > 0 {
+		return a.buildConfigFromCLI()
+	}
+
 	path := a.configFile
 	if path == "" {
 		var err error
@@ -133,6 +197,14 @@ func (a *app) loadConfig() error {
 		return err
 	}
 
+	// CLI flags override config file values
+	if a.cliContext != "" {
+		cfg.Context = a.cliContext
+	}
+	if a.cliNamespace != "" {
+		cfg.Namespace = a.cliNamespace
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("config validation: %w", err)
 	}
@@ -140,6 +212,80 @@ func (a *app) loadConfig() error {
 	a.configFile = path
 	a.cfg = cfg
 	return nil
+}
+
+func (a *app) buildConfigFromCLI() error {
+	services := make([]config.ServiceConfig, 0, len(a.cliServices))
+	for _, raw := range a.cliServices {
+		svc, err := parseSvcFlag(raw)
+		if err != nil {
+			return err
+		}
+		services = append(services, svc)
+	}
+
+	namespace := a.cliNamespace
+	if namespace == "" {
+		namespace = "default"
+	}
+
+	cfg := config.NewInMemory(a.cliContext, namespace, services)
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("config validation: %w", err)
+	}
+
+	a.cfg = cfg
+	return nil
+}
+
+func parseSvcFlag(s string) (config.ServiceConfig, error) {
+	// Format: name:type/target:remoteport:localport[:namespace]
+	parts := strings.SplitN(s, ":", 5)
+	if len(parts) < 4 {
+		return config.ServiceConfig{}, fmt.Errorf(
+			"invalid --svc format %q: expected name:type/target:remoteport:localport[:namespace]", s)
+	}
+
+	name := parts[0]
+	typTarget := parts[1]
+
+	remote, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return config.ServiceConfig{}, fmt.Errorf("invalid remote port in --svc %q: %w", s, err)
+	}
+
+	local, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return config.ServiceConfig{}, fmt.Errorf("invalid local port in --svc %q: %w", s, err)
+	}
+
+	slash := strings.SplitN(typTarget, "/", 2)
+	if len(slash) != 2 || slash[1] == "" {
+		return config.ServiceConfig{}, fmt.Errorf(
+			"invalid target in --svc %q: expected svc/<name> or pod/<name>", s)
+	}
+
+	svc := config.ServiceConfig{
+		Name:       name,
+		LocalPort:  local,
+		RemotePort: remote,
+	}
+
+	switch slash[0] {
+	case "svc", "service":
+		svc.Service = slash[1]
+	case "pod":
+		svc.Pod = slash[1]
+	default:
+		return config.ServiceConfig{}, fmt.Errorf(
+			"invalid type %q in --svc %q: expected 'svc' or 'pod'", slash[0], s)
+	}
+
+	if len(parts) == 5 && parts[4] != "" {
+		svc.Namespace = parts[4]
+	}
+
+	return svc, nil
 }
 
 // Process management helpers

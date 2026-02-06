@@ -23,7 +23,7 @@ func (a *app) cmdForeground(ctx context.Context) {
 }
 
 func (a *app) cmdDaemon(ctx context.Context, args []string) {
-	// Parse daemon-specific flags (config was passed down)
+	// Parse daemon-specific flags (forwarded from start command)
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--config", "-c":
@@ -31,10 +31,25 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 				i++
 				a.configFile = args[i]
 			}
+		case "--context":
+			if i+1 < len(args) {
+				i++
+				a.cliContext = args[i]
+			}
+		case "--namespace", "-n":
+			if i+1 < len(args) {
+				i++
+				a.cliNamespace = args[i]
+			}
+		case "--svc":
+			if i+1 < len(args) {
+				i++
+				a.cliServices = append(a.cliServices, args[i])
+			}
 		}
 	}
 
-	// Reload config if we got a new path from daemon args
+	// Reload config if we got new args from daemon invocation
 	if a.cfg == nil {
 		if err := a.loadConfig(); err != nil {
 			fmt.Fprintf(os.Stderr, "daemon config error: %v\n", err)

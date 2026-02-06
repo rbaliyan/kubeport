@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/rbaliyan/kubeport/internal/config"
@@ -64,16 +65,20 @@ func TestResolvePod_DirectPod(t *testing.T) {
 	m := &Manager{clientset: client}
 
 	svc := config.ServiceConfig{
-		Name: "test",
-		Pod:  "my-pod",
+		Name:       "test",
+		Pod:        "my-pod",
+		RemotePort: 6379,
 	}
 
-	name, err := m.resolvePod(context.Background(), "default", svc)
+	name, port, err := m.resolvePod(context.Background(), "default", svc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if name != "my-pod" {
 		t.Fatalf("expected 'my-pod', got %q", name)
+	}
+	if port != 6379 {
+		t.Fatalf("expected port 6379, got %d", port)
 	}
 }
 
@@ -86,6 +91,9 @@ func TestResolvePod_ServiceWithRunningPod(t *testing.T) {
 			},
 			Spec: corev1.ServiceSpec{
 				Selector: map[string]string{"app": "test"},
+				Ports: []corev1.ServicePort{
+					{Port: 80, TargetPort: intstr.FromInt32(8080)},
+				},
 			},
 		},
 		&corev1.Pod{
@@ -101,16 +109,100 @@ func TestResolvePod_ServiceWithRunningPod(t *testing.T) {
 	m := &Manager{clientset: client}
 
 	svc := config.ServiceConfig{
-		Name:    "test",
-		Service: "my-svc",
+		Name:       "test",
+		Service:    "my-svc",
+		RemotePort: 80,
 	}
 
-	name, err := m.resolvePod(context.Background(), "default", svc)
+	name, port, err := m.resolvePod(context.Background(), "default", svc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if name != "test-pod-abc" {
 		t.Fatalf("expected 'test-pod-abc', got %q", name)
+	}
+	if port != 8080 {
+		t.Fatalf("expected targetPort 8080, got %d", port)
+	}
+}
+
+func TestResolvePod_ServicePortMatchesTargetPort(t *testing.T) {
+	// When service port == targetPort, resolvePod should return the same port.
+	client := fake.NewSimpleClientset(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-svc",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+				Ports: []corev1.ServicePort{
+					{Port: 8080, TargetPort: intstr.FromInt32(8080)},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-1",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+	)
+
+	m := &Manager{clientset: client}
+	svc := config.ServiceConfig{
+		Name:       "test",
+		Service:    "my-svc",
+		RemotePort: 8080,
+	}
+
+	_, port, err := m.resolvePod(context.Background(), "default", svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if port != 8080 {
+		t.Fatalf("expected port 8080, got %d", port)
+	}
+}
+
+func TestResolvePod_NoPortSpec(t *testing.T) {
+	// When the service has no port spec matching remote_port, fall back to remote_port.
+	client := fake.NewSimpleClientset(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-svc",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+				// No ports defined
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-1",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+	)
+
+	m := &Manager{clientset: client}
+	svc := config.ServiceConfig{
+		Name:       "test",
+		Service:    "my-svc",
+		RemotePort: 3000,
+	}
+
+	_, port, err := m.resolvePod(context.Background(), "default", svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if port != 3000 {
+		t.Fatalf("expected fallback to remote_port 3000, got %d", port)
 	}
 }
 
@@ -142,7 +234,7 @@ func TestResolvePod_ServiceNoRunningPod(t *testing.T) {
 		Service: "my-svc",
 	}
 
-	_, err := m.resolvePod(context.Background(), "default", svc)
+	_, _, err := m.resolvePod(context.Background(), "default", svc)
 	if err == nil {
 		t.Fatal("expected error for no running pods")
 	}
@@ -168,7 +260,7 @@ func TestResolvePod_ServiceNoSelector(t *testing.T) {
 		Service: "my-svc",
 	}
 
-	_, err := m.resolvePod(context.Background(), "default", svc)
+	_, _, err := m.resolvePod(context.Background(), "default", svc)
 	if err == nil {
 		t.Fatal("expected error for no selector")
 	}
@@ -183,7 +275,7 @@ func TestResolvePod_ServiceNotFound(t *testing.T) {
 		Service: "nonexistent",
 	}
 
-	_, err := m.resolvePod(context.Background(), "default", svc)
+	_, _, err := m.resolvePod(context.Background(), "default", svc)
 	if err == nil {
 		t.Fatal("expected error for missing service")
 	}
@@ -224,7 +316,7 @@ func TestResolvePod_PicksRunningPod(t *testing.T) {
 		Service: "my-svc",
 	}
 
-	name, err := m.resolvePod(context.Background(), "default", svc)
+	name, _, err := m.resolvePod(context.Background(), "default", svc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -638,7 +730,7 @@ func TestSupervise_NamespaceOverride(t *testing.T) {
 		Namespace: "custom-ns",
 	}
 
-	name, err := m.resolvePod(context.Background(), "custom-ns", svc)
+	name, _, err := m.resolvePod(context.Background(), "custom-ns", svc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

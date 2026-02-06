@@ -326,8 +326,9 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	pf.cancel = fwCancel
 	pf.mu.Unlock()
 
-	// Resolve to a pod (for services, find a running pod via selector)
-	podName, err := m.resolvePod(ctx, pf.namespace, pf.svc)
+	// Resolve to a pod and target port (for services, find a running pod
+	// via selector and translate service port → container targetPort)
+	podName, targetPort, err := m.resolvePod(ctx, pf.namespace, pf.svc)
 	if err != nil {
 		return err
 	}
@@ -356,7 +357,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		close(stopChan)
 	}()
 
-	ports := []string{fmt.Sprintf("%d:%d", pf.svc.LocalPort, pf.svc.RemotePort)}
+	ports := []string{fmt.Sprintf("%d:%d", pf.svc.LocalPort, targetPort)}
 
 	fw, err := portforward.New(dialer, ports, stopChan, readyChan, io.Discard, io.Discard)
 	if err != nil {
@@ -452,22 +453,35 @@ func addJitter(d time.Duration) time.Duration {
 	return d + time.Duration(rand.Float64()*2*jitter-jitter)
 }
 
-func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.ServiceConfig) (string, error) {
+func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.ServiceConfig) (string, int, error) {
 	if svc.IsPod() {
-		return svc.Target(), nil
+		return svc.Target(), svc.RemotePort, nil
 	}
 
 	opCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Get the service to find its pod selector
+	// Get the service to find its pod selector and port mapping
 	service, err := m.clientset.CoreV1().Services(namespace).Get(opCtx, svc.Target(), metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("get service %s/%s: %w", namespace, svc.Target(), err)
+		return "", 0, fmt.Errorf("get service %s/%s: %w", namespace, svc.Target(), err)
 	}
 
 	if len(service.Spec.Selector) == 0 {
-		return "", fmt.Errorf("service %s has no pod selector", svc.Target())
+		return "", 0, fmt.Errorf("service %s has no pod selector", svc.Target())
+	}
+
+	// Resolve service port → container targetPort.
+	// kubectl port-forward does this internally, but since we forward
+	// directly to the pod via SPDY, we need the actual container port.
+	targetPort := svc.RemotePort
+	for _, p := range service.Spec.Ports {
+		if int(p.Port) == svc.RemotePort {
+			if p.TargetPort.IntValue() != 0 {
+				targetPort = p.TargetPort.IntValue()
+			}
+			break
+		}
 	}
 
 	selector := labels.SelectorFromSet(service.Spec.Selector)
@@ -475,16 +489,16 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 		LabelSelector: selector.String(),
 	})
 	if err != nil {
-		return "", fmt.Errorf("list pods for service %s: %w", svc.Target(), err)
+		return "", 0, fmt.Errorf("list pods for service %s: %w", svc.Target(), err)
 	}
 
 	for i := range pods.Items {
 		if pods.Items[i].Status.Phase == corev1.PodRunning {
-			return pods.Items[i].Name, nil
+			return pods.Items[i].Name, targetPort, nil
 		}
 	}
 
-	return "", fmt.Errorf("no running pods for service %s (selector: %s)", svc.Target(), selector.String())
+	return "", 0, fmt.Errorf("no running pods for service %s (selector: %s)", svc.Target(), selector.String())
 }
 
 // Stop terminates all port forwards.
