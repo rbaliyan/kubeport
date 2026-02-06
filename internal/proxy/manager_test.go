@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -643,5 +644,136 @@ func TestSupervise_NamespaceOverride(t *testing.T) {
 	}
 	if name != "pod-1" {
 		t.Fatalf("expected 'pod-1', got %q", name)
+	}
+}
+
+func TestStart_ConcurrentFailures(t *testing.T) {
+	// All services will fail (no pods exist) — verify concurrent failures
+	// don't cause panics, data races, or leave stale state.
+	client := fake.NewSimpleClientset()
+
+	services := make([]config.ServiceConfig, 5)
+	for i := range services {
+		services[i] = config.ServiceConfig{
+			Name:       fmt.Sprintf("svc-%d", i),
+			Service:    fmt.Sprintf("missing-%d", i),
+			LocalPort:  18090 + i,
+			RemotePort: 80,
+		}
+	}
+
+	m := &Manager{
+		cfg: &config.Config{
+			Context:   "test",
+			Namespace: "default",
+			Services:  services,
+		},
+		clientset:            client,
+		forwards:             make(map[string]*portForward),
+		output:               io.Discard,
+		logger:               discardLogger(),
+		maxRestarts:          2,
+		healthCheckInterval:  10 * time.Second,
+		healthCheckThreshold: 3,
+		readyTimeout:         1 * time.Second,
+		backoffInitial:       5 * time.Millisecond,
+		backoffMax:           10 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	m.Start(ctx)
+
+	// All 5 services should have entries
+	m.mu.RLock()
+	count := len(m.forwards)
+	m.mu.RUnlock()
+
+	if count != 5 {
+		t.Fatalf("expected 5 forwards, got %d", count)
+	}
+
+	// Each service should have hit max restarts
+	for i := 0; i < 5; i++ {
+		name := fmt.Sprintf("svc-%d", i)
+		m.mu.RLock()
+		pf := m.forwards[name]
+		m.mu.RUnlock()
+
+		pf.mu.Lock()
+		state := pf.state
+		restarts := pf.restarts
+		pf.mu.Unlock()
+
+		if state != StateFailed {
+			t.Errorf("service %s: expected StateFailed, got %v", name, state)
+		}
+		if restarts < 2 {
+			t.Errorf("service %s: expected >= 2 restarts, got %d", name, restarts)
+		}
+	}
+}
+
+func TestStart_ContextCancellation_Cleanup(t *testing.T) {
+	// Cancel context while services are running — verify all stop cleanly.
+	client := fake.NewSimpleClientset()
+
+	m := &Manager{
+		cfg: &config.Config{
+			Context:   "test",
+			Namespace: "default",
+			Services: []config.ServiceConfig{
+				{Name: "svc-a", Service: "a", LocalPort: 18095, RemotePort: 80},
+				{Name: "svc-b", Service: "b", LocalPort: 18096, RemotePort: 80},
+				{Name: "svc-c", Service: "c", LocalPort: 18097, RemotePort: 80},
+			},
+		},
+		clientset:            client,
+		forwards:             make(map[string]*portForward),
+		output:               io.Discard,
+		logger:               discardLogger(),
+		maxRestarts:          0, // unlimited
+		healthCheckInterval:  10 * time.Second,
+		healthCheckThreshold: 3,
+		readyTimeout:         1 * time.Second,
+		backoffInitial:       50 * time.Millisecond,
+		backoffMax:           100 * time.Millisecond,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Cancel after a short delay
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+
+	m.Start(ctx)
+
+	// All services should exist and be stopped
+	m.mu.RLock()
+	count := len(m.forwards)
+	m.mu.RUnlock()
+
+	if count != 3 {
+		t.Fatalf("expected 3 forwards, got %d", count)
+	}
+
+	for _, name := range []string{"svc-a", "svc-b", "svc-c"} {
+		m.mu.RLock()
+		pf := m.forwards[name]
+		m.mu.RUnlock()
+
+		pf.mu.Lock()
+		state := pf.state
+		pf.mu.Unlock()
+
+		// Service may be StateStopped (caught at top of loop) or StateFailed
+		// (context cancelled during backoff sleep after a failure). Both are
+		// acceptable terminal states after cancellation.
+		if state != StateStopped && state != StateFailed {
+			t.Errorf("service %s: expected StateStopped or StateFailed after cancel, got %v", name, state)
+		}
 	}
 }

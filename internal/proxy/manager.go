@@ -230,25 +230,13 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 		default:
 		}
 
-		// Check if port already in use by another process (skip for dynamic ports)
+		// Log warning if port appears in use, but still attempt — the port may
+		// free up between our check and the actual bind in port-forward.
 		if svc.LocalPort != 0 && isPortOpen(svc.LocalPort) {
-			pf.mu.Lock()
-			pf.state = StateFailed
-			pf.err = fmt.Errorf("port %d already in use", svc.LocalPort)
-			pf.mu.Unlock()
-			m.logger.Error("port already in use, skipping",
-			"service", svc.Name,
-			"port", svc.LocalPort,
-		)
-			m.hooks.Fire(ctx, hook.Event{
-				Type:       hook.EventForwardFailed,
-				Time:       time.Now(),
-				Service:    svc.Name,
-				LocalPort:  svc.LocalPort,
-				RemotePort: svc.RemotePort,
-				Error:      pf.err,
-			})
-			return
+			m.logger.Warn("port appears in use, will attempt anyway",
+				"service", svc.Name,
+				"port", svc.LocalPort,
+			)
 		}
 
 		pf.mu.Lock()

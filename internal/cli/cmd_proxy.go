@@ -51,6 +51,12 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
 	fmt.Fprintf(output, "Services:  %d\n\n", len(a.cfg.Services))
 
+	// Write PID file so the daemon can be located by CLI commands.
+	pidFile := a.cfg.PIDFile()
+	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600); err != nil {
+		fmt.Fprintf(output, "Warning: failed to write PID file: %v\n", err)
+	}
+
 	logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	// Build hook dispatcher from config

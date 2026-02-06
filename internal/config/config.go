@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -401,6 +402,13 @@ func validateHook(idx int, h HookConfig) error {
 	case "webhook":
 		if h.Webhook == nil || h.Webhook.URL == "" {
 			return fmt.Errorf("%s: webhook.url is required", prefix)
+		}
+		u, err := url.Parse(h.Webhook.URL)
+		if err != nil {
+			return fmt.Errorf("%s: invalid webhook URL: %w", prefix, err)
+		}
+		if u.Scheme != "http" && u.Scheme != "https" {
+			return fmt.Errorf("%s: webhook URL must use http or https scheme, got %q", prefix, u.Scheme)
 		}
 	case "exec":
 		if h.Exec == nil || len(h.Exec.Command) == 0 {

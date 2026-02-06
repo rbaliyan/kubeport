@@ -229,6 +229,14 @@ Shell and exec hooks receive event context via environment variables:
 | `KUBEPORT_RESTARTS` | Number of restarts |
 | `KUBEPORT_ERROR` | Error message (if applicable) |
 
+### Security Considerations
+
+Shell and exec hooks execute commands from your config file via `sh -c` or direct exec.
+Treat kubeport config files like scripts — only use configs you trust, and ensure
+they are owned by the user running the daemon (not world-writable). Avoid interpolating
+untrusted input into hook commands. Environment variables passed to hooks are sanitized
+(newlines and null bytes stripped) to prevent injection.
+
 ### Template Variables (Exec/Webhook)
 
 Exec command arguments and webhook `body_template` support `${VAR}` expansion:
