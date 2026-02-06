@@ -17,11 +17,6 @@ A Kubernetes port-forward supervisor with health checks, automatic restarts, and
 
 ## Installation
 
-**Homebrew (macOS/Linux):**
-```bash
-brew install rbaliyan/tap/kubeport
-```
-
 **Install script:**
 ```bash
 curl -sSfL https://raw.githubusercontent.com/rbaliyan/kubeport/main/install.sh | sh

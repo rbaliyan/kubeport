@@ -70,27 +70,6 @@ changelog:
       - Merge pull request
       - Merge branch
 
-brews:
-  - name: kubeport
-    repository:
-      owner: rbaliyan
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/rbaliyan/kubeport"
-    description: "Kubernetes port-forward supervisor with health checks and auto-restart"
-    license: "MIT"
-    dependencies:
-      - name: kubernetes-cli
-        type: optional
-    install: |
-      bin.install "kubeport"
-      bash_completion.install "completions/kubeport.bash" => "kubeport"
-      zsh_completion.install "completions/kubeport.zsh" => "_kubeport"
-      fish_completion.install "completions/kubeport.fish"
-    test: |
-      system "#{bin}/kubeport", "version"
-
 nfpms:
   - id: packages
     package_name: kubeport
