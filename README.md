@@ -1,8 +1,11 @@
 # kubeport
 
 [![CI](https://github.com/rbaliyan/kubeport/actions/workflows/ci.yml/badge.svg)](https://github.com/rbaliyan/kubeport/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/rbaliyan/kubeport)](https://github.com/rbaliyan/kubeport/releases/latest)
 [![Go Reference](https://pkg.go.dev/badge/github.com/rbaliyan/kubeport.svg)](https://pkg.go.dev/github.com/rbaliyan/kubeport)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rbaliyan/kubeport)](https://goreportcard.com/report/github.com/rbaliyan/kubeport)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rbaliyan/kubeport/badge)](https://scorecard.dev/viewer/?uri=github.com/rbaliyan/kubeport)
 
 A Kubernetes port-forward supervisor with health checks, automatic restarts, and lifecycle hooks.
 
