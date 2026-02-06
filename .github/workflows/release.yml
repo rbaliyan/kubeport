@@ -5,13 +5,14 @@ on:
     tags:
       - 'v*'
 
-permissions:
-  contents: write
+permissions: read-all
 
 jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
