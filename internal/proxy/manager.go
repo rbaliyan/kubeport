@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net"
 	"net/http"
 	"sync"
@@ -24,12 +25,13 @@ import (
 	"github.com/rbaliyan/kubeport/internal/hook"
 )
 
+// Default supervisor tuning constants. Overridden by config.SupervisorConfig.
 const (
-	healthCheckInterval      = 10 * time.Second
-	healthCheckFailThreshold = 3
-	initialBackoff           = 1 * time.Second
-	maxBackoff               = 30 * time.Second
-	readyTimeout             = 15 * time.Second
+	defaultHealthCheckInterval      = 10 * time.Second
+	defaultHealthCheckFailThreshold = 3
+	defaultInitialBackoff           = 1 * time.Second
+	defaultMaxBackoff               = 30 * time.Second
+	defaultReadyTimeout             = 15 * time.Second
 )
 
 // ForwardState represents the state of a port forward.
@@ -91,6 +93,14 @@ type Manager struct {
 	cancel     context.CancelFunc
 	hooks      *hook.Dispatcher
 	logger     *slog.Logger
+
+	// Supervisor tuning (populated from config.SupervisorConfig in NewManager)
+	maxRestarts          int
+	healthCheckInterval  time.Duration
+	healthCheckThreshold int
+	readyTimeout         time.Duration
+	backoffInitial       time.Duration
+	backoffMax           time.Duration
 }
 
 // Option configures optional Manager behavior.
@@ -129,13 +139,22 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
 
+	maxRestarts, healthThreshold, healthInterval, readyTimeout, backoffInit, backoffMax :=
+		cfg.Supervisor.ParsedSupervisor()
+
 	m := &Manager{
-		cfg:        cfg,
-		restConfig: restConfig,
-		clientset:  clientset,
-		forwards:   make(map[string]*portForward),
-		output:     output,
-		logger:     slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		cfg:                  cfg,
+		restConfig:           restConfig,
+		clientset:            clientset,
+		forwards:             make(map[string]*portForward),
+		output:               output,
+		logger:               slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		maxRestarts:          maxRestarts,
+		healthCheckInterval:  healthInterval,
+		healthCheckThreshold: healthThreshold,
+		readyTimeout:         readyTimeout,
+		backoffInitial:       backoffInit,
+		backoffMax:           backoffMax,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -190,7 +209,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 	m.forwards[svc.Name] = pf
 	m.mu.Unlock()
 
-	backoff := initialBackoff
+	backoff := m.backoffInitial
 
 	for {
 		select {
@@ -262,18 +281,36 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 			Error:      err,
 		})
 
+		// Check max restarts limit (0 = unlimited)
+		if m.maxRestarts > 0 && restarts >= m.maxRestarts {
+			fmt.Fprintf(m.output, "[%s] max restarts (%d) reached, giving up\n", svc.Name, m.maxRestarts)
+			m.hooks.Fire(ctx, hook.Event{
+				Type:       hook.EventForwardFailed,
+				Time:       time.Now(),
+				Service:    svc.Name,
+				LocalPort:  pf.actualPort,
+				RemotePort: svc.RemotePort,
+				Restarts:   restarts,
+				Error:      fmt.Errorf("max restarts (%d) exceeded", m.maxRestarts),
+			})
+			return
+		}
+
 		// Reset backoff if connection lasted long enough
 		if duration > 30*time.Second {
-			backoff = initialBackoff
+			backoff = m.backoffInitial
 		}
+
+		// Add ±25% jitter to backoff to prevent thundering herd
+		jittered := addJitter(backoff)
 
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(backoff):
+		case <-time.After(jittered):
 		}
 
-		backoff = min(backoff*2, maxBackoff)
+		backoff = min(backoff*2, m.backoffMax)
 	}
 }
 
@@ -342,7 +379,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		return fmt.Errorf("port forward closed before ready")
 	case <-fwCtx.Done():
 		return fwCtx.Err()
-	case <-time.After(readyTimeout):
+	case <-time.After(m.readyTimeout):
 		fwCancel()
 		return fmt.Errorf("timeout waiting for port forward to become ready")
 	}
@@ -372,7 +409,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	})
 
 	// Health check loop
-	ticker := time.NewTicker(healthCheckInterval)
+	ticker := time.NewTicker(m.healthCheckInterval)
 	defer ticker.Stop()
 
 	failCount := 0
@@ -397,7 +434,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 					RemotePort: pf.svc.RemotePort,
 					PodName:    podName,
 				})
-				if failCount >= healthCheckFailThreshold {
+				if failCount >= m.healthCheckThreshold {
 					fwCancel()
 					return fmt.Errorf("health check failed %d consecutive times", failCount)
 				}
@@ -406,6 +443,12 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 			}
 		}
 	}
+}
+
+// addJitter adds ±25% random jitter to a duration to prevent thundering herd.
+func addJitter(d time.Duration) time.Duration {
+	jitter := float64(d) * 0.25
+	return d + time.Duration(rand.Float64()*2*jitter-jitter)
 }
 
 func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.ServiceConfig) (string, error) {

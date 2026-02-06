@@ -6,10 +6,25 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	toml "github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 )
+
+// validHookTypes is the set of allowed hook types.
+var validHookTypes = map[string]bool{"shell": true, "webhook": true, "exec": true}
+
+// validHookEvents is the set of allowed event names.
+var validHookEvents = map[string]bool{
+	"manager_starting":     true,
+	"manager_stopped":      true,
+	"forward_connected":    true,
+	"forward_disconnected": true,
+	"forward_failed":       true,
+	"forward_stopped":      true,
+	"health_check_failed":  true,
+}
 
 // Format represents the config file format.
 type Format string
@@ -57,8 +72,9 @@ type HookConfig struct {
 
 // WebhookConfig defines the configuration for a webhook hook.
 type WebhookConfig struct {
-	URL     string            `yaml:"url" toml:"url"`
-	Headers map[string]string `yaml:"headers,omitempty" toml:"headers,omitempty"`
+	URL          string            `yaml:"url" toml:"url"`
+	Headers      map[string]string `yaml:"headers,omitempty" toml:"headers,omitempty"`
+	BodyTemplate string            `yaml:"body_template,omitempty" toml:"body_template,omitempty"` // optional; uses ${VAR} expansion
 }
 
 // ExecConfig defines the configuration for an exec hook.
@@ -66,12 +82,23 @@ type ExecConfig struct {
 	Command []string `yaml:"command" toml:"command"`
 }
 
+// SupervisorConfig holds tuning parameters for the port-forward supervisor.
+type SupervisorConfig struct {
+	MaxRestarts          int    `yaml:"max_restarts,omitempty" toml:"max_restarts,omitempty"`                     // 0 = unlimited
+	HealthCheckInterval  string `yaml:"health_check_interval,omitempty" toml:"health_check_interval,omitempty"`   // e.g., "10s"
+	HealthCheckThreshold int    `yaml:"health_check_threshold,omitempty" toml:"health_check_threshold,omitempty"` // consecutive failures
+	ReadyTimeout         string `yaml:"ready_timeout,omitempty" toml:"ready_timeout,omitempty"`                   // e.g., "15s"
+	BackoffInitial       string `yaml:"backoff_initial,omitempty" toml:"backoff_initial,omitempty"`               // e.g., "1s"
+	BackoffMax           string `yaml:"backoff_max,omitempty" toml:"backoff_max,omitempty"`                       // e.g., "30s"
+}
+
 // Config holds the full proxy configuration.
 type Config struct {
-	Context   string          `yaml:"context" toml:"context"`
-	Namespace string          `yaml:"namespace" toml:"namespace"`
-	Services  []ServiceConfig `yaml:"services" toml:"services"`
-	Hooks     []HookConfig    `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
+	Context    string           `yaml:"context" toml:"context"`
+	Namespace  string           `yaml:"namespace" toml:"namespace"`
+	Services   []ServiceConfig  `yaml:"services" toml:"services"`
+	Hooks      []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
+	Supervisor SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
 
 	// Runtime fields (not serialized)
 	filePath string
@@ -324,5 +351,102 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate hooks
+	for i, h := range c.Hooks {
+		if err := validateHook(i, h); err != nil {
+			return err
+		}
+	}
+
+	// Validate supervisor config durations
+	if err := c.Supervisor.validate(); err != nil {
+		return fmt.Errorf("supervisor: %w", err)
+	}
+
 	return nil
+}
+
+func validateHook(idx int, h HookConfig) error {
+	prefix := fmt.Sprintf("hook[%d] (%s)", idx, h.Name)
+	if h.Name == "" {
+		return fmt.Errorf("hook[%d]: name is required", idx)
+	}
+	if !validHookTypes[h.Type] {
+		return fmt.Errorf("%s: unknown type %q (use shell, webhook, or exec)", prefix, h.Type)
+	}
+	for _, e := range h.Events {
+		if !validHookEvents[e] {
+			return fmt.Errorf("%s: unknown event %q", prefix, e)
+		}
+	}
+	if h.Timeout != "" {
+		if _, err := time.ParseDuration(h.Timeout); err != nil {
+			return fmt.Errorf("%s: invalid timeout %q: %w", prefix, h.Timeout, err)
+		}
+	}
+	if h.FailMode != "" && h.FailMode != "open" && h.FailMode != "closed" {
+		return fmt.Errorf("%s: invalid fail_mode %q (use \"open\" or \"closed\")", prefix, h.FailMode)
+	}
+
+	switch h.Type {
+	case "shell":
+		if len(h.Shell) == 0 {
+			return fmt.Errorf("%s: shell commands are required", prefix)
+		}
+		for eventName := range h.Shell {
+			if !validHookEvents[eventName] {
+				return fmt.Errorf("%s: shell command references unknown event %q", prefix, eventName)
+			}
+		}
+	case "webhook":
+		if h.Webhook == nil || h.Webhook.URL == "" {
+			return fmt.Errorf("%s: webhook.url is required", prefix)
+		}
+	case "exec":
+		if h.Exec == nil || len(h.Exec.Command) == 0 {
+			return fmt.Errorf("%s: exec.command is required", prefix)
+		}
+	}
+	return nil
+}
+
+func (s SupervisorConfig) validate() error {
+	for _, pair := range []struct{ name, val string }{
+		{"health_check_interval", s.HealthCheckInterval},
+		{"ready_timeout", s.ReadyTimeout},
+		{"backoff_initial", s.BackoffInitial},
+		{"backoff_max", s.BackoffMax},
+	} {
+		if pair.val != "" {
+			if _, err := time.ParseDuration(pair.val); err != nil {
+				return fmt.Errorf("invalid %s %q: %w", pair.name, pair.val, err)
+			}
+		}
+	}
+	return nil
+}
+
+// ParsedSupervisor returns supervisor config with defaults applied.
+func (s SupervisorConfig) ParsedSupervisor() (maxRestarts, healthThreshold int, healthInterval, readyTimeout, backoffInit, backoffMax time.Duration) {
+	maxRestarts = s.MaxRestarts
+	healthThreshold = s.HealthCheckThreshold
+	if healthThreshold <= 0 {
+		healthThreshold = 3
+	}
+	healthInterval = parseDurationOr(s.HealthCheckInterval, 10*time.Second)
+	readyTimeout = parseDurationOr(s.ReadyTimeout, 15*time.Second)
+	backoffInit = parseDurationOr(s.BackoffInitial, 1*time.Second)
+	backoffMax = parseDurationOr(s.BackoffMax, 30*time.Second)
+	return
+}
+
+func parseDurationOr(s string, def time.Duration) time.Duration {
+	if s == "" {
+		return def
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return def
+	}
+	return d
 }

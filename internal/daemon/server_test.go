@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 // mockSupervisor implements the Supervisor interface for testing.
 type mockSupervisor struct {
 	statuses  []proxy.ForwardStatus
-	stopCalls int
+	stopCalls atomic.Int32
 }
 
 func (m *mockSupervisor) Status() []proxy.ForwardStatus {
@@ -27,7 +28,7 @@ func (m *mockSupervisor) Status() []proxy.ForwardStatus {
 }
 
 func (m *mockSupervisor) Stop() {
-	m.stopCalls++
+	m.stopCalls.Add(1)
 }
 
 func TestServer_Status(t *testing.T) {
@@ -157,8 +158,8 @@ func TestServer_Stop(t *testing.T) {
 
 	// Stop is deferred to a goroutine with 100ms delay
 	time.Sleep(200 * time.Millisecond)
-	if mgr.stopCalls != 1 {
-		t.Fatalf("expected 1 stop call, got %d", mgr.stopCalls)
+	if got := mgr.stopCalls.Load(); got != 1 {
+		t.Fatalf("expected 1 stop call, got %d", got)
 	}
 }
 

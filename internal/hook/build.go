@@ -62,7 +62,7 @@ func BuildFromConfig(hc config.HookConfig) (Hook, []EventType, FailMode, time.Du
 		if hc.Webhook == nil || hc.Webhook.URL == "" {
 			return nil, nil, 0, 0, fmt.Errorf("hook %q: webhook.url is required", hc.Name)
 		}
-		h = NewWebhookHook(hc.Name, hc.Webhook.URL, hc.Webhook.Headers, hc.FilterServices)
+		h = NewWebhookHook(hc.Name, hc.Webhook.URL, hc.Webhook.Headers, hc.Webhook.BodyTemplate, hc.FilterServices)
 	case "exec":
 		if hc.Exec == nil || len(hc.Exec.Command) == 0 {
 			return nil, nil, 0, 0, fmt.Errorf("hook %q: exec.command is required", hc.Name)
