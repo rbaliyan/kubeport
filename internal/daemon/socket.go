@@ -18,7 +18,7 @@ func CleanStaleSocket(path string) error {
 	// Try to connect — if successful, another daemon is running.
 	conn, err := net.DialTimeout("unix", path, 2*time.Second)
 	if err == nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("another daemon is already running (socket %s is active)", path)
 	}
 

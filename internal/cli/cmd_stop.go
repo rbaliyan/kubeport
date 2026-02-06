@@ -93,7 +93,7 @@ func (a *app) cmdStopLegacy() {
 		}
 	} else {
 		// Try default PID file location
-		os.Remove(".kubeport.pid")
+		_ = os.Remove(".kubeport.pid")
 	}
 
 	fmt.Printf("%sstopped%s\n", colorGreen, colorReset)

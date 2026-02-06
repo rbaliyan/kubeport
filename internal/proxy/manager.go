@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"math/rand"
-	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -23,15 +22,7 @@ import (
 
 	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/hook"
-)
-
-// Default supervisor tuning constants. Overridden by config.SupervisorConfig.
-const (
-	defaultHealthCheckInterval      = 10 * time.Second
-	defaultHealthCheckFailThreshold = 3
-	defaultInitialBackoff           = 1 * time.Second
-	defaultMaxBackoff               = 30 * time.Second
-	defaultReadyTimeout             = 15 * time.Second
+	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 
 // ForwardState represents the state of a port forward.
@@ -220,7 +211,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 			pf.mu.Lock()
 			pf.state = StateStopped
 			pf.mu.Unlock()
-			m.hooks.Fire(ctx, hook.Event{
+			_ = m.hooks.Fire(ctx, hook.Event{
 				Type:       hook.EventForwardStopped,
 				Time:       time.Now(),
 				Service:    svc.Name,
@@ -232,7 +223,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 
 		// Log warning if port appears in use, but still attempt — the port may
 		// free up between our check and the actual bind in port-forward.
-		if svc.LocalPort != 0 && isPortOpen(svc.LocalPort) {
+		if svc.LocalPort != 0 && netutil.IsPortOpen(svc.LocalPort) {
 			m.logger.Warn("port appears in use, will attempt anyway",
 				"service", svc.Name,
 				"port", svc.LocalPort,
@@ -269,7 +260,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 			"restarts", restarts,
 		)
 
-		m.hooks.Fire(ctx, hook.Event{
+		_ = m.hooks.Fire(ctx, hook.Event{
 			Type:       hook.EventForwardDisconnected,
 			Time:       time.Now(),
 			Service:    svc.Name,
@@ -285,7 +276,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 				"service", svc.Name,
 				"max_restarts", m.maxRestarts,
 			)
-			m.hooks.Fire(ctx, hook.Event{
+			_ = m.hooks.Fire(ctx, hook.Event{
 				Type:       hook.EventForwardFailed,
 				Time:       time.Now(),
 				Service:    svc.Name,
@@ -398,10 +389,10 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	pf.actualPort = actualPort
 	pf.mu.Unlock()
 
-	fmt.Fprintf(m.output, "[%s] forwarding localhost:%d -> %s:%d (pod: %s)\n",
+	_, _ = fmt.Fprintf(m.output, "[%s] forwarding localhost:%d -> %s:%d (pod: %s)\n",
 		pf.svc.Name, actualPort, pf.svc.Target(), pf.svc.RemotePort, podName)
 
-	m.hooks.Fire(ctx, hook.Event{
+	_ = m.hooks.Fire(ctx, hook.Event{
 		Type:       hook.EventForwardConnected,
 		Time:       time.Now(),
 		Service:    pf.svc.Name,
@@ -426,9 +417,9 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		case <-fwCtx.Done():
 			return fwCtx.Err()
 		case <-ticker.C:
-			if !isPortOpen(actualPort) {
+			if !netutil.IsPortOpen(actualPort) {
 				failCount++
-				m.hooks.Fire(ctx, hook.Event{
+				_ = m.hooks.Fire(ctx, hook.Event{
 					Type:       hook.EventHealthCheckFailed,
 					Time:       time.Now(),
 					Service:    pf.svc.Name,
@@ -561,20 +552,11 @@ func (m *Manager) Status() []ForwardStatus {
 			Error:      pf.err,
 			Restarts:   pf.restarts,
 			LastStart:  pf.lastStart,
-			Connected:  port > 0 && isPortOpen(port),
+			Connected:  port > 0 && netutil.IsPortOpen(port),
 			ActualPort: port,
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)
 	}
 	return statuses
-}
-
-func isPortOpen(port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Second)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
 }

@@ -69,15 +69,15 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 }
 
 func (a *app) runProxy(ctx context.Context, output io.Writer) {
-	fmt.Fprintf(output, "kubeport %s starting\n", version.Get().Raw)
-	fmt.Fprintf(output, "Context:   %s\n", a.cfg.Context)
-	fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
-	fmt.Fprintf(output, "Services:  %d\n\n", len(a.cfg.Services))
+	_, _ = fmt.Fprintf(output, "kubeport %s starting\n", version.Get().Raw)
+	_, _ = fmt.Fprintf(output, "Context:   %s\n", a.cfg.Context)
+	_, _ = fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
+	_, _ = fmt.Fprintf(output, "Services:  %d\n\n", len(a.cfg.Services))
 
 	// Write PID file so the daemon can be located by CLI commands.
 	pidFile := a.cfg.PIDFile()
 	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600); err != nil {
-		fmt.Fprintf(output, "Warning: failed to write PID file: %v\n", err)
+		_, _ = fmt.Fprintf(output, "Warning: failed to write PID file: %v\n", err)
 	}
 
 	logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -87,11 +87,11 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	for _, hc := range a.cfg.Hooks {
 		h, events, fm, timeout, err := hook.BuildFromConfig(hc)
 		if err != nil {
-			fmt.Fprintf(output, "Warning: skip hook %q: %v\n", hc.Name, err)
+			_, _ = fmt.Fprintf(output, "Warning: skip hook %q: %v\n", hc.Name, err)
 			continue
 		}
 		dispatcher.Register(h, events, fm, timeout)
-		fmt.Fprintf(output, "Hook registered: %s (%s)\n", hc.Name, hc.Type)
+		_, _ = fmt.Fprintf(output, "Hook registered: %s (%s)\n", hc.Name, hc.Type)
 	}
 
 	// Fire manager starting gate (e.g., VPN startup)
@@ -99,7 +99,7 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		Type: hook.EventManagerStarting,
 		Time: time.Now(),
 	}); err != nil {
-		fmt.Fprintf(output, "Hook blocked startup: %v\n", err)
+		_, _ = fmt.Fprintf(output, "Hook blocked startup: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -108,7 +108,7 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		proxy.WithLogger(logger),
 	)
 	if err != nil {
-		fmt.Fprintf(output, "Error: %v\n", err)
+		_, _ = fmt.Fprintf(output, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -116,29 +116,28 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	daemonSrv := daemon.NewServer(mgr, a.cfg)
 	go func() {
 		if err := daemonSrv.Start(); err != nil {
-			fmt.Fprintf(output, "gRPC server error: %v\n", err)
+			_, _ = fmt.Fprintf(output, "gRPC server error: %v\n", err)
 		}
 	}()
 	defer func() {
 		daemonSrv.Shutdown()
 		if err := os.Remove(a.cfg.PIDFile()); err != nil && !os.IsNotExist(err) {
-			fmt.Fprintf(output, "Warning: failed to remove PID file: %v\n", err)
+			_, _ = fmt.Fprintf(output, "Warning: failed to remove PID file: %v\n", err)
 		}
-		dispatcher.Fire(context.Background(), hook.Event{
+		_ = dispatcher.Fire(context.Background(), hook.Event{
 			Type: hook.EventManagerStopped,
 			Time: time.Now(),
 		})
-		// Allow async hooks a moment to complete
-		time.Sleep(500 * time.Millisecond)
+		dispatcher.Wait()
 	}()
-	fmt.Fprintf(output, "gRPC server listening on %s\n", a.cfg.SocketFile())
+	_, _ = fmt.Fprintf(output, "gRPC server listening on %s\n", a.cfg.SocketFile())
 
 	// Verify namespace access
 	if err := mgr.CheckNamespace(ctx); err != nil {
-		fmt.Fprintf(output, "Warning: %v\n", err)
-		fmt.Fprintf(output, "Continuing anyway (namespace checks may fail for some services)\n\n")
+		_, _ = fmt.Fprintf(output, "Warning: %v\n", err)
+		_, _ = fmt.Fprintf(output, "Continuing anyway (namespace checks may fail for some services)\n\n")
 	}
 
-	fmt.Fprintf(output, "Starting port forwards...\n\n")
+	_, _ = fmt.Fprintf(output, "Starting port forwards...\n\n")
 	mgr.Start(ctx)
 }

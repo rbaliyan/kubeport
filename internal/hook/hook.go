@@ -113,6 +113,7 @@ type Dispatcher struct {
 	hooks  []registeredHook
 	logger *slog.Logger
 	mu     sync.RWMutex
+	wg     sync.WaitGroup
 }
 
 // NewDispatcher creates a new hook event dispatcher.
@@ -204,7 +205,9 @@ func (d *Dispatcher) fireGate(ctx context.Context, rh registeredHook, event Even
 }
 
 func (d *Dispatcher) fireAsync(ctx context.Context, rh registeredHook, event Event) {
+	d.wg.Add(1)
 	go func() {
+		defer d.wg.Done()
 		hookCtx, cancel := context.WithTimeout(ctx, rh.timeout)
 		defer cancel()
 
@@ -216,4 +219,13 @@ func (d *Dispatcher) fireAsync(ctx context.Context, rh registeredHook, event Eve
 			)
 		}
 	}()
+}
+
+// Wait blocks until all in-flight async hooks have completed.
+// Wait is nil-safe: calling Wait on a nil Dispatcher is a no-op.
+func (d *Dispatcher) Wait() {
+	if d == nil {
+		return
+	}
+	d.wg.Wait()
 }

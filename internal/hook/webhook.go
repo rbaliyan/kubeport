@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -52,7 +50,7 @@ func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
 	var err error
 
 	if h.bodyTemplate != "" {
-		body = []byte(expandWebhookVars(h.bodyTemplate, event))
+		body = []byte(ExpandVars(h.bodyTemplate, event))
 	} else {
 		payload := map[string]any{
 			"event":       event.Type.String(),
@@ -88,33 +86,11 @@ func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
 	if err != nil {
 		return fmt.Errorf("webhook POST %s: %w", h.url, err)
 	}
-	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	defer func() { _ = resp.Body.Close() }()
+	_, _ = io.Copy(io.Discard, resp.Body)
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("webhook %s returned HTTP %d", h.url, resp.StatusCode)
 	}
 	return nil
-}
-
-// expandWebhookVars expands ${VAR} template variables in a string.
-func expandWebhookVars(s string, e Event) string {
-	var errStr string
-	if e.Error != nil {
-		errStr = e.Error.Error()
-	}
-	replacements := []struct{ old, new string }{
-		{"${EVENT}", e.Type.String()},
-		{"${SERVICE}", e.Service},
-		{"${PORT}", strconv.Itoa(e.LocalPort)},
-		{"${REMOTE_PORT}", strconv.Itoa(e.RemotePort)},
-		{"${POD}", e.PodName},
-		{"${RESTARTS}", strconv.Itoa(e.Restarts)},
-		{"${ERROR}", errStr},
-		{"${TIME}", e.Time.Format(time.RFC3339)},
-	}
-	for _, r := range replacements {
-		s = strings.ReplaceAll(s, r.old, r.new)
-	}
-	return s
 }

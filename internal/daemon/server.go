@@ -53,7 +53,7 @@ func (s *Server) Start() error {
 
 	// Restrict socket to owner only (prevents other users from controlling daemon)
 	if err := os.Chmod(s.socketPath, 0600); err != nil {
-		lis.Close()
+		_ = lis.Close()
 		return fmt.Errorf("chmod socket %s: %w", s.socketPath, err)
 	}
 
@@ -82,11 +82,11 @@ func (s *Server) Shutdown() {
 		s.grpcServer.Stop()
 	}
 
-	os.Remove(s.socketPath)
+	_ = os.Remove(s.socketPath)
 }
 
 // Status implements DaemonService.Status.
-func (s *Server) Status(ctx context.Context, req *kubeportv1.StatusRequest) (*kubeportv1.StatusResponse, error) {
+func (s *Server) Status(_ context.Context, _ *kubeportv1.StatusRequest) (*kubeportv1.StatusResponse, error) {
 	statuses := s.mgr.Status()
 	forwards := make([]*kubeportv1.ForwardStatusProto, 0, len(statuses))
 	for _, fs := range statuses {
@@ -101,7 +101,7 @@ func (s *Server) Status(ctx context.Context, req *kubeportv1.StatusRequest) (*ku
 }
 
 // Stop implements DaemonService.Stop.
-func (s *Server) Stop(ctx context.Context, req *kubeportv1.StopRequest) (*kubeportv1.StopResponse, error) {
+func (s *Server) Stop(_ context.Context, _ *kubeportv1.StopRequest) (*kubeportv1.StopResponse, error) {
 	// Trigger manager shutdown in a goroutine so the response can be sent first.
 	go func() {
 		time.Sleep(100 * time.Millisecond)

@@ -152,7 +152,7 @@ func (a *app) configShow() {
 
 	fmt.Printf("\nServices (%d):\n", len(cfg.Services))
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "  NAME\tTYPE\tTARGET\tLOCAL\tREMOTE\tNAMESPACE")
+	_, _ = fmt.Fprintln(w, "  NAME\tTYPE\tTARGET\tLOCAL\tREMOTE\tNAMESPACE")
 	for _, svc := range cfg.Services {
 		typ := "service"
 		target := svc.Service
@@ -168,9 +168,9 @@ func (a *app) configShow() {
 		if ns == "" {
 			ns = "-"
 		}
-		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%d\t%s\n", svc.Name, typ, target, localPort, svc.RemotePort, ns)
+		_, _ = fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%d\t%s\n", svc.Name, typ, target, localPort, svc.RemotePort, ns)
 	}
-	w.Flush()
+	_ = w.Flush()
 }
 
 func (a *app) configSet(args []string) {

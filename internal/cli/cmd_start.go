@@ -14,7 +14,7 @@ import (
 
 const defaultWaitTimeout = 30 * time.Second
 
-func (a *app) cmdStart(ctx context.Context) {
+func (a *app) cmdStart(_ context.Context) {
 	if a.cfg == nil {
 		fmt.Fprintf(os.Stderr, "%sNo valid config loaded%s\n", colorRed, colorReset)
 		os.Exit(1)
@@ -85,13 +85,13 @@ func (a *app) cmdStart(ctx context.Context) {
 	}
 
 	if err := cmd.Start(); err != nil {
-		logFile.Close()
+		_ = logFile.Close()
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	logFile.Close()
+	_ = logFile.Close()
 
 	// Write PID file
 	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0600); err != nil {
@@ -101,7 +101,7 @@ func (a *app) cmdStart(ctx context.Context) {
 	}
 
 	// Detach from child
-	cmd.Process.Release()
+	_ = cmd.Process.Release()
 
 	// Poll for startup: check socket + PID with timeout
 	started := false
@@ -228,24 +228,20 @@ func (a *app) waitForReady() error {
 			}
 
 			allReady := true
-			var failed []string
 			for _, fw := range resp.Forwards {
 				switch fw.State {
 				case kubeportv1.ForwardState_FORWARD_STATE_RUNNING:
 					// ok
 				case kubeportv1.ForwardState_FORWARD_STATE_FAILED, kubeportv1.ForwardState_FORWARD_STATE_STOPPED:
-					failed = append(failed, fw.Service.GetName())
 					allReady = false
 				default:
 					allReady = false
 				}
 			}
 
-			// If any forward is permanently failed (not just starting), report immediately
-			if len(failed) > 0 {
-				// Check if restarts are exhausted by checking if they stay in failed state
-				// For now, continue waiting — the supervisor may restart them
-			}
+			// Note: if some forwards are permanently failed, we continue waiting
+			// because the supervisor may restart them. Only an overall timeout
+			// (handled by the deadline case above) terminates the wait.
 
 			if allReady {
 				fmt.Printf("%sready%s (%d forwards connected)\n", colorGreen, colorReset, len(resp.Forwards))

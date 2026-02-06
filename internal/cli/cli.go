@@ -4,7 +4,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -13,12 +12,13 @@ import (
 
 	version "github.com/rbaliyan/go-version"
 	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 
 func init() {
 	version.SetAppInfo("kubeport", "Kubernetes port-forward supervisor")
 	// Fall back to git info when running via `go run`
-	version.LoadFromGit()
+	_ = version.LoadFromGit()
 }
 
 // Terminal colors
@@ -397,7 +397,7 @@ func (a *app) isRunning() (int, bool) {
 
 	// Check if process exists
 	if err := syscall.Kill(pid, 0); err != nil {
-		os.Remove(pidFile)
+		_ = os.Remove(pidFile)
 		return 0, false
 	}
 
@@ -426,18 +426,9 @@ func (a *app) printPortStatus(port int, name string) {
 		fmt.Printf("  %s~%s %s: dynamic port (check logs)\n", colorYellow, colorReset, name)
 		return
 	}
-	if isPortOpen(port) {
+	if netutil.IsPortOpen(port) {
 		fmt.Printf("  %s●%s %s: localhost:%d\n", colorGreen, colorReset, name, port)
 	} else {
 		fmt.Printf("  %s○%s %s: localhost:%d (not connected)\n", colorRed, colorReset, name, port)
 	}
-}
-
-func isPortOpen(port int) bool {
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), time.Second)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
 }

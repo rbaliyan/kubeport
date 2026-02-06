@@ -2,3 +2,30 @@ version: "2"
 
 run:
   tests: false
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - revive
+    - misspell
+  settings:
+    gocritic:
+      enabled-checks:
+        - dupImport
+        - paramTypeCombine
+    revive:
+      rules:
+        - name: blank-imports
+        - name: unused-parameter
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+  exclusions:
+    presets:
+      - comments

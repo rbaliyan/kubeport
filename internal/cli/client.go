@@ -24,26 +24,32 @@ func dialDaemon(socketPath string) (*daemonClient, error) {
 		return nil, nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	conn, err := grpc.DialContext(ctx,
+	conn, err := grpc.NewClient(
 		"unix://"+socketPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	if err != nil {
 		return nil, err
 	}
 
+	// Verify connectivity with a short deadline
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	client := kubeportv1.NewDaemonServiceClient(conn)
+	if _, err := client.Status(ctx, &kubeportv1.StatusRequest{}); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+
 	return &daemonClient{
 		conn:   conn,
-		client: kubeportv1.NewDaemonServiceClient(conn),
+		client: client,
 	}, nil
 }
 
 func (d *daemonClient) Close() {
 	if d.conn != nil {
-		d.conn.Close()
+		_ = d.conn.Close()
 	}
 }

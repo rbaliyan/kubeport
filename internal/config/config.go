@@ -108,9 +108,9 @@ type Config struct {
 
 // NewInMemory creates a Config from CLI arguments without a file.
 // PIDFile/LogFile/SocketFile default to CWD-relative paths.
-func NewInMemory(context, namespace string, services []ServiceConfig) *Config {
+func NewInMemory(kubeContext, namespace string, services []ServiceConfig) *Config {
 	return &Config{
-		Context:   context,
+		Context:   kubeContext,
 		Namespace: namespace,
 		Services:  services,
 	}

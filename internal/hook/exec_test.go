@@ -75,12 +75,15 @@ func TestExecHook_ServiceFilter(t *testing.T) {
 }
 
 func TestExpandVars(t *testing.T) {
+	now := time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC)
 	event := Event{
 		Type:       EventForwardConnected,
+		Time:       now,
 		Service:    "web",
 		LocalPort:  8080,
 		RemotePort: 80,
 		PodName:    "web-pod-abc",
+		Restarts:   3,
 		Error:      context.DeadlineExceeded,
 	}
 
@@ -93,14 +96,16 @@ func TestExpandVars(t *testing.T) {
 		{"${PORT}", "8080"},
 		{"${REMOTE_PORT}", "80"},
 		{"${POD}", "web-pod-abc"},
+		{"${RESTARTS}", "3"},
 		{"${ERROR}", "context deadline exceeded"},
+		{"${TIME}", "2025-01-15T10:30:00Z"},
 		{"svc=${SERVICE}:${PORT}", "svc=web:8080"},
 		{"no-vars", "no-vars"},
 	}
 
 	for _, tt := range tests {
-		if got := expandVars(tt.input, event); got != tt.want {
-			t.Errorf("expandVars(%q) = %q, want %q", tt.input, got, tt.want)
+		if got := ExpandVars(tt.input, event); got != tt.want {
+			t.Errorf("ExpandVars(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
@@ -111,7 +116,7 @@ func TestExpandVars_NoError(t *testing.T) {
 		Service: "web",
 	}
 
-	got := expandVars("${ERROR}", event)
+	got := ExpandVars("${ERROR}", event)
 	if got != "" {
 		t.Errorf("expected empty string for nil error, got %q", got)
 	}

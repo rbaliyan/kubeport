@@ -9,6 +9,7 @@ import (
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
+	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 
 // JSON output types for --json flag.
@@ -107,7 +108,7 @@ func (a *app) cmdStatusLegacy() {
 			out.Config = a.configFile
 			for _, svc := range a.cfg.Services {
 				state := "unknown"
-				if running && isPortOpen(svc.LocalPort) {
+				if running && netutil.IsPortOpen(svc.LocalPort) {
 					state = "running"
 				} else if !running {
 					state = "stopped"
@@ -177,7 +178,7 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 func (a *app) writeJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
-	enc.Encode(v)
+	_ = enc.Encode(v)
 }
 
 func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
