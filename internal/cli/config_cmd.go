@@ -22,6 +22,8 @@ func (a *app) handleConfigCommand(args []string) {
 		a.configInit(args[1:])
 	case "show":
 		a.configShow()
+	case "validate":
+		a.configValidate()
 	case "set":
 		a.configSet(args[1:])
 	case "add":
@@ -45,6 +47,7 @@ func (a *app) configHelp() {
 	fmt.Println("Subcommands:")
 	fmt.Println("  init                Create a new config file")
 	fmt.Println("  show                Display current configuration")
+	fmt.Println("  validate            Validate configuration file")
 	fmt.Println("  set <key> <value>   Set a config value (context, namespace)")
 	fmt.Println("  add                 Add a service to the config")
 	fmt.Println("  remove <name>       Remove a service by name")
@@ -352,6 +355,31 @@ func (a *app) configRemove(args []string) {
 	}
 
 	fmt.Printf("Removed service %q\n", name)
+}
+
+func (a *app) configValidate() {
+	path := a.resolveConfigPath()
+	if path == "" {
+		fmt.Fprintf(os.Stderr, "%sNo config file found%s\n", colorRed, colorReset)
+		fmt.Println("Run 'kubeport config init' to create one")
+		os.Exit(1)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%sFAIL%s %s\n", colorRed, colorReset, path)
+		fmt.Fprintf(os.Stderr, "  Load error: %v\n", err)
+		os.Exit(1)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		fmt.Fprintf(os.Stderr, "%sFAIL%s %s\n", colorRed, colorReset, path)
+		fmt.Fprintf(os.Stderr, "  %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("%sOK%s %s (%d services, %d hooks)\n",
+		colorGreen, colorReset, path, len(cfg.Services), len(cfg.Hooks))
 }
 
 func (a *app) configPath() {

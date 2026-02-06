@@ -1,9 +1,9 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"io"
+	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +14,11 @@ import (
 
 	"github.com/rbaliyan/kubeport/internal/config"
 )
+
+// discardLogger returns a logger that discards all output.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func TestForwardState_String(t *testing.T) {
 	tests := []struct {
@@ -412,7 +417,6 @@ func TestStatus_ConcurrentAccess(t *testing.T) {
 
 func TestSupervise_ContextCancellation(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	var buf bytes.Buffer
 
 	m := &Manager{
 		cfg: &config.Config{
@@ -424,7 +428,8 @@ func TestSupervise_ContextCancellation(t *testing.T) {
 		},
 		clientset:            client,
 		forwards:             make(map[string]*portForward),
-		output:               &buf,
+		output:               io.Discard,
+		logger:               discardLogger(),
 		healthCheckInterval:  10 * time.Second,
 		healthCheckThreshold: 3,
 		readyTimeout:         1 * time.Second,
@@ -467,8 +472,6 @@ func TestSupervise_MaxRestarts(t *testing.T) {
 		// No pods — resolvePod always fails
 	)
 
-	var buf bytes.Buffer
-
 	m := &Manager{
 		cfg: &config.Config{
 			Context:   "test",
@@ -479,7 +482,8 @@ func TestSupervise_MaxRestarts(t *testing.T) {
 		},
 		clientset:            client,
 		forwards:             make(map[string]*portForward),
-		output:               &buf,
+		output:               io.Discard,
+		logger:               discardLogger(),
 		maxRestarts:          3,
 		healthCheckInterval:  10 * time.Second,
 		healthCheckThreshold: 3,
@@ -525,8 +529,6 @@ func TestSupervise_UnlimitedRestarts(t *testing.T) {
 		},
 	)
 
-	var buf bytes.Buffer
-
 	m := &Manager{
 		cfg: &config.Config{
 			Context:   "test",
@@ -537,7 +539,8 @@ func TestSupervise_UnlimitedRestarts(t *testing.T) {
 		},
 		clientset:            client,
 		forwards:             make(map[string]*portForward),
-		output:               &buf,
+		output:               io.Discard,
+		logger:               discardLogger(),
 		maxRestarts:          0, // Unlimited
 		healthCheckInterval:  10 * time.Second,
 		healthCheckThreshold: 3,
@@ -581,6 +584,7 @@ func TestStart_MultipleServices(t *testing.T) {
 		clientset:            client,
 		forwards:             make(map[string]*portForward),
 		output:               io.Discard,
+		logger:               discardLogger(),
 		maxRestarts:          1,
 		healthCheckInterval:  10 * time.Second,
 		healthCheckThreshold: 3,

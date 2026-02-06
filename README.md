@@ -77,6 +77,7 @@ kubeport help       # Show help
 ```bash
 kubeport config init              # Create new config file
 kubeport config show              # Display configuration
+kubeport config validate          # Validate configuration
 kubeport config set context dev   # Set Kubernetes context
 kubeport config set namespace app # Set default namespace
 kubeport config add [options]     # Add service to forward
@@ -155,39 +156,99 @@ Execute actions on port-forward events:
 
 ```yaml
 hooks:
-  pre_start:
-    - shell: echo "Starting port-forwards..."
+  - name: startup-gate
+    type: shell
+    events: [manager_starting]
+    fail_mode: closed     # Block startup if hook fails
+    timeout: 30s
+    shell:
+      manager_starting: ./scripts/ensure-vpn.sh
 
-  post_start:
-    - shell: notify-send "kubeport" "Port forwards ready"
-      services: [My API]  # Only for specific services
+  - name: notify
+    type: shell
+    shell:
+      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
+      forward_disconnected: echo "${KUBEPORT_SERVICE} disconnected (restart #${KUBEPORT_RESTARTS})"
 
-  on_error:
-    - webhook:
-        url: https://hooks.slack.com/...
-        method: POST
-        body: '{"text": "Port forward failed: {{.Error}}"}'
+  - name: slack-alert
+    type: webhook
+    events: [forward_failed]
+    webhook:
+      url: https://hooks.slack.com/services/...
+      headers:
+        Content-Type: application/json
+      body_template: '{"text": "Port forward failed: ${SERVICE} - ${ERROR}"}'
 
-  shutdown:
-    - shell: echo "Shutting down..."
+  - name: log-events
+    type: exec
+    events: [forward_connected, forward_disconnected]
+    exec:
+      command: ["logger", "-t", "kubeport", "${EVENT}: ${SERVICE} port ${PORT}"]
 ```
 
 ### Hook Types
 
-- **shell** - Execute shell command
-- **exec** - Execute binary directly
-- **webhook** - HTTP request
+| Type | Description |
+|------|-------------|
+| **shell** | Run shell commands via `sh -c`. Map event names to commands. |
+| **exec** | Execute a binary directly with template-expanded arguments. |
+| **webhook** | POST JSON to an HTTP endpoint. Supports custom headers and body templates. |
+
+### Events
+
+| Event | Description |
+|-------|-------------|
+| `manager_starting` | Before any forwards begin (gate event) |
+| `manager_stopped` | All forwards stopped, cleanup done |
+| `forward_connected` | Port-forward is ready and healthy |
+| `forward_disconnected` | Port-forward dropped (will retry) |
+| `forward_failed` | Port-forward failed permanently |
+| `forward_stopped` | Port-forward intentionally stopped |
+| `health_check_failed` | A single health check failed |
 
 ### Hook Options
 
+| Option | Description |
+|--------|-------------|
+| `events` | List of events to listen for (default: all events) |
+| `timeout` | Execution timeout (default: 10s) |
+| `fail_mode` | `open` (log and continue, default) or `closed` (abort operation) |
+| `filter_services` | Only trigger for named services |
+
+### Environment Variables (Shell/Exec Hooks)
+
+Shell and exec hooks receive event context via environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `KUBEPORT_EVENT` | Event name (e.g., `forward_connected`) |
+| `KUBEPORT_SERVICE` | Service name from config |
+| `KUBEPORT_LOCAL_PORT` | Actual local port |
+| `KUBEPORT_REMOTE_PORT` | Remote port |
+| `KUBEPORT_POD` | Resolved pod name |
+| `KUBEPORT_RESTARTS` | Number of restarts |
+| `KUBEPORT_ERROR` | Error message (if applicable) |
+
+### Template Variables (Exec/Webhook)
+
+Exec command arguments and webhook `body_template` support `${VAR}` expansion:
+`${EVENT}`, `${SERVICE}`, `${PORT}`, `${REMOTE_PORT}`, `${POD}`, `${RESTARTS}`, `${ERROR}`, `${TIME}`
+
+## Supervisor Configuration
+
+Tune the port-forward supervisor behavior:
+
 ```yaml
-hooks:
-  on_error:
-    - shell: ./scripts/alert.sh
-      timeout: 10s        # Execution timeout
-      fail_mode: ignore   # ignore, warn, or fail
-      services: [API]     # Filter by service name
+supervisor:
+  max_restarts: 10           # Stop retrying after N restarts (0 = unlimited)
+  health_check_interval: 10s # Health check frequency
+  health_check_threshold: 3  # Consecutive failures before restart
+  ready_timeout: 15s         # Timeout waiting for port-forward ready
+  backoff_initial: 1s        # Initial backoff between restarts
+  backoff_max: 30s           # Maximum backoff duration
 ```
+
+All values have sensible defaults. Omit the `supervisor` section to use defaults.
 
 ## Shell Completions
 

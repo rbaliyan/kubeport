@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 // ShellHook runs shell commands in response to lifecycle events.
@@ -78,14 +79,23 @@ func (h *ShellHook) run(ctx context.Context, event Event) error {
 func eventEnv(e Event) []string {
 	env := []string{
 		"KUBEPORT_EVENT=" + e.Type.String(),
-		"KUBEPORT_SERVICE=" + e.Service,
+		"KUBEPORT_SERVICE=" + sanitizeEnvValue(e.Service),
 		"KUBEPORT_LOCAL_PORT=" + strconv.Itoa(e.LocalPort),
 		"KUBEPORT_REMOTE_PORT=" + strconv.Itoa(e.RemotePort),
-		"KUBEPORT_POD=" + e.PodName,
+		"KUBEPORT_POD=" + sanitizeEnvValue(e.PodName),
 		"KUBEPORT_RESTARTS=" + strconv.Itoa(e.Restarts),
 	}
 	if e.Error != nil {
-		env = append(env, "KUBEPORT_ERROR="+e.Error.Error())
+		env = append(env, "KUBEPORT_ERROR="+sanitizeEnvValue(e.Error.Error()))
 	}
 	return env
+}
+
+// sanitizeEnvValue removes characters that could cause environment variable injection.
+// Strips newlines, carriage returns, and null bytes.
+func sanitizeEnvValue(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\x00", "")
+	return s
 }

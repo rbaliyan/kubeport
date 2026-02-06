@@ -51,6 +51,12 @@ func (s *Server) Start() error {
 		return fmt.Errorf("listen on %s: %w", s.socketPath, err)
 	}
 
+	// Restrict socket to owner only (prevents other users from controlling daemon)
+	if err := os.Chmod(s.socketPath, 0600); err != nil {
+		lis.Close()
+		return fmt.Errorf("chmod socket %s: %w", s.socketPath, err)
+	}
+
 	s.grpcServer = grpc.NewServer()
 	kubeportv1.RegisterDaemonServiceServer(s.grpcServer, s)
 

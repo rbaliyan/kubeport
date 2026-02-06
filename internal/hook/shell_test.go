@@ -2,6 +2,7 @@ package hook
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -221,5 +222,44 @@ func TestEventEnv_WithError(t *testing.T) {
 	}
 	if !found {
 		t.Error("expected KUBEPORT_ERROR env var")
+	}
+}
+
+func TestSanitizeEnvValue(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"normal value", "normal value"},
+		{"has\nnewline", "has newline"},
+		{"has\rcarriage", "has carriage"},
+		{"has\x00null", "hasnull"},
+		{"multi\nline\nerror", "multi line error"},
+		{"mixed\r\n\x00chars", "mixed  chars"},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		got := sanitizeEnvValue(tt.input)
+		if got != tt.want {
+			t.Errorf("sanitizeEnvValue(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestEventEnv_SanitizesError(t *testing.T) {
+	event := Event{
+		Type:    EventForwardFailed,
+		Service: "normal-svc",
+		Error:   fmt.Errorf("error with\nnewline injection"),
+	}
+
+	env := eventEnv(event)
+	for _, e := range env {
+		if strings.Contains(e, "\n") {
+			t.Errorf("env var contains newline: %q", e)
+		}
+		if strings.Contains(e, "\r") {
+			t.Errorf("env var contains carriage return: %q", e)
+		}
 	}
 }

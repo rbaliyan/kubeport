@@ -21,7 +21,7 @@ func (a *app) cmdHelp() {
 	fmt.Println("  logs        Show proxy logs (follow mode)")
 	fmt.Println("  restart     Restart proxy")
 	fmt.Println("  fg          Run in foreground (blocks terminal)")
-	fmt.Println("  config      Manage configuration (init, show, set, add, remove, path)")
+	fmt.Println("  config      Manage configuration (init, show, validate, set, add, remove, path)")
 	fmt.Println("  version     Show version information")
 	fmt.Println("  help        Show this help message")
 	fmt.Println()

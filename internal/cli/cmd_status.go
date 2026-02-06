@@ -129,8 +129,9 @@ func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
 	if fw.Restarts > 0 {
 		fmt.Printf(" (restarts: %d)", fw.Restarts)
 	}
-	if fw.Error != "" {
-		fmt.Printf(" %serr: %s%s", colorRed, fw.Error, colorReset)
-	}
 	fmt.Println()
+
+	if fw.Error != "" {
+		fmt.Printf("         %sERROR: %s%s\n", colorRed, fw.Error, colorReset)
+	}
 }

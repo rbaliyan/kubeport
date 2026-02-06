@@ -38,7 +38,7 @@ func (a *app) cmdStart(ctx context.Context) {
 		daemonArgs = append(daemonArgs, "--config", a.configFile)
 	}
 
-	logFile, err := os.OpenFile(a.cfg.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	logFile, err := os.OpenFile(a.cfg.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Fprintf(os.Stderr, "Error creating log file: %v\n", err)
@@ -62,7 +62,7 @@ func (a *app) cmdStart(ctx context.Context) {
 	logFile.Close()
 
 	// Write PID file
-	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0644); err != nil {
+	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0600); err != nil {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Fprintf(os.Stderr, "Error writing PID file: %v\n", err)
 		os.Exit(1)
@@ -71,17 +71,37 @@ func (a *app) cmdStart(ctx context.Context) {
 	// Detach from child
 	cmd.Process.Release()
 
-	// Wait briefly for startup
-	time.Sleep(2 * time.Second)
+	// Poll for startup: check socket + PID with timeout
+	started := false
+	deadline := time.After(5 * time.Second)
+	for !started {
+		select {
+		case <-deadline:
+			// Timeout
+		case <-time.After(200 * time.Millisecond):
+			if _, running := a.isRunning(); running {
+				// Try to connect to gRPC socket for definitive confirmation
+				if dc, _ := dialDaemon(a.socketPath()); dc != nil {
+					dc.Close()
+					started = true
+				}
+			}
+			continue
+		}
+		break
+	}
 
-	// Verify it's running
-	if _, running := a.isRunning(); running {
+	if started {
 		fmt.Printf("%sstarted%s (PID: %d)\n", colorGreen, colorReset, cmd.Process.Pid)
 		fmt.Printf("\nLog file: %s\n", a.cfg.LogFile())
 		fmt.Println("\nCommands:")
 		fmt.Println("  status  - Check port status")
 		fmt.Println("  logs    - View logs")
 		fmt.Println("  stop    - Stop proxy")
+	} else if _, running := a.isRunning(); running {
+		// PID alive but gRPC not ready yet — slow startup
+		fmt.Printf("%sstarting%s (PID: %d)\n", colorYellow, colorReset, cmd.Process.Pid)
+		fmt.Println("Daemon is still initializing. Check 'status' shortly.")
 	} else {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Println("\nCheck logs for errors:")

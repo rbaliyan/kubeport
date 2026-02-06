@@ -169,7 +169,10 @@ func (m *Manager) GetContext() string {
 
 // CheckNamespace verifies the configured namespace exists.
 func (m *Manager) CheckNamespace(ctx context.Context) error {
-	_, err := m.clientset.CoreV1().Namespaces().Get(ctx, m.cfg.Namespace, metav1.GetOptions{})
+	opCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	_, err := m.clientset.CoreV1().Namespaces().Get(opCtx, m.cfg.Namespace, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("namespace %q not accessible: %w", m.cfg.Namespace, err)
 	}
@@ -233,7 +236,10 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 			pf.state = StateFailed
 			pf.err = fmt.Errorf("port %d already in use", svc.LocalPort)
 			pf.mu.Unlock()
-			fmt.Fprintf(m.output, "[%s] port %d already in use, skipping\n", svc.Name, svc.LocalPort)
+			m.logger.Error("port already in use, skipping",
+			"service", svc.Name,
+			"port", svc.LocalPort,
+		)
 			m.hooks.Fire(ctx, hook.Event{
 				Type:       hook.EventForwardFailed,
 				Time:       time.Now(),
@@ -268,8 +274,12 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 		restarts := pf.restarts
 		pf.mu.Unlock()
 
-		fmt.Fprintf(m.output, "[%s] disconnected after %s: %v (restart #%d)\n",
-			svc.Name, duration.Round(time.Second), err, restarts)
+		m.logger.Warn("forward disconnected",
+			"service", svc.Name,
+			"duration", duration.Round(time.Second),
+			"error", err,
+			"restarts", restarts,
+		)
 
 		m.hooks.Fire(ctx, hook.Event{
 			Type:       hook.EventForwardDisconnected,
@@ -283,7 +293,10 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 
 		// Check max restarts limit (0 = unlimited)
 		if m.maxRestarts > 0 && restarts >= m.maxRestarts {
-			fmt.Fprintf(m.output, "[%s] max restarts (%d) reached, giving up\n", svc.Name, m.maxRestarts)
+			m.logger.Error("max restarts reached, giving up",
+				"service", svc.Name,
+				"max_restarts", m.maxRestarts,
+			)
 			m.hooks.Fire(ctx, hook.Event{
 				Type:       hook.EventForwardFailed,
 				Time:       time.Now(),
@@ -456,8 +469,11 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 		return svc.Target(), nil
 	}
 
+	opCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// Get the service to find its pod selector
-	service, err := m.clientset.CoreV1().Services(namespace).Get(ctx, svc.Target(), metav1.GetOptions{})
+	service, err := m.clientset.CoreV1().Services(namespace).Get(opCtx, svc.Target(), metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("get service %s/%s: %w", namespace, svc.Target(), err)
 	}
@@ -467,7 +483,7 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 	}
 
 	selector := labels.SelectorFromSet(service.Spec.Selector)
-	pods, err := m.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
+	pods, err := m.clientset.CoreV1().Pods(namespace).List(opCtx, metav1.ListOptions{
 		LabelSelector: selector.String(),
 	})
 	if err != nil {
