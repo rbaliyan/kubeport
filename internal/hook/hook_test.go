@@ -65,7 +65,7 @@ func TestDispatcher_AsyncFiring(t *testing.T) {
 		},
 	}
 
-	d.Register(h, []EventType{EventForwardConnected}, FailOpen, 5*time.Second)
+	d.Register(Registration{Hook: h, Events: []EventType{EventForwardConnected}, FailMode: FailOpen, Timeout: 5 * time.Second})
 
 	err := d.Fire(context.Background(), Event{Type: EventForwardConnected, Time: time.Now()})
 	if err != nil {
@@ -93,7 +93,7 @@ func TestDispatcher_EventFiltering(t *testing.T) {
 	}
 
 	// Only register for EventForwardConnected
-	d.Register(h, []EventType{EventForwardConnected}, FailOpen, 5*time.Second)
+	d.Register(Registration{Hook: h, Events: []EventType{EventForwardConnected}, FailMode: FailOpen, Timeout: 5 * time.Second})
 
 	// Fire a different event
 	d.Fire(context.Background(), Event{Type: EventForwardDisconnected, Time: time.Now()})
@@ -117,7 +117,7 @@ func TestDispatcher_AllEvents(t *testing.T) {
 	}
 
 	// nil events = subscribe to all
-	d.Register(h, nil, FailOpen, 5*time.Second)
+	d.Register(Registration{Hook: h, FailMode: FailOpen, Timeout: 5 * time.Second})
 
 	d.Fire(context.Background(), Event{Type: EventForwardConnected, Time: time.Now()})
 	d.Fire(context.Background(), Event{Type: EventForwardDisconnected, Time: time.Now()})
@@ -139,7 +139,7 @@ func TestDispatcher_GateHook_FailClosed(t *testing.T) {
 		},
 	}
 
-	d.Register(gh, []EventType{EventManagerStarting}, FailClosed, 5*time.Second)
+	d.Register(Registration{Hook: gh, Events: []EventType{EventManagerStarting}, FailMode: FailClosed, Timeout: 5 * time.Second})
 
 	err := d.Fire(context.Background(), Event{Type: EventManagerStarting, Time: time.Now()})
 	if err == nil {
@@ -163,7 +163,7 @@ func TestDispatcher_GateHook_FailOpen(t *testing.T) {
 		},
 	}
 
-	d.Register(gh, []EventType{EventManagerStarting}, FailOpen, 5*time.Second)
+	d.Register(Registration{Hook: gh, Events: []EventType{EventManagerStarting}, FailMode: FailOpen, Timeout: 5 * time.Second})
 
 	err := d.Fire(context.Background(), Event{Type: EventManagerStarting, Time: time.Now()})
 	if err != nil {
@@ -181,7 +181,7 @@ func TestDispatcher_GateHook_Success(t *testing.T) {
 		},
 	}
 
-	d.Register(gh, []EventType{EventManagerStarting}, FailClosed, 5*time.Second)
+	d.Register(Registration{Hook: gh, Events: []EventType{EventManagerStarting}, FailMode: FailClosed, Timeout: 5 * time.Second})
 
 	err := d.Fire(context.Background(), Event{Type: EventManagerStarting, Time: time.Now()})
 	if err != nil {
@@ -202,7 +202,7 @@ func TestDispatcher_NonGateHookOnGateEvent(t *testing.T) {
 		},
 	}
 
-	d.Register(h, []EventType{EventManagerStarting}, FailOpen, 5*time.Second)
+	d.Register(Registration{Hook: h, Events: []EventType{EventManagerStarting}, FailMode: FailOpen, Timeout: 5 * time.Second})
 
 	err := d.Fire(context.Background(), Event{Type: EventManagerStarting, Time: time.Now()})
 	if err != nil {
@@ -270,7 +270,7 @@ func TestDispatcher_AsyncHookError(t *testing.T) {
 		},
 	}
 
-	d.Register(h, []EventType{EventForwardConnected}, FailOpen, 5*time.Second)
+	d.Register(Registration{Hook: h, Events: []EventType{EventForwardConnected}, FailMode: FailOpen, Timeout: 5 * time.Second})
 
 	err := d.Fire(context.Background(), Event{Type: EventForwardConnected, Time: time.Now()})
 	if err != nil {

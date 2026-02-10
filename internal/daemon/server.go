@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc"
 )
 
+var _ Supervisor = (*proxy.Manager)(nil)
+
 // Supervisor is the interface the daemon server uses to query and control the manager.
 // It is satisfied by *proxy.Manager.
 type Supervisor interface {

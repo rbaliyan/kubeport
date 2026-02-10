@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+var (
+	_ Hook     = (*ShellHook)(nil)
+	_ GateHook = (*ShellHook)(nil)
+)
+
 // ShellHook runs shell commands in response to lifecycle events.
 // Commands are mapped per event type and receive event context via
 // environment variables prefixed with KUBEPORT_.
@@ -29,18 +34,10 @@ func NewShellHook(name string, commands map[string]string, filterServices []stri
 		cmds[et] = cmd
 	}
 
-	var filter map[string]bool
-	if len(filterServices) > 0 {
-		filter = make(map[string]bool, len(filterServices))
-		for _, s := range filterServices {
-			filter[s] = true
-		}
-	}
-
 	return &ShellHook{
 		name:     name,
 		commands: cmds,
-		filter:   filter,
+		filter:   buildFilter(filterServices),
 	}, nil
 }
 

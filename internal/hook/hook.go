@@ -125,18 +125,19 @@ func NewDispatcher(logger *slog.Logger) *Dispatcher {
 }
 
 // Register adds a hook to the dispatcher.
-func (d *Dispatcher) Register(h Hook, events []EventType, failMode FailMode, timeout time.Duration) {
+func (d *Dispatcher) Register(reg Registration) {
+	timeout := reg.Timeout
 	if timeout == 0 {
 		timeout = 10 * time.Second
 	}
 	rh := registeredHook{
-		hook:     h,
-		failMode: failMode,
+		hook:     reg.Hook,
+		failMode: reg.FailMode,
 		timeout:  timeout,
 	}
-	if len(events) > 0 {
-		rh.events = make(map[EventType]bool, len(events))
-		for _, e := range events {
+	if len(reg.Events) > 0 {
+		rh.events = make(map[EventType]bool, len(reg.Events))
+		for _, e := range reg.Events {
 			rh.events[e] = true
 		}
 	}
@@ -228,4 +229,17 @@ func (d *Dispatcher) Wait() {
 		return
 	}
 	d.wg.Wait()
+}
+
+// buildFilter converts a slice of service names into a lookup map.
+// Returns nil when the slice is empty (meaning "all services").
+func buildFilter(services []string) map[string]bool {
+	if len(services) == 0 {
+		return nil
+	}
+	m := make(map[string]bool, len(services))
+	for _, s := range services {
+		m[s] = true
+	}
+	return m
 }

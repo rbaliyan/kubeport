@@ -2,8 +2,8 @@
 package config
 
 import (
+	"errors"
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,19 +13,15 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// validHookTypes is the set of allowed hook types.
-var validHookTypes = map[string]bool{"shell": true, "webhook": true, "exec": true}
 
-// validHookEvents is the set of allowed event names.
-var validHookEvents = map[string]bool{
-	"manager_starting":     true,
-	"manager_stopped":      true,
-	"forward_connected":    true,
-	"forward_disconnected": true,
-	"forward_failed":       true,
-	"forward_stopped":      true,
-	"health_check_failed":  true,
-}
+// Sentinel errors for common failure modes.
+var (
+	ErrNoConfig       = errors.New("no config file found")
+	ErrNoServices     = errors.New("no services defined")
+	ErrServiceExists  = errors.New("service already exists")
+	ErrServiceNotFound = errors.New("service not found")
+	ErrConfigExists   = errors.New("config file already exists")
+)
 
 // Format represents the config file format.
 type Format string
@@ -250,7 +246,7 @@ func (c *Config) SaveTo(path string, format Format) error {
 // Init creates a new config file with defaults at the given path.
 func Init(path string, format Format) (*Config, error) {
 	if _, err := os.Stat(path); err == nil {
-		return nil, fmt.Errorf("config file already exists: %s", path)
+		return nil, fmt.Errorf("%s: %w", path, ErrConfigExists)
 	}
 
 	cfg := &Config{
@@ -272,7 +268,7 @@ func Init(path string, format Format) (*Config, error) {
 func (c *Config) AddService(svc ServiceConfig) error {
 	for _, existing := range c.Services {
 		if existing.Name == svc.Name {
-			return fmt.Errorf("service %q already exists", svc.Name)
+			return fmt.Errorf("service %q: %w", svc.Name, ErrServiceExists)
 		}
 	}
 	c.Services = append(c.Services, svc)
@@ -287,7 +283,7 @@ func (c *Config) RemoveService(name string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("service %q not found", name)
+	return fmt.Errorf("service %q: %w", name, ErrServiceNotFound)
 }
 
 // Discover searches for a config file in standard locations.
@@ -337,13 +333,13 @@ func Discover() (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("no config file found; create kubeport.yaml or use --config")
+	return "", fmt.Errorf("%w; create kubeport.yaml or use --config", ErrNoConfig)
 }
 
 // Validate checks the config for errors.
 func (c *Config) Validate() error {
 	if len(c.Services) == 0 {
-		return fmt.Errorf("no services defined")
+		return ErrNoServices
 	}
 
 	seen := make(map[int]string)
@@ -385,18 +381,16 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// validateHook checks structural fields of a hook config.
+// Type-specific and event-name validation is deferred to hook.BuildFromConfig
+// to avoid duplicating the hook package's validation logic.
 func validateHook(idx int, h HookConfig) error {
 	prefix := fmt.Sprintf("hook[%d] (%s)", idx, h.Name)
 	if h.Name == "" {
 		return fmt.Errorf("hook[%d]: name is required", idx)
 	}
-	if !validHookTypes[h.Type] {
-		return fmt.Errorf("%s: unknown type %q (use shell, webhook, or exec)", prefix, h.Type)
-	}
-	for _, e := range h.Events {
-		if !validHookEvents[e] {
-			return fmt.Errorf("%s: unknown event %q", prefix, e)
-		}
+	if h.Type == "" {
+		return fmt.Errorf("%s: type is required", prefix)
 	}
 	if h.Timeout != "" {
 		if _, err := time.ParseDuration(h.Timeout); err != nil {
@@ -405,33 +399,6 @@ func validateHook(idx int, h HookConfig) error {
 	}
 	if h.FailMode != "" && h.FailMode != "open" && h.FailMode != "closed" {
 		return fmt.Errorf("%s: invalid fail_mode %q (use \"open\" or \"closed\")", prefix, h.FailMode)
-	}
-
-	switch h.Type {
-	case "shell":
-		if len(h.Shell) == 0 {
-			return fmt.Errorf("%s: shell commands are required", prefix)
-		}
-		for eventName := range h.Shell {
-			if !validHookEvents[eventName] {
-				return fmt.Errorf("%s: shell command references unknown event %q", prefix, eventName)
-			}
-		}
-	case "webhook":
-		if h.Webhook == nil || h.Webhook.URL == "" {
-			return fmt.Errorf("%s: webhook.url is required", prefix)
-		}
-		u, err := url.Parse(h.Webhook.URL)
-		if err != nil {
-			return fmt.Errorf("%s: invalid webhook URL: %w", prefix, err)
-		}
-		if u.Scheme != "http" && u.Scheme != "https" {
-			return fmt.Errorf("%s: webhook URL must use http or https scheme, got %q", prefix, u.Scheme)
-		}
-	case "exec":
-		if h.Exec == nil || len(h.Exec.Command) == 0 {
-			return fmt.Errorf("%s: exec.command is required", prefix)
-		}
 	}
 	return nil
 }
@@ -452,18 +419,30 @@ func (s SupervisorConfig) validate() error {
 	return nil
 }
 
+// ParsedSupervisorConfig holds supervisor config with defaults applied and durations parsed.
+type ParsedSupervisorConfig struct {
+	MaxRestarts          int
+	HealthCheckThreshold int
+	HealthCheckInterval  time.Duration
+	ReadyTimeout         time.Duration
+	BackoffInitial       time.Duration
+	BackoffMax           time.Duration
+}
+
 // ParsedSupervisor returns supervisor config with defaults applied.
-func (s SupervisorConfig) ParsedSupervisor() (maxRestarts, healthThreshold int, healthInterval, readyTimeout, backoffInit, backoffMax time.Duration) {
-	maxRestarts = s.MaxRestarts
-	healthThreshold = s.HealthCheckThreshold
-	if healthThreshold <= 0 {
-		healthThreshold = 3
+func (s SupervisorConfig) ParsedSupervisor() ParsedSupervisorConfig {
+	threshold := s.HealthCheckThreshold
+	if threshold <= 0 {
+		threshold = 3
 	}
-	healthInterval = parseDurationOr(s.HealthCheckInterval, 10*time.Second)
-	readyTimeout = parseDurationOr(s.ReadyTimeout, 15*time.Second)
-	backoffInit = parseDurationOr(s.BackoffInitial, 1*time.Second)
-	backoffMax = parseDurationOr(s.BackoffMax, 30*time.Second)
-	return
+	return ParsedSupervisorConfig{
+		MaxRestarts:          s.MaxRestarts,
+		HealthCheckThreshold: threshold,
+		HealthCheckInterval:  parseDurationOr(s.HealthCheckInterval, 10*time.Second),
+		ReadyTimeout:         parseDurationOr(s.ReadyTimeout, 15*time.Second),
+		BackoffInitial:       parseDurationOr(s.BackoffInitial, 1*time.Second),
+		BackoffMax:           parseDurationOr(s.BackoffMax, 30*time.Second),
+	}
 }
 
 func parseDurationOr(s string, def time.Duration) time.Duration {

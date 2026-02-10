@@ -46,12 +46,12 @@ type app struct {
 // Execute runs the CLI with the given context.
 func Execute(ctx context.Context) {
 	a := &app{}
-	args := os.Args[1:]
+	command, remaining := a.parseArgs(os.Args[1:])
+	a.dispatch(ctx, command, remaining)
+}
 
-	// Parse flags and extract command
-	var command string
-	var remaining []string
-
+// parseArgs parses global flags from args and returns the command and any remaining args.
+func (a *app) parseArgs(args []string) (command string, remaining []string) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
@@ -149,12 +149,15 @@ func Execute(ctx context.Context) {
 				}
 				command = arg
 			} else {
-				// Once we have a command, pass everything else through
 				remaining = append(remaining, arg)
 			}
 		}
 	}
+	return command, remaining
+}
 
+// dispatch routes the parsed command to the appropriate handler.
+func (a *app) dispatch(ctx context.Context, command string, remaining []string) {
 	// Config subcommands don't need a loaded/validated config
 	if command == "config" {
 		a.handleConfigCommand(remaining)
@@ -406,17 +409,23 @@ func (a *app) isRunning() (int, bool) {
 
 // waitForExit polls until the daemon fully exits (PID gone + socket gone).
 func (a *app) waitForExit() {
-	deadline := time.After(10 * time.Second)
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+
+	poll := time.NewTimer(200 * time.Millisecond)
+	defer poll.Stop()
+
 	for {
 		select {
-		case <-deadline:
+		case <-deadline.C:
 			return
-		case <-time.After(200 * time.Millisecond):
+		case <-poll.C:
 			_, running := a.isRunning()
 			_, sockErr := os.Stat(a.socketPath())
 			if !running && os.IsNotExist(sockErr) {
 				return
 			}
+			poll.Reset(200 * time.Millisecond)
 		}
 	}
 }

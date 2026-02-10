@@ -93,8 +93,11 @@ func (a *app) cmdStart(_ context.Context) {
 
 	_ = logFile.Close()
 
+	// Capture PID before detaching (accessing cmd.Process after Release is undefined)
+	pid := cmd.Process.Pid
+
 	// Write PID file
-	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(cmd.Process.Pid)), 0600); err != nil {
+	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(pid)), 0600); err != nil {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Fprintf(os.Stderr, "Error writing PID file: %v\n", err)
 		os.Exit(1)
@@ -124,7 +127,7 @@ func (a *app) cmdStart(_ context.Context) {
 	}
 
 	if started {
-		fmt.Printf("%sstarted%s (PID: %d)\n", colorGreen, colorReset, cmd.Process.Pid)
+		fmt.Printf("%sstarted%s (PID: %d)\n", colorGreen, colorReset, pid)
 
 		// If --wait, block until all forwards are ready
 		if a.startWait {
@@ -142,7 +145,7 @@ func (a *app) cmdStart(_ context.Context) {
 		}
 	} else if _, running := a.isRunning(); running {
 		// PID alive but gRPC not ready yet — slow startup
-		fmt.Printf("%sstarting%s (PID: %d)\n", colorYellow, colorReset, cmd.Process.Pid)
+		fmt.Printf("%sstarting%s (PID: %d)\n", colorYellow, colorReset, pid)
 		if a.startWait {
 			fmt.Print("Waiting for all forwards to be ready... ")
 			if err := a.waitForReady(); err != nil {

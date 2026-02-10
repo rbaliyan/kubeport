@@ -7,6 +7,8 @@ import (
 	"os/exec"
 )
 
+var _ Hook = (*ExecHook)(nil)
+
 // ExecHook runs a command with template-expanded arguments on lifecycle events.
 // Template variables: ${EVENT}, ${SERVICE}, ${PORT}, ${REMOTE_PORT}, ${POD},
 // ${RESTARTS}, ${ERROR}, ${TIME}.
@@ -21,17 +23,10 @@ func NewExecHook(name string, command, filterServices []string) (*ExecHook, erro
 	if len(command) == 0 {
 		return nil, fmt.Errorf("exec hook %q: command is required", name)
 	}
-	var filter map[string]bool
-	if len(filterServices) > 0 {
-		filter = make(map[string]bool, len(filterServices))
-		for _, s := range filterServices {
-			filter[s] = true
-		}
-	}
 	return &ExecHook{
 		name:    name,
 		command: command,
-		filter:  filter,
+		filter:  buildFilter(filterServices),
 	}, nil
 }
 
