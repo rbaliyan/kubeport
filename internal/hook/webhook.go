@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+var _ Hook = (*WebhookHook)(nil)
+
 // WebhookHook POSTs a JSON payload to an HTTP endpoint on lifecycle events.
 type WebhookHook struct {
 	name         string
@@ -22,20 +24,13 @@ type WebhookHook struct {
 
 // NewWebhookHook creates a webhook hook.
 func NewWebhookHook(name, url string, headers map[string]string, bodyTemplate string, filterServices []string) *WebhookHook {
-	var filter map[string]bool
-	if len(filterServices) > 0 {
-		filter = make(map[string]bool, len(filterServices))
-		for _, s := range filterServices {
-			filter[s] = true
-		}
-	}
 	return &WebhookHook{
 		name:         name,
 		url:          url,
 		headers:      headers,
 		bodyTemplate: bodyTemplate,
 		client:       &http.Client{Timeout: 30 * time.Second},
-		filter:       filter,
+		filter:       buildFilter(filterServices),
 	}
 }
 

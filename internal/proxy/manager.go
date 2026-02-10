@@ -130,8 +130,7 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
 
-	maxRestarts, healthThreshold, healthInterval, readyTimeout, backoffInit, backoffMax :=
-		cfg.Supervisor.ParsedSupervisor()
+	sup := cfg.Supervisor.ParsedSupervisor()
 
 	m := &Manager{
 		cfg:                  cfg,
@@ -140,12 +139,12 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		forwards:             make(map[string]*portForward),
 		output:               output,
 		logger:               slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
-		maxRestarts:          maxRestarts,
-		healthCheckInterval:  healthInterval,
-		healthCheckThreshold: healthThreshold,
-		readyTimeout:         readyTimeout,
-		backoffInitial:       backoffInit,
-		backoffMax:           backoffMax,
+		maxRestarts:          sup.MaxRestarts,
+		healthCheckInterval:  sup.HealthCheckInterval,
+		healthCheckThreshold: sup.HealthCheckThreshold,
+		readyTimeout:         sup.ReadyTimeout,
+		backoffInitial:       sup.BackoffInitial,
+		backoffMax:           sup.BackoffMax,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -173,7 +172,9 @@ func (m *Manager) CheckNamespace(ctx context.Context) error {
 // Start begins port-forwarding all configured services. Blocks until ctx is cancelled.
 func (m *Manager) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
+	m.mu.Lock()
 	m.cancel = cancel
+	m.mu.Unlock()
 
 	var wg sync.WaitGroup
 	for _, svc := range m.cfg.Services {
@@ -296,10 +297,12 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 		// Add ±25% jitter to backoff to prevent thundering herd
 		jittered := addJitter(backoff)
 
+		backoffTimer := time.NewTimer(jittered)
 		select {
 		case <-ctx.Done():
+			backoffTimer.Stop()
 			return
-		case <-time.After(jittered):
+		case <-backoffTimer.C:
 		}
 
 		backoff = min(backoff*2, m.backoffMax)
@@ -517,8 +520,12 @@ func resolveNamedPort(pod *corev1.Pod, portName string) int {
 
 // Stop terminates all port forwards.
 func (m *Manager) Stop() {
-	if m.cancel != nil {
-		m.cancel()
+	m.mu.RLock()
+	cancel := m.cancel
+	m.mu.RUnlock()
+
+	if cancel != nil {
+		cancel()
 	}
 
 	m.mu.RLock()

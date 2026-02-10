@@ -85,12 +85,12 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	// Build hook dispatcher from config
 	dispatcher := hook.NewDispatcher(logger)
 	for _, hc := range a.cfg.Hooks {
-		h, events, fm, timeout, err := hook.BuildFromConfig(hc)
+		reg, err := hook.BuildFromConfig(hc)
 		if err != nil {
 			_, _ = fmt.Fprintf(output, "Warning: skip hook %q: %v\n", hc.Name, err)
 			continue
 		}
-		dispatcher.Register(h, events, fm, timeout)
+		dispatcher.Register(reg)
 		_, _ = fmt.Fprintf(output, "Hook registered: %s (%s)\n", hc.Name, hc.Type)
 	}
 

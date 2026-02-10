@@ -18,21 +18,21 @@ func TestBuildFromConfig_Shell(t *testing.T) {
 		Timeout:  "30s",
 	}
 
-	h, events, fm, timeout, err := BuildFromConfig(hc)
+	reg, err := BuildFromConfig(hc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if h.Name() != "vpn" {
-		t.Fatalf("expected name 'vpn', got %s", h.Name())
+	if reg.Hook.Name() != "vpn" {
+		t.Fatalf("expected name 'vpn', got %s", reg.Hook.Name())
 	}
-	if fm != FailClosed {
+	if reg.FailMode != FailClosed {
 		t.Fatal("expected FailClosed")
 	}
-	if timeout.Seconds() != 30 {
-		t.Fatalf("expected 30s timeout, got %v", timeout)
+	if reg.Timeout.Seconds() != 30 {
+		t.Fatalf("expected 30s timeout, got %v", reg.Timeout)
 	}
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events, got %d", len(events))
+	if len(reg.Events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(reg.Events))
 	}
 }
 
@@ -46,15 +46,15 @@ func TestBuildFromConfig_Shell_InferEvents(t *testing.T) {
 		// No explicit events — should be inferred from shell keys
 	}
 
-	_, events, _, _, err := BuildFromConfig(hc)
+	reg, err := BuildFromConfig(hc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(events) != 1 {
-		t.Fatalf("expected 1 inferred event, got %d", len(events))
+	if len(reg.Events) != 1 {
+		t.Fatalf("expected 1 inferred event, got %d", len(reg.Events))
 	}
-	if events[0] != EventForwardConnected {
-		t.Fatalf("expected EventForwardConnected, got %v", events[0])
+	if reg.Events[0] != EventForwardConnected {
+		t.Fatalf("expected EventForwardConnected, got %v", reg.Events[0])
 	}
 }
 
@@ -69,12 +69,12 @@ func TestBuildFromConfig_Shell_ExplicitEvents(t *testing.T) {
 		},
 	}
 
-	_, events, _, _, err := BuildFromConfig(hc)
+	reg, err := BuildFromConfig(hc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(events) != 2 {
-		t.Fatalf("expected 2 events, got %d", len(events))
+	if len(reg.Events) != 2 {
+		t.Fatalf("expected 2 events, got %d", len(reg.Events))
 	}
 }
 
@@ -89,21 +89,21 @@ func TestBuildFromConfig_Webhook(t *testing.T) {
 		},
 	}
 
-	h, events, fm, timeout, err := BuildFromConfig(hc)
+	reg, err := BuildFromConfig(hc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if h.Name() != "alert" {
-		t.Fatalf("expected name 'alert', got %s", h.Name())
+	if reg.Hook.Name() != "alert" {
+		t.Fatalf("expected name 'alert', got %s", reg.Hook.Name())
 	}
-	if fm != FailOpen {
+	if reg.FailMode != FailOpen {
 		t.Fatal("expected FailOpen (default)")
 	}
-	if timeout.Seconds() != 10 {
-		t.Fatalf("expected 10s default timeout, got %v", timeout)
+	if reg.Timeout.Seconds() != 10 {
+		t.Fatalf("expected 10s default timeout, got %v", reg.Timeout)
 	}
-	if len(events) != 1 || events[0] != EventForwardFailed {
-		t.Fatalf("expected EventForwardFailed, got %v", events)
+	if len(reg.Events) != 1 || reg.Events[0] != EventForwardFailed {
+		t.Fatalf("expected EventForwardFailed, got %v", reg.Events)
 	}
 }
 
@@ -117,15 +117,15 @@ func TestBuildFromConfig_Exec(t *testing.T) {
 		},
 	}
 
-	h, events, _, _, err := BuildFromConfig(hc)
+	reg, err := BuildFromConfig(hc)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if h.Name() != "logger" {
-		t.Fatalf("expected name 'logger', got %s", h.Name())
+	if reg.Hook.Name() != "logger" {
+		t.Fatalf("expected name 'logger', got %s", reg.Hook.Name())
 	}
-	if len(events) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(events))
+	if len(reg.Events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(reg.Events))
 	}
 }
 
@@ -135,7 +135,7 @@ func TestBuildFromConfig_InvalidType(t *testing.T) {
 		Type: "invalid",
 	}
 
-	_, _, _, _, err := BuildFromConfig(hc)
+	_, err := BuildFromConfig(hc)
 	if err == nil {
 		t.Fatal("expected error for invalid type")
 	}
@@ -149,7 +149,7 @@ func TestBuildFromConfig_InvalidEvent(t *testing.T) {
 		Shell:  map[string]string{"forward_connected": "echo ok"},
 	}
 
-	_, _, _, _, err := BuildFromConfig(hc)
+	_, err := BuildFromConfig(hc)
 	if err == nil {
 		t.Fatal("expected error for invalid event")
 	}
@@ -163,7 +163,7 @@ func TestBuildFromConfig_InvalidTimeout(t *testing.T) {
 		Shell:   map[string]string{"forward_connected": "echo ok"},
 	}
 
-	_, _, _, _, err := BuildFromConfig(hc)
+	_, err := BuildFromConfig(hc)
 	if err == nil {
 		t.Fatal("expected error for invalid timeout")
 	}
@@ -177,7 +177,7 @@ func TestBuildFromConfig_WebhookMissingURL(t *testing.T) {
 		Webhook: &config.WebhookConfig{},
 	}
 
-	_, _, _, _, err := BuildFromConfig(hc)
+	_, err := BuildFromConfig(hc)
 	if err == nil {
 		t.Fatal("expected error for missing webhook URL")
 	}
@@ -191,7 +191,7 @@ func TestBuildFromConfig_ExecMissingCommand(t *testing.T) {
 		Exec:   &config.ExecConfig{},
 	}
 
-	_, _, _, _, err := BuildFromConfig(hc)
+	_, err := BuildFromConfig(hc)
 	if err == nil {
 		t.Fatal("expected error for missing exec command")
 	}
@@ -203,7 +203,7 @@ func TestBuildFromConfig_ShellMissingCommands(t *testing.T) {
 		Type: "shell",
 	}
 
-	_, _, _, _, err := BuildFromConfig(hc)
+	_, err := BuildFromConfig(hc)
 	if err == nil {
 		t.Fatal("expected error for missing shell commands")
 	}
