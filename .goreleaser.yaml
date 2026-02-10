@@ -86,14 +86,17 @@ nfpms:
       - src: ./completions/kubeport.fish
         dst: /usr/share/fish/vendor_completions.d/kubeport.fish
 
-homebrew_casks:
+brews:
   - repository:
       owner: rbaliyan
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Casks
+    directory: Formula
     homepage: https://github.com/rbaliyan/kubeport
     description: Kubernetes port-forward supervisor with health checks and auto-restart
+    license: MIT
+    test: |
+      system "#{bin}/kubeport", "version"
 
 release:
   github:
