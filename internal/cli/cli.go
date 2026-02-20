@@ -41,6 +41,7 @@ type app struct {
 	startWait       bool
 	startTimeout    time.Duration
 	statusJSON      bool
+	statusSort      bool
 }
 
 // Execute runs the CLI with the given context.
@@ -111,6 +112,8 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 			a.noConfig = true
 		case arg == "--json":
 			a.statusJSON = true
+		case arg == "--sort":
+			a.statusSort = true
 		case arg == "--wait":
 			a.startWait = true
 		case arg == "--timeout":
