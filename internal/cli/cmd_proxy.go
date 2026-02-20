@@ -6,9 +6,12 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	version "github.com/rbaliyan/go-version"
+	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/daemon"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/proxy"
@@ -136,6 +139,32 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	if err := mgr.CheckNamespace(ctx); err != nil {
 		_, _ = fmt.Fprintf(output, "Warning: %v\n", err)
 		_, _ = fmt.Fprintf(output, "Continuing anyway (namespace checks may fail for some services)\n\n")
+	}
+
+	// SIGHUP triggers config reload
+	if a.configFile != "" {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, syscall.SIGHUP)
+		go func() {
+			for range sigCh {
+				logger.Info("SIGHUP received, reloading config")
+				newCfg, err := config.Load(a.configFile)
+				if err != nil {
+					logger.Error("reload config failed", "error", err)
+					continue
+				}
+				if err := newCfg.Validate(); err != nil {
+					logger.Error("reload config validation failed", "error", err)
+					continue
+				}
+				added, removed, err := mgr.Reload(newCfg)
+				if err != nil {
+					logger.Error("reload failed", "error", err)
+					continue
+				}
+				logger.Info("config reloaded", "added", added, "removed", removed)
+			}
+		}()
 	}
 
 	_, _ = fmt.Fprintf(output, "Starting port forwards...\n\n")

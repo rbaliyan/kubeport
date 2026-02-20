@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"context"
 	"os"
-	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 	"google.golang.org/grpc"
@@ -32,19 +30,9 @@ func dialDaemon(socketPath string) (*daemonClient, error) {
 		return nil, err
 	}
 
-	// Verify connectivity with a short deadline
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	client := kubeportv1.NewDaemonServiceClient(conn)
-	if _, err := client.Status(ctx, &kubeportv1.StatusRequest{}); err != nil {
-		_ = conn.Close()
-		return nil, err
-	}
-
 	return &daemonClient{
 		conn:   conn,
-		client: client,
+		client: kubeportv1.NewDaemonServiceClient(conn),
 	}, nil
 }
 

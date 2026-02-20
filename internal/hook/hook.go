@@ -24,6 +24,8 @@ const (
 	EventForwardFailed                        // Port-forward failed permanently
 	EventForwardStopped                       // Port-forward intentionally stopped
 	EventHealthCheckFailed                    // A single health check failed
+	EventServiceAdded                         // New service dynamically added
+	EventServiceRemoved                       // Service dynamically removed
 )
 
 func (e EventType) String() string {
@@ -42,6 +44,10 @@ func (e EventType) String() string {
 		return "forward_stopped"
 	case EventHealthCheckFailed:
 		return "health_check_failed"
+	case EventServiceAdded:
+		return "service_added"
+	case EventServiceRemoved:
+		return "service_removed"
 	default:
 		return "unknown"
 	}
@@ -61,6 +67,8 @@ var eventNames = map[string]EventType{
 	"forward_failed":       EventForwardFailed,
 	"forward_stopped":      EventForwardStopped,
 	"health_check_failed":  EventHealthCheckFailed,
+	"service_added":        EventServiceAdded,
+	"service_removed":      EventServiceRemoved,
 }
 
 // Event carries all context for a lifecycle event.

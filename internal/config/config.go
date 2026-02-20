@@ -336,6 +336,26 @@ func Discover() (string, error) {
 	return "", fmt.Errorf("%w; create kubeport.yaml or use --config", ErrNoConfig)
 }
 
+// ValidateService checks a single service config for structural correctness.
+func ValidateService(svc ServiceConfig) error {
+	if svc.Name == "" {
+		return fmt.Errorf("service name is required")
+	}
+	if svc.Service == "" && svc.Pod == "" {
+		return fmt.Errorf("service %q: must set either 'service' or 'pod'", svc.Name)
+	}
+	if svc.Service != "" && svc.Pod != "" {
+		return fmt.Errorf("service %q: set 'service' or 'pod', not both", svc.Name)
+	}
+	if svc.LocalPort < 0 || svc.LocalPort > 65535 {
+		return fmt.Errorf("service %q: invalid local_port %d", svc.Name, svc.LocalPort)
+	}
+	if svc.RemotePort <= 0 || svc.RemotePort > 65535 {
+		return fmt.Errorf("service %q: invalid remote_port %d", svc.Name, svc.RemotePort)
+	}
+	return nil
+}
+
 // Validate checks the config for errors.
 func (c *Config) Validate() error {
 	if len(c.Services) == 0 {
@@ -443,6 +463,24 @@ func (s SupervisorConfig) ParsedSupervisor() ParsedSupervisorConfig {
 		BackoffInitial:       parseDurationOr(s.BackoffInitial, 1*time.Second),
 		BackoffMax:           parseDurationOr(s.BackoffMax, 30*time.Second),
 	}
+}
+
+// LoadServices reads a YAML/TOML file and returns only the services list.
+// It validates each service individually. Other config fields (context, namespace,
+// hooks, supervisor) in the file are ignored — this is designed for overlay files.
+func LoadServices(path string) ([]ServiceConfig, error) {
+	cfg, err := loadRaw(path)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, svc := range cfg.Services {
+		if err := ValidateService(svc); err != nil {
+			return nil, fmt.Errorf("service[%d]: %w", i, err)
+		}
+	}
+
+	return cfg.Services, nil
 }
 
 func parseDurationOr(s string, def time.Duration) time.Duration {

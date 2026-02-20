@@ -7,6 +7,10 @@ import "google/protobuf/timestamp.proto";
 service DaemonService {
   rpc Status(StatusRequest) returns (StatusResponse);
   rpc Stop(StopRequest) returns (StopResponse);
+  rpc AddService(AddServiceRequest) returns (AddServiceResponse);
+  rpc RemoveService(RemoveServiceRequest) returns (RemoveServiceResponse);
+  rpc Reload(ReloadRequest) returns (ReloadResponse);
+  rpc Apply(ApplyRequest) returns (ApplyResponse);
 }
 
 enum ForwardState {
@@ -34,6 +38,7 @@ message ForwardStatusProto {
   google.protobuf.Timestamp last_start = 5;
   bool connected = 6;
   int32 actual_port = 7;
+  google.protobuf.Timestamp next_retry = 8;
 }
 
 message StatusRequest {}
@@ -41,7 +46,47 @@ message StatusResponse {
   string context = 1;
   string namespace = 2;
   repeated ForwardStatusProto forwards = 3;
+  string version = 4;
 }
 
 message StopRequest {}
 message StopResponse { bool success = 1; }
+
+message AddServiceRequest {
+  ServiceInfo service = 1;
+  bool persist = 2;
+}
+message AddServiceResponse {
+  bool success = 1;
+  string error = 2;
+  int32 actual_port = 3;
+}
+
+message RemoveServiceRequest {
+  string name = 1;
+  bool persist = 2;
+}
+message RemoveServiceResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ReloadRequest {}
+message ReloadResponse {
+  bool success = 1;
+  string error = 2;
+  int32 added = 3;
+  int32 removed = 4;
+}
+
+message ApplyRequest {
+  repeated ServiceInfo services = 1;
+  bool merge = 2;  // reserved for future replace semantics; currently always additive
+}
+message ApplyResponse {
+  bool success = 1;
+  string error = 2;
+  int32 added = 3;
+  int32 skipped = 4;
+  repeated string warnings = 5;
+}

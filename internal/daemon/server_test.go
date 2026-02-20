@@ -19,8 +19,18 @@ import (
 
 // mockSupervisor implements the Supervisor interface for testing.
 type mockSupervisor struct {
-	statuses  []proxy.ForwardStatus
-	stopCalls atomic.Int32
+	statuses      []proxy.ForwardStatus
+	stopCalls     atomic.Int32
+	addErr        error
+	removeErr     error
+	reloadAdded   int
+	reloadRemoved int
+	reloadErr     error
+	lastAddSvc    config.ServiceConfig
+	lastRemove    string
+	applyAdded    int
+	applySkipped  int
+	applyWarnings []string
 }
 
 func (m *mockSupervisor) Status() []proxy.ForwardStatus {
@@ -29,6 +39,24 @@ func (m *mockSupervisor) Status() []proxy.ForwardStatus {
 
 func (m *mockSupervisor) Stop() {
 	m.stopCalls.Add(1)
+}
+
+func (m *mockSupervisor) AddService(svc config.ServiceConfig) error {
+	m.lastAddSvc = svc
+	return m.addErr
+}
+
+func (m *mockSupervisor) RemoveService(name string) error {
+	m.lastRemove = name
+	return m.removeErr
+}
+
+func (m *mockSupervisor) Reload(_ *config.Config) (int, int, error) {
+	return m.reloadAdded, m.reloadRemoved, m.reloadErr
+}
+
+func (m *mockSupervisor) Apply(_ []config.ServiceConfig) (int, int, []string) {
+	return m.applyAdded, m.applySkipped, m.applyWarnings
 }
 
 func TestServer_Status(t *testing.T) {
@@ -72,6 +100,7 @@ func TestServer_Status(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// resp.Version is populated from go-version ldflags; may be empty in test builds
 	if resp.Context != "test-context" {
 		t.Fatalf("expected context 'test-context', got %s", resp.Context)
 	}
@@ -140,6 +169,72 @@ func TestServer_StatusWithError(t *testing.T) {
 	}
 	if resp.Forwards[0].State != kubeportv1.ForwardState_FORWARD_STATE_FAILED {
 		t.Fatalf("expected FAILED state")
+	}
+}
+
+func TestServer_StatusWithNextRetry(t *testing.T) {
+	retryTime := time.Now().Add(10 * time.Second)
+	mgr := &mockSupervisor{
+		statuses: []proxy.ForwardStatus{
+			{
+				Service: config.ServiceConfig{
+					Name:       "db",
+					Service:    "postgres",
+					LocalPort:  5432,
+					RemotePort: 5432,
+				},
+				State:     proxy.StateFailed,
+				Error:     fmt.Errorf("connection reset"),
+				Restarts:  3,
+				NextRetry: retryTime,
+			},
+		},
+	}
+
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.Status(context.Background(), &kubeportv1.StatusRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	fw := resp.Forwards[0]
+	if fw.NextRetry == nil {
+		t.Fatal("expected NextRetry to be set")
+	}
+	got := fw.NextRetry.AsTime()
+	if got.Sub(retryTime).Abs() > time.Second {
+		t.Fatalf("NextRetry mismatch: got %v, want ~%v", got, retryTime)
+	}
+}
+
+func TestServer_StatusNoNextRetryWhenZero(t *testing.T) {
+	mgr := &mockSupervisor{
+		statuses: []proxy.ForwardStatus{
+			{
+				Service: config.ServiceConfig{
+					Name:       "web",
+					Service:    "nginx",
+					LocalPort:  8080,
+					RemotePort: 80,
+				},
+				State: proxy.StateRunning,
+				// NextRetry is zero (not reconnecting)
+			},
+		},
+	}
+
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.Status(context.Background(), &kubeportv1.StatusRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if resp.Forwards[0].NextRetry != nil {
+		t.Fatalf("expected nil NextRetry for running service, got %v", resp.Forwards[0].NextRetry)
 	}
 }
 
@@ -319,5 +414,185 @@ func TestCleanStaleSocket_ActiveSocket(t *testing.T) {
 	err = CleanStaleSocket(socketPath)
 	if err == nil {
 		t.Fatal("expected error for active socket")
+	}
+}
+
+func TestServer_AddService(t *testing.T) {
+	mgr := &mockSupervisor{}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{
+		Service: &kubeportv1.ServiceInfo{
+			Name:       "web",
+			Service:    "nginx",
+			RemotePort: 80,
+			LocalPort:  8080,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected success, got error: %s", resp.Error)
+	}
+	if mgr.lastAddSvc.Name != "web" {
+		t.Fatalf("expected service name 'web', got %s", mgr.lastAddSvc.Name)
+	}
+	if mgr.lastAddSvc.Service != "nginx" {
+		t.Fatalf("expected target 'nginx', got %s", mgr.lastAddSvc.Service)
+	}
+}
+
+func TestServer_AddService_NilService(t *testing.T) {
+	mgr := &mockSupervisor{}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure for nil service")
+	}
+	if resp.Error != "service is required" {
+		t.Fatalf("unexpected error: %s", resp.Error)
+	}
+}
+
+func TestServer_AddService_Error(t *testing.T) {
+	mgr := &mockSupervisor{addErr: fmt.Errorf("service %q: %w", "web", config.ErrServiceExists)}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{
+		Service: &kubeportv1.ServiceInfo{
+			Name:       "web",
+			Service:    "nginx",
+			RemotePort: 80,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure")
+	}
+	if resp.Error == "" {
+		t.Fatal("expected error string")
+	}
+}
+
+func TestServer_RemoveService(t *testing.T) {
+	mgr := &mockSupervisor{}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{
+		Name: "web",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected success, got error: %s", resp.Error)
+	}
+	if mgr.lastRemove != "web" {
+		t.Fatalf("expected remove 'web', got %s", mgr.lastRemove)
+	}
+}
+
+func TestServer_RemoveService_EmptyName(t *testing.T) {
+	mgr := &mockSupervisor{}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure for empty name")
+	}
+}
+
+func TestServer_RemoveService_Error(t *testing.T) {
+	mgr := &mockSupervisor{removeErr: fmt.Errorf("service %q: %w", "web", config.ErrServiceNotFound)}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{
+		Name: "web",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure")
+	}
+}
+
+func TestServer_Reload(t *testing.T) {
+	mgr := &mockSupervisor{reloadAdded: 2, reloadRemoved: 1}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	// No config file path => error
+	resp, err := srv.Reload(context.Background(), &kubeportv1.ReloadRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure for CLI-only mode")
+	}
+	if resp.Error == "" {
+		t.Fatal("expected error message")
+	}
+}
+
+func TestServer_Apply(t *testing.T) {
+	mgr := &mockSupervisor{applyAdded: 2, applySkipped: 1, applyWarnings: []string{"db: service already exists"}}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.Apply(context.Background(), &kubeportv1.ApplyRequest{
+		Services: []*kubeportv1.ServiceInfo{
+			{Name: "web", Service: "nginx", RemotePort: 80, LocalPort: 8080},
+			{Name: "api", Service: "api-svc", RemotePort: 3000, LocalPort: 9090},
+			{Name: "db", Service: "postgres", RemotePort: 5432, LocalPort: 5432},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Success {
+		t.Fatalf("expected success, got error: %s", resp.Error)
+	}
+	if resp.Added != 2 {
+		t.Fatalf("expected 2 added, got %d", resp.Added)
+	}
+	if resp.Skipped != 1 {
+		t.Fatalf("expected 1 skipped, got %d", resp.Skipped)
+	}
+	if len(resp.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(resp.Warnings))
+	}
+}
+
+func TestServer_Apply_EmptyServices(t *testing.T) {
+	mgr := &mockSupervisor{}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	resp, err := srv.Apply(context.Background(), &kubeportv1.ApplyRequest{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Success {
+		t.Fatal("expected failure for empty services")
+	}
+	if resp.Error == "" {
+		t.Fatal("expected error message")
 	}
 }
