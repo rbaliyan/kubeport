@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
 	version "github.com/rbaliyan/go-version"
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
+	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 
@@ -71,6 +73,12 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 	cliVer := version.Get().Raw
 	daemonVer := resp.Version
 
+	if a.statusSort {
+		slices.SortFunc(resp.Forwards, func(a, b *kubeportv1.ForwardStatusProto) int {
+			return strings.Compare(a.Service.GetName(), b.Service.GetName())
+		})
+	}
+
 	if a.statusJSON {
 		out := statusOutput{
 			Running:       true,
@@ -116,13 +124,15 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 func (a *app) cmdStatusLegacy() {
 	pid, running := a.isRunning()
 
+	services := a.legacyServices()
+
 	if a.statusJSON {
 		out := statusOutput{Running: running}
 		if a.cfg != nil {
 			out.Context = a.cfg.Context
 			out.Namespace = a.cfg.Namespace
 			out.Config = a.configFile
-			for _, svc := range a.cfg.Services {
+			for _, svc := range services {
 				state := "unknown"
 				if running && netutil.IsPortOpen(svc.LocalPort) {
 					state = "running"
@@ -160,7 +170,7 @@ func (a *app) cmdStatusLegacy() {
 		fmt.Printf("Namespace: %s\n", a.cfg.Namespace)
 		fmt.Printf("Config:    %s\n", a.configFile)
 		fmt.Println("\nPort Status:")
-		for _, svc := range a.cfg.Services {
+		for _, svc := range services {
 			a.printPortStatus(svc.LocalPort, svc.Name)
 		}
 	}
@@ -199,6 +209,21 @@ func (a *app) writeJSON(v any) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(v)
+}
+
+// legacyServices returns config services, optionally sorted by name.
+func (a *app) legacyServices() []config.ServiceConfig {
+	if a.cfg == nil {
+		return nil
+	}
+	services := make([]config.ServiceConfig, len(a.cfg.Services))
+	copy(services, a.cfg.Services)
+	if a.statusSort {
+		slices.SortFunc(services, func(a, b config.ServiceConfig) int {
+			return strings.Compare(a.Name, b.Name)
+		})
+	}
+	return services
 }
 
 func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {

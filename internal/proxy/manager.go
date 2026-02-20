@@ -88,6 +88,7 @@ type Manager struct {
 	restConfig *rest.Config
 	clientset  kubernetes.Interface
 	forwards   map[string]*portForward
+	order      []string // service names in config-defined insertion order
 	mu         sync.RWMutex
 	output     io.Writer
 	cancel     context.CancelFunc
@@ -293,6 +294,12 @@ func (m *Manager) doRemove(ctx context.Context, name string) error {
 		return fmt.Errorf("service %q: %w", name, config.ErrServiceNotFound)
 	}
 	delete(m.forwards, name)
+	for i, n := range m.order {
+		if n == name {
+			m.order = append(m.order[:i], m.order[i+1:]...)
+			break
+		}
+	}
 	m.mu.Unlock()
 
 	pf.mu.Lock()
@@ -379,6 +386,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 
 	m.mu.Lock()
 	m.forwards[svc.Name] = pf
+	m.order = append(m.order, svc.Name)
 	m.mu.Unlock()
 
 	backoff := m.backoffInitial
@@ -572,6 +580,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	pf.mu.Lock()
 	pf.state = StateRunning
 	pf.actualPort = actualPort
+	pf.err = nil
 	pf.mu.Unlock()
 
 	_, _ = fmt.Fprintf(m.output, "[%s] forwarding localhost:%d -> %s:%d (pod: %s)\n",
@@ -732,8 +741,9 @@ func (m *Manager) Status() []ForwardStatus {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	statuses := make([]ForwardStatus, 0, len(m.forwards))
-	for _, pf := range m.forwards {
+	statuses := make([]ForwardStatus, 0, len(m.order))
+	for _, name := range m.order {
+		pf := m.forwards[name]
 		pf.mu.Lock()
 		port := pf.actualPort
 		if port == 0 {

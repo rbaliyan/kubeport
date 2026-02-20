@@ -442,6 +442,7 @@ func TestStatus_ReturnsForwards(t *testing.T) {
 				actualPort: 0,
 			},
 		},
+		order: []string{"svc-a", "svc-b"},
 	}
 
 	statuses := m.Status()
@@ -480,6 +481,7 @@ func TestStatus_FallsBackToLocalPort(t *testing.T) {
 				actualPort: 0, // Not yet assigned
 			},
 		},
+		order: []string{"svc"},
 	}
 
 	statuses := m.Status()
@@ -552,6 +554,7 @@ func TestStatus_ConcurrentAccess(t *testing.T) {
 				actualPort: 8080,
 			},
 		},
+		order: []string{"svc"},
 	}
 
 	var wg sync.WaitGroup
