@@ -19,6 +19,13 @@ context: my-cluster-context
 # Default namespace (can be overridden per-service)
 namespace: default
 
+# Custom log file path (default: .kubeport.log next to config file)
+# log_file: /var/log/kubeport.log
+
+# Daemon listen address (default: Unix socket next to config file)
+# Use sock:// prefix for a custom Unix socket path
+# listen: sock:///tmp/kubeport.sock
+
 # Services to port-forward
 services:
   # Forward a Kubernetes service (auto-resolves to a running pod)
