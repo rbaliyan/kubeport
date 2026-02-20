@@ -30,11 +30,12 @@ func (a *app) cmdApply(args []string) {
 		case "--merge":
 			merge = true
 		default:
-			if strings.HasPrefix(args[i], "--file=") {
+			switch {
+			case strings.HasPrefix(args[i], "--file="):
 				filePath = strings.TrimPrefix(args[i], "--file=")
-			} else if strings.HasPrefix(args[i], "-f=") {
+			case strings.HasPrefix(args[i], "-f="):
 				filePath = strings.TrimPrefix(args[i], "-f=")
-			} else if strings.HasPrefix(args[i], "-") {
+			case strings.HasPrefix(args[i], "-"):
 				fmt.Fprintf(os.Stderr, "Unknown flag: %s\n", args[i])
 				os.Exit(1)
 			}
@@ -83,12 +84,12 @@ func (a *app) cmdApply(args []string) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
 	resp, err := dc.client.Apply(ctx, &kubeportv1.ApplyRequest{
 		Services: protoServices,
 		Merge:    merge,
 	})
+	cancel()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

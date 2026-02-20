@@ -103,7 +103,6 @@ func (a *app) cmdAdd(args []string) {
 	defer dc.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	resp, err := dc.client.AddService(ctx, &kubeportv1.AddServiceRequest{
 		Service: &kubeportv1.ServiceInfo{
@@ -116,6 +115,7 @@ func (a *app) cmdAdd(args []string) {
 		},
 		Persist: persist,
 	})
+	cancel()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

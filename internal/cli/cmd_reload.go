@@ -22,9 +22,9 @@ func (a *app) cmdReload() {
 	defer dc.Close()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	resp, err := dc.client.Reload(ctx, &kubeportv1.ReloadRequest{})
+	cancel()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
