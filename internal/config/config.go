@@ -91,11 +91,13 @@ type SupervisorConfig struct {
 
 // Config holds the full proxy configuration.
 type Config struct {
-	Context    string           `yaml:"context" toml:"context"`
-	Namespace  string           `yaml:"namespace" toml:"namespace"`
-	Services   []ServiceConfig  `yaml:"services" toml:"services"`
-	Hooks      []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
-	Supervisor SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
+	Context     string           `yaml:"context" toml:"context"`
+	Namespace   string           `yaml:"namespace" toml:"namespace"`
+	LogFilePath string           `yaml:"log_file,omitempty" toml:"log_file,omitempty"`
+	Listen      string           `yaml:"listen,omitempty" toml:"listen,omitempty"`
+	Services    []ServiceConfig  `yaml:"services" toml:"services"`
+	Hooks       []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
+	Supervisor  SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
 
 	// Runtime fields (not serialized)
 	filePath string
@@ -130,16 +132,25 @@ func (c *Config) PIDFile() string {
 	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.pid")
 }
 
-// LogFile returns the path for the log file, derived from the config file location.
+// LogFile returns the path for the log file. If LogFilePath is set, it is used directly.
+// Otherwise the path is derived from the config file location.
 func (c *Config) LogFile() string {
+	if c.LogFilePath != "" {
+		return c.LogFilePath
+	}
 	if c.filePath == "" {
 		return ".kubeport.log"
 	}
 	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.log")
 }
 
-// SocketFile returns the path for the Unix domain socket, derived from the config file location.
+// SocketFile returns the path for the Unix domain socket. If Listen is set with a
+// "sock://" prefix, that path is used. Otherwise the path is derived from the config
+// file location.
 func (c *Config) SocketFile() string {
+	if path, ok := strings.CutPrefix(c.Listen, "sock://"); ok {
+		return path
+	}
 	if c.filePath == "" {
 		return ".kubeport.sock"
 	}
@@ -383,6 +394,17 @@ func (c *Config) Validate() error {
 				return fmt.Errorf("service[%d] (%s): local_port %d already used by %s", i, svc.Name, svc.LocalPort, prev)
 			}
 			seen[svc.LocalPort] = svc.Name
+		}
+	}
+
+	// Validate listen address
+	if c.Listen != "" {
+		path, ok := strings.CutPrefix(c.Listen, "sock://")
+		if !ok {
+			return fmt.Errorf("listen: unsupported scheme; must start with sock://")
+		}
+		if path == "" {
+			return fmt.Errorf("listen: empty path after sock://")
 		}
 	}
 

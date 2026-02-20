@@ -184,6 +184,62 @@ func TestLogFile(t *testing.T) {
 	}
 }
 
+func TestLogFile_Custom(t *testing.T) {
+	cfg := &Config{
+		LogFilePath: "/var/log/kubeport.log",
+		filePath:    "/tmp/kubeport.yaml",
+	}
+	if got := cfg.LogFile(); got != "/var/log/kubeport.log" {
+		t.Fatalf("expected /var/log/kubeport.log, got %s", got)
+	}
+}
+
+func TestSocketFile_Listen(t *testing.T) {
+	cfg := &Config{
+		Listen:   "sock:///tmp/custom.sock",
+		filePath: "/home/user/project/kubeport.yaml",
+	}
+	if got := cfg.SocketFile(); got != "/tmp/custom.sock" {
+		t.Fatalf("expected /tmp/custom.sock, got %s", got)
+	}
+}
+
+func TestValidate_ListenInvalidScheme(t *testing.T) {
+	cfg := &Config{
+		Listen: "tcp://localhost:9090",
+		Services: []ServiceConfig{
+			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for unsupported listen scheme")
+	}
+}
+
+func TestValidate_ListenEmptyPath(t *testing.T) {
+	cfg := &Config{
+		Listen: "sock://",
+		Services: []ServiceConfig{
+			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for empty path after sock://")
+	}
+}
+
+func TestValidate_ListenValid(t *testing.T) {
+	cfg := &Config{
+		Listen: "sock:///tmp/kubeport.sock",
+		Services: []ServiceConfig{
+			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadYAML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "kubeport.yaml")
