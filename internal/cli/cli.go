@@ -173,8 +173,9 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 	// Load config (not needed for help)
 	if command != "help" && command != "--help" && command != "-h" {
 		if err := a.loadConfig(); err != nil {
-			// Allow stop/status/logs without valid config
-			if command != "stop" && command != "status" && command != "logs" {
+			// Allow stop/status/logs/add/remove/reload without valid config
+			if command != "stop" && command != "status" && command != "logs" &&
+				command != "add" && command != "remove" && command != "reload" && command != "apply" {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
@@ -196,6 +197,14 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		a.cmdRestart(ctx)
 	case "fg", "foreground":
 		a.cmdForeground(ctx)
+	case "add":
+		a.cmdAdd(remaining)
+	case "remove":
+		a.cmdRemove(remaining)
+	case "reload":
+		a.cmdReload()
+	case "apply":
+		a.cmdApply(remaining)
 	case "_daemon":
 		a.cmdDaemon(ctx, remaining)
 	default:

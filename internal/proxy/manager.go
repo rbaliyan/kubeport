@@ -58,7 +58,8 @@ type ForwardStatus struct {
 	Restarts   int
 	LastStart  time.Time
 	Connected  bool
-	ActualPort int // The actual local port (differs from config when local_port is 0)
+	ActualPort int       // The actual local port (differs from config when local_port is 0)
+	NextRetry  time.Time // When next reconnection attempt will be made (zero if not reconnecting)
 }
 
 type portForward struct {
@@ -70,7 +71,15 @@ type portForward struct {
 	restarts   int
 	lastStart  time.Time
 	actualPort int // Actual port assigned by OS (relevant when local_port is 0)
+	nextRetry  time.Time
 	mu         sync.Mutex
+}
+
+// serviceCmd represents an add or remove command sent to the event loop.
+type serviceCmd struct {
+	add    *config.ServiceConfig // non-nil for add
+	remove string               // non-empty for remove
+	result chan error
 }
 
 // Manager supervises multiple Kubernetes port forwards.
@@ -84,6 +93,7 @@ type Manager struct {
 	cancel     context.CancelFunc
 	hooks      *hook.Dispatcher
 	logger     *slog.Logger
+	cmdCh      chan serviceCmd
 
 	// Supervisor tuning (populated from config.SupervisorConfig in NewManager)
 	maxRestarts          int
@@ -174,6 +184,7 @@ func (m *Manager) Start(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 	m.mu.Lock()
 	m.cancel = cancel
+	m.cmdCh = make(chan serviceCmd)
 	m.mu.Unlock()
 
 	var wg sync.WaitGroup
@@ -185,7 +196,173 @@ func (m *Manager) Start(ctx context.Context) {
 		}(svc)
 	}
 
+	// Event loop: listen for add/remove commands until ctx cancelled.
+	// The event loop is tracked by the WaitGroup so Start blocks until
+	// both the event loop and all service goroutines have finished.
+	cmdCh := m.cmdCh
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case cmd := <-cmdCh:
+				if cmd.add != nil {
+					svc := *cmd.add
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+						m.supervise(ctx, svc)
+					}()
+					_ = m.hooks.Fire(ctx, hook.Event{
+						Type:       hook.EventServiceAdded,
+						Time:       time.Now(),
+						Service:    svc.Name,
+						RemotePort: svc.RemotePort,
+					})
+					cmd.result <- nil
+				} else if cmd.remove != "" {
+					cmd.result <- m.doRemove(ctx, cmd.remove)
+				}
+			}
+		}
+	}()
+
 	wg.Wait()
+}
+
+// AddService adds a service to the running manager. Thread-safe.
+func (m *Manager) AddService(svc config.ServiceConfig) error {
+	if err := config.ValidateService(svc); err != nil {
+		return err
+	}
+
+	m.mu.RLock()
+	if _, exists := m.forwards[svc.Name]; exists {
+		m.mu.RUnlock()
+		return fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
+	}
+	if svc.LocalPort != 0 {
+		for _, pf := range m.forwards {
+			pf.mu.Lock()
+			port := pf.svc.LocalPort
+			if port == 0 {
+				port = pf.actualPort
+			}
+			pf.mu.Unlock()
+			if port == svc.LocalPort {
+				m.mu.RUnlock()
+				return fmt.Errorf("local port %d already in use by %q", svc.LocalPort, pf.svc.Name)
+			}
+		}
+	}
+	cmdCh := m.cmdCh
+	m.mu.RUnlock()
+
+	if cmdCh == nil {
+		return fmt.Errorf("manager not started")
+	}
+
+	result := make(chan error, 1)
+	cmdCh <- serviceCmd{add: &svc, result: result}
+	return <-result
+}
+
+// RemoveService stops and removes a service by name. Thread-safe.
+func (m *Manager) RemoveService(name string) error {
+	m.mu.RLock()
+	cmdCh := m.cmdCh
+	m.mu.RUnlock()
+
+	if cmdCh == nil {
+		return fmt.Errorf("manager not started")
+	}
+
+	result := make(chan error, 1)
+	cmdCh <- serviceCmd{remove: name, result: result}
+	return <-result
+}
+
+// doRemove cancels and removes a service (called from event loop).
+func (m *Manager) doRemove(ctx context.Context, name string) error {
+	m.mu.Lock()
+	pf, exists := m.forwards[name]
+	if !exists {
+		m.mu.Unlock()
+		return fmt.Errorf("service %q: %w", name, config.ErrServiceNotFound)
+	}
+	delete(m.forwards, name)
+	m.mu.Unlock()
+
+	pf.mu.Lock()
+	if pf.cancel != nil {
+		pf.cancel()
+	}
+	pf.state = StateStopped
+	pf.mu.Unlock()
+
+	_ = m.hooks.Fire(ctx, hook.Event{
+		Type:       hook.EventServiceRemoved,
+		Time:       time.Now(),
+		Service:    name,
+		RemotePort: pf.svc.RemotePort,
+	})
+	return nil
+}
+
+// Reload diffs current config vs running services. Adds new, removes deleted.
+func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
+	// Build sets of running and desired service names
+	m.mu.RLock()
+	running := make(map[string]bool, len(m.forwards))
+	for name := range m.forwards {
+		running[name] = true
+	}
+	m.mu.RUnlock()
+
+	desired := make(map[string]config.ServiceConfig, len(cfg.Services))
+	for _, svc := range cfg.Services {
+		desired[svc.Name] = svc
+	}
+
+	// Remove services no longer in config
+	for name := range running {
+		if _, ok := desired[name]; !ok {
+			if removeErr := m.RemoveService(name); removeErr != nil {
+				m.logger.Warn("reload: failed to remove service", "service", name, "error", removeErr)
+				continue
+			}
+			removed++
+		}
+	}
+
+	// Add new services from config
+	for name, svc := range desired {
+		if !running[name] {
+			if addErr := m.AddService(svc); addErr != nil {
+				m.logger.Warn("reload: failed to add service", "service", name, "error", addErr)
+				continue
+			}
+			added++
+		}
+	}
+
+	return added, removed, nil
+}
+
+// Apply adds services that aren't already running. Services whose names conflict
+// with already-running services are skipped with a warning. Returns counts and warnings.
+func (m *Manager) Apply(services []config.ServiceConfig) (added, skipped int, warnings []string) {
+	for _, svc := range services {
+		if err := m.AddService(svc); err != nil {
+			skipped++
+			warnings = append(warnings, fmt.Sprintf("%s: %v", svc.Name, err))
+		} else {
+			added++
+		}
+	}
+	return added, skipped, warnings
 }
 
 func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
@@ -234,6 +411,7 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 		pf.mu.Lock()
 		pf.state = StateStarting
 		pf.lastStart = time.Now()
+		pf.nextRetry = time.Time{}
 		pf.mu.Unlock()
 
 		startTime := time.Now()
@@ -296,6 +474,10 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 
 		// Add ±25% jitter to backoff to prevent thundering herd
 		jittered := addJitter(backoff)
+
+		pf.mu.Lock()
+		pf.nextRetry = time.Now().Add(jittered)
+		pf.mu.Unlock()
 
 		backoffTimer := time.NewTimer(jittered)
 		select {
@@ -452,6 +634,10 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 		return svc.Target(), svc.RemotePort, nil
 	}
 
+	if m.clientset == nil {
+		return "", 0, fmt.Errorf("kubernetes client not initialized")
+	}
+
 	opCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
@@ -561,6 +747,7 @@ func (m *Manager) Status() []ForwardStatus {
 			LastStart:  pf.lastStart,
 			Connected:  port > 0 && netutil.IsPortOpen(port),
 			ActualPort: port,
+			NextRetry:  pf.nextRetry,
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)

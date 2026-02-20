@@ -170,6 +170,7 @@ type ForwardStatusProto struct {
 	LastStart     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_start,json=lastStart,proto3" json:"last_start,omitempty"`
 	Connected     bool                   `protobuf:"varint,6,opt,name=connected,proto3" json:"connected,omitempty"`
 	ActualPort    int32                  `protobuf:"varint,7,opt,name=actual_port,json=actualPort,proto3" json:"actual_port,omitempty"`
+	NextRetry     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=next_retry,json=nextRetry,proto3" json:"next_retry,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -253,6 +254,13 @@ func (x *ForwardStatusProto) GetActualPort() int32 {
 	return 0
 }
 
+func (x *ForwardStatusProto) GetNextRetry() *timestamppb.Timestamp {
+	if x != nil {
+		return x.NextRetry
+	}
+	return nil
+}
+
 type StatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -294,6 +302,7 @@ type StatusResponse struct {
 	Context       string                 `protobuf:"bytes,1,opt,name=context,proto3" json:"context,omitempty"`
 	Namespace     string                 `protobuf:"bytes,2,opt,name=namespace,proto3" json:"namespace,omitempty"`
 	Forwards      []*ForwardStatusProto  `protobuf:"bytes,3,rep,name=forwards,proto3" json:"forwards,omitempty"`
+	Version       string                 `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -347,6 +356,13 @@ func (x *StatusResponse) GetForwards() []*ForwardStatusProto {
 		return x.Forwards
 	}
 	return nil
+}
+
+func (x *StatusResponse) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
 }
 
 type StopRequest struct {
@@ -429,6 +445,454 @@ func (x *StopResponse) GetSuccess() bool {
 	return false
 }
 
+type AddServiceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Service       *ServiceInfo           `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	Persist       bool                   `protobuf:"varint,2,opt,name=persist,proto3" json:"persist,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddServiceRequest) Reset() {
+	*x = AddServiceRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddServiceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddServiceRequest) ProtoMessage() {}
+
+func (x *AddServiceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddServiceRequest.ProtoReflect.Descriptor instead.
+func (*AddServiceRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *AddServiceRequest) GetService() *ServiceInfo {
+	if x != nil {
+		return x.Service
+	}
+	return nil
+}
+
+func (x *AddServiceRequest) GetPersist() bool {
+	if x != nil {
+		return x.Persist
+	}
+	return false
+}
+
+type AddServiceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	ActualPort    int32                  `protobuf:"varint,3,opt,name=actual_port,json=actualPort,proto3" json:"actual_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddServiceResponse) Reset() {
+	*x = AddServiceResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddServiceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddServiceResponse) ProtoMessage() {}
+
+func (x *AddServiceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddServiceResponse.ProtoReflect.Descriptor instead.
+func (*AddServiceResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *AddServiceResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *AddServiceResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *AddServiceResponse) GetActualPort() int32 {
+	if x != nil {
+		return x.ActualPort
+	}
+	return 0
+}
+
+type RemoveServiceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Persist       bool                   `protobuf:"varint,2,opt,name=persist,proto3" json:"persist,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveServiceRequest) Reset() {
+	*x = RemoveServiceRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveServiceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveServiceRequest) ProtoMessage() {}
+
+func (x *RemoveServiceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveServiceRequest.ProtoReflect.Descriptor instead.
+func (*RemoveServiceRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *RemoveServiceRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *RemoveServiceRequest) GetPersist() bool {
+	if x != nil {
+		return x.Persist
+	}
+	return false
+}
+
+type RemoveServiceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveServiceResponse) Reset() {
+	*x = RemoveServiceResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveServiceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveServiceResponse) ProtoMessage() {}
+
+func (x *RemoveServiceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveServiceResponse.ProtoReflect.Descriptor instead.
+func (*RemoveServiceResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *RemoveServiceResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *RemoveServiceResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+type ReloadRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReloadRequest) Reset() {
+	*x = ReloadRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReloadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReloadRequest) ProtoMessage() {}
+
+func (x *ReloadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReloadRequest.ProtoReflect.Descriptor instead.
+func (*ReloadRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{10}
+}
+
+type ReloadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Added         int32                  `protobuf:"varint,3,opt,name=added,proto3" json:"added,omitempty"`
+	Removed       int32                  `protobuf:"varint,4,opt,name=removed,proto3" json:"removed,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReloadResponse) Reset() {
+	*x = ReloadResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReloadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReloadResponse) ProtoMessage() {}
+
+func (x *ReloadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReloadResponse.ProtoReflect.Descriptor instead.
+func (*ReloadResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReloadResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ReloadResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ReloadResponse) GetAdded() int32 {
+	if x != nil {
+		return x.Added
+	}
+	return 0
+}
+
+func (x *ReloadResponse) GetRemoved() int32 {
+	if x != nil {
+		return x.Removed
+	}
+	return 0
+}
+
+type ApplyRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Services      []*ServiceInfo         `protobuf:"bytes,1,rep,name=services,proto3" json:"services,omitempty"`
+	Merge         bool                   `protobuf:"varint,2,opt,name=merge,proto3" json:"merge,omitempty"` // reserved for future replace semantics; currently always additive
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyRequest) Reset() {
+	*x = ApplyRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyRequest) ProtoMessage() {}
+
+func (x *ApplyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyRequest.ProtoReflect.Descriptor instead.
+func (*ApplyRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ApplyRequest) GetServices() []*ServiceInfo {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *ApplyRequest) GetMerge() bool {
+	if x != nil {
+		return x.Merge
+	}
+	return false
+}
+
+type ApplyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	Added         int32                  `protobuf:"varint,3,opt,name=added,proto3" json:"added,omitempty"`
+	Skipped       int32                  `protobuf:"varint,4,opt,name=skipped,proto3" json:"skipped,omitempty"`
+	Warnings      []string               `protobuf:"bytes,5,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ApplyResponse) Reset() {
+	*x = ApplyResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ApplyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ApplyResponse) ProtoMessage() {}
+
+func (x *ApplyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ApplyResponse.ProtoReflect.Descriptor instead.
+func (*ApplyResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *ApplyResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ApplyResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
+func (x *ApplyResponse) GetAdded() int32 {
+	if x != nil {
+		return x.Added
+	}
+	return 0
+}
+
+func (x *ApplyResponse) GetSkipped() int32 {
+	if x != nil {
+		return x.Skipped
+	}
+	return 0
+}
+
+func (x *ApplyResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
 var File_kubeport_v1_daemon_proto protoreflect.FileDescriptor
 
 const file_kubeport_v1_daemon_proto_rawDesc = "" +
@@ -442,7 +906,7 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"local_port\x18\x04 \x01(\x05R\tlocalPort\x12\x1f\n" +
 	"\vremote_port\x18\x05 \x01(\x05R\n" +
 	"remotePort\x12\x1c\n" +
-	"\tnamespace\x18\x06 \x01(\tR\tnamespace\"\xa5\x02\n" +
+	"\tnamespace\x18\x06 \x01(\tR\tnamespace\"\xe0\x02\n" +
 	"\x12ForwardStatusProto\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.kubeport.v1.ForwardStateR\x05state\x12\x14\n" +
@@ -452,24 +916,61 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"last_start\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tlastStart\x12\x1c\n" +
 	"\tconnected\x18\x06 \x01(\bR\tconnected\x12\x1f\n" +
 	"\vactual_port\x18\a \x01(\x05R\n" +
-	"actualPort\"\x0f\n" +
-	"\rStatusRequest\"\x85\x01\n" +
+	"actualPort\x129\n" +
+	"\n" +
+	"next_retry\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tnextRetry\"\x0f\n" +
+	"\rStatusRequest\"\x9f\x01\n" +
 	"\x0eStatusResponse\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12\x1c\n" +
 	"\tnamespace\x18\x02 \x01(\tR\tnamespace\x12;\n" +
-	"\bforwards\x18\x03 \x03(\v2\x1f.kubeport.v1.ForwardStatusProtoR\bforwards\"\r\n" +
+	"\bforwards\x18\x03 \x03(\v2\x1f.kubeport.v1.ForwardStatusProtoR\bforwards\x12\x18\n" +
+	"\aversion\x18\x04 \x01(\tR\aversion\"\r\n" +
 	"\vStopRequest\"(\n" +
 	"\fStopResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess*\x99\x01\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"a\n" +
+	"\x11AddServiceRequest\x122\n" +
+	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12\x18\n" +
+	"\apersist\x18\x02 \x01(\bR\apersist\"e\n" +
+	"\x12AddServiceResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1f\n" +
+	"\vactual_port\x18\x03 \x01(\x05R\n" +
+	"actualPort\"D\n" +
+	"\x14RemoveServiceRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\apersist\x18\x02 \x01(\bR\apersist\"G\n" +
+	"\x15RemoveServiceResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\"\x0f\n" +
+	"\rReloadRequest\"p\n" +
+	"\x0eReloadResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x14\n" +
+	"\x05added\x18\x03 \x01(\x05R\x05added\x12\x18\n" +
+	"\aremoved\x18\x04 \x01(\x05R\aremoved\"Z\n" +
+	"\fApplyRequest\x124\n" +
+	"\bservices\x18\x01 \x03(\v2\x18.kubeport.v1.ServiceInfoR\bservices\x12\x14\n" +
+	"\x05merge\x18\x02 \x01(\bR\x05merge\"\x8b\x01\n" +
+	"\rApplyResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
+	"\x05error\x18\x02 \x01(\tR\x05error\x12\x14\n" +
+	"\x05added\x18\x03 \x01(\x05R\x05added\x12\x18\n" +
+	"\askipped\x18\x04 \x01(\x05R\askipped\x12\x1a\n" +
+	"\bwarnings\x18\x05 \x03(\tR\bwarnings*\x99\x01\n" +
 	"\fForwardState\x12\x1d\n" +
 	"\x19FORWARD_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FORWARD_STATE_STARTING\x10\x01\x12\x19\n" +
 	"\x15FORWARD_STATE_RUNNING\x10\x02\x12\x18\n" +
 	"\x14FORWARD_STATE_FAILED\x10\x03\x12\x19\n" +
-	"\x15FORWARD_STATE_STOPPED\x10\x042\x8f\x01\n" +
+	"\x15FORWARD_STATE_STOPPED\x10\x042\xb9\x03\n" +
 	"\rDaemonService\x12A\n" +
 	"\x06Status\x12\x1a.kubeport.v1.StatusRequest\x1a\x1b.kubeport.v1.StatusResponse\x12;\n" +
-	"\x04Stop\x12\x18.kubeport.v1.StopRequest\x1a\x19.kubeport.v1.StopResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
+	"\x04Stop\x12\x18.kubeport.v1.StopRequest\x1a\x19.kubeport.v1.StopResponse\x12M\n" +
+	"\n" +
+	"AddService\x12\x1e.kubeport.v1.AddServiceRequest\x1a\x1f.kubeport.v1.AddServiceResponse\x12V\n" +
+	"\rRemoveService\x12!.kubeport.v1.RemoveServiceRequest\x1a\".kubeport.v1.RemoveServiceResponse\x12A\n" +
+	"\x06Reload\x12\x1a.kubeport.v1.ReloadRequest\x1a\x1b.kubeport.v1.ReloadResponse\x12>\n" +
+	"\x05Apply\x12\x19.kubeport.v1.ApplyRequest\x1a\x1a.kubeport.v1.ApplyResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
 
 var (
 	file_kubeport_v1_daemon_proto_rawDescOnce sync.Once
@@ -484,7 +985,7 @@ func file_kubeport_v1_daemon_proto_rawDescGZIP() []byte {
 }
 
 var file_kubeport_v1_daemon_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_kubeport_v1_daemon_proto_goTypes = []any{
 	(ForwardState)(0),             // 0: kubeport.v1.ForwardState
 	(*ServiceInfo)(nil),           // 1: kubeport.v1.ServiceInfo
@@ -493,22 +994,41 @@ var file_kubeport_v1_daemon_proto_goTypes = []any{
 	(*StatusResponse)(nil),        // 4: kubeport.v1.StatusResponse
 	(*StopRequest)(nil),           // 5: kubeport.v1.StopRequest
 	(*StopResponse)(nil),          // 6: kubeport.v1.StopResponse
-	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*AddServiceRequest)(nil),     // 7: kubeport.v1.AddServiceRequest
+	(*AddServiceResponse)(nil),    // 8: kubeport.v1.AddServiceResponse
+	(*RemoveServiceRequest)(nil),  // 9: kubeport.v1.RemoveServiceRequest
+	(*RemoveServiceResponse)(nil), // 10: kubeport.v1.RemoveServiceResponse
+	(*ReloadRequest)(nil),         // 11: kubeport.v1.ReloadRequest
+	(*ReloadResponse)(nil),        // 12: kubeport.v1.ReloadResponse
+	(*ApplyRequest)(nil),          // 13: kubeport.v1.ApplyRequest
+	(*ApplyResponse)(nil),         // 14: kubeport.v1.ApplyResponse
+	(*timestamppb.Timestamp)(nil), // 15: google.protobuf.Timestamp
 }
 var file_kubeport_v1_daemon_proto_depIdxs = []int32{
-	1, // 0: kubeport.v1.ForwardStatusProto.service:type_name -> kubeport.v1.ServiceInfo
-	0, // 1: kubeport.v1.ForwardStatusProto.state:type_name -> kubeport.v1.ForwardState
-	7, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
-	2, // 3: kubeport.v1.StatusResponse.forwards:type_name -> kubeport.v1.ForwardStatusProto
-	3, // 4: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
-	5, // 5: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
-	4, // 6: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
-	6, // 7: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
-	6, // [6:8] is the sub-list for method output_type
-	4, // [4:6] is the sub-list for method input_type
-	4, // [4:4] is the sub-list for extension type_name
-	4, // [4:4] is the sub-list for extension extendee
-	0, // [0:4] is the sub-list for field type_name
+	1,  // 0: kubeport.v1.ForwardStatusProto.service:type_name -> kubeport.v1.ServiceInfo
+	0,  // 1: kubeport.v1.ForwardStatusProto.state:type_name -> kubeport.v1.ForwardState
+	15, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
+	15, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
+	2,  // 4: kubeport.v1.StatusResponse.forwards:type_name -> kubeport.v1.ForwardStatusProto
+	1,  // 5: kubeport.v1.AddServiceRequest.service:type_name -> kubeport.v1.ServiceInfo
+	1,  // 6: kubeport.v1.ApplyRequest.services:type_name -> kubeport.v1.ServiceInfo
+	3,  // 7: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
+	5,  // 8: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
+	7,  // 9: kubeport.v1.DaemonService.AddService:input_type -> kubeport.v1.AddServiceRequest
+	9,  // 10: kubeport.v1.DaemonService.RemoveService:input_type -> kubeport.v1.RemoveServiceRequest
+	11, // 11: kubeport.v1.DaemonService.Reload:input_type -> kubeport.v1.ReloadRequest
+	13, // 12: kubeport.v1.DaemonService.Apply:input_type -> kubeport.v1.ApplyRequest
+	4,  // 13: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
+	6,  // 14: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
+	8,  // 15: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
+	10, // 16: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
+	12, // 17: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
+	14, // 18: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
+	13, // [13:19] is the sub-list for method output_type
+	7,  // [7:13] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_kubeport_v1_daemon_proto_init() }
@@ -522,7 +1042,7 @@ func file_kubeport_v1_daemon_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kubeport_v1_daemon_proto_rawDesc), len(file_kubeport_v1_daemon_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   6,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

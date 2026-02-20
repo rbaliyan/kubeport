@@ -8,17 +8,20 @@ import (
 	"strings"
 	"time"
 
+	version "github.com/rbaliyan/go-version"
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 
 // JSON output types for --json flag.
 type statusOutput struct {
-	Running   bool                  `json:"running"`
-	Context   string                `json:"context,omitempty"`
-	Namespace string                `json:"namespace,omitempty"`
-	Config    string                `json:"config,omitempty"`
-	Forwards  []forwardStatusOutput `json:"forwards,omitempty"`
+	Running       bool                  `json:"running"`
+	CLIVersion    string                `json:"cli_version,omitempty"`
+	DaemonVersion string                `json:"daemon_version,omitempty"`
+	Context       string                `json:"context,omitempty"`
+	Namespace     string                `json:"namespace,omitempty"`
+	Config        string                `json:"config,omitempty"`
+	Forwards      []forwardStatusOutput `json:"forwards,omitempty"`
 }
 
 type forwardStatusOutput struct {
@@ -30,6 +33,7 @@ type forwardStatusOutput struct {
 	Namespace  string `json:"namespace,omitempty"`
 	Restarts   int    `json:"restarts,omitempty"`
 	Error      string `json:"error,omitempty"`
+	NextRetry  string `json:"next_retry,omitempty"`
 }
 
 func (a *app) cmdStatus() {
@@ -64,12 +68,17 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 		return
 	}
 
+	cliVer := version.Get().Raw
+	daemonVer := resp.Version
+
 	if a.statusJSON {
 		out := statusOutput{
-			Running:   true,
-			Context:   resp.Context,
-			Namespace: resp.Namespace,
-			Config:    a.configFile,
+			Running:       true,
+			CLIVersion:    cliVer,
+			DaemonVersion: daemonVer,
+			Context:       resp.Context,
+			Namespace:     resp.Namespace,
+			Config:        a.configFile,
 		}
 		for _, fw := range resp.Forwards {
 			out.Forwards = append(out.Forwards, forwardFromProto(fw))
@@ -80,6 +89,13 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 
 	fmt.Printf("%sProxy Status%s\n\n", colorCyan, colorReset)
 	fmt.Printf("Status: %sRunning%s (gRPC)\n", colorGreen, colorReset)
+	if cliVer != "" || daemonVer != "" {
+		fmt.Printf("\nCLI version:    %s\n", cliVer)
+		fmt.Printf("Daemon version: %s\n", daemonVer)
+		if cliVer != "" && daemonVer != "" && cliVer != daemonVer {
+			fmt.Printf("%sWarning: CLI and daemon versions differ — consider restarting the daemon%s\n", colorYellow, colorReset)
+		}
+	}
 	fmt.Printf("\nContext:   %s\n", resp.Context)
 	fmt.Printf("Namespace: %s\n", resp.Namespace)
 	if a.configFile != "" {
@@ -163,7 +179,7 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 	if target == "" {
 		target = svc.GetPod()
 	}
-	return forwardStatusOutput{
+	out := forwardStatusOutput{
 		Name:       svc.GetName(),
 		State:      strings.TrimPrefix(strings.ToLower(fw.State.String()), "forward_state_"),
 		LocalPort:  int(fw.ActualPort),
@@ -173,6 +189,10 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 		Restarts:   int(fw.Restarts),
 		Error:      fw.Error,
 	}
+	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
+		out.NextRetry = fw.NextRetry.AsTime().Format(time.RFC3339)
+	}
+	return out
 }
 
 func (a *app) writeJSON(v any) {
@@ -230,5 +250,14 @@ func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
 
 	if fw.Error != "" {
 		fmt.Printf("         %sERROR: %s%s\n", colorRed, fw.Error, colorReset)
+	}
+
+	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
+		remaining := time.Until(fw.NextRetry.AsTime())
+		if remaining > 0 {
+			fmt.Printf("         Reconnecting in %s\n", remaining.Round(time.Second))
+		} else {
+			fmt.Printf("         Reconnecting now\n")
+		}
 	}
 }

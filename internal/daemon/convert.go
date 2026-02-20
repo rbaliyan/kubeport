@@ -2,6 +2,7 @@ package daemon
 
 import (
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
+	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/proxy"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -12,7 +13,7 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		errStr = fs.Error.Error()
 	}
 
-	return &kubeportv1.ForwardStatusProto{
+	proto := &kubeportv1.ForwardStatusProto{
 		Service: &kubeportv1.ServiceInfo{
 			Name:       fs.Service.Name,
 			Service:    fs.Service.Service,
@@ -27,6 +28,21 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		LastStart:  timestamppb.New(fs.LastStart),
 		Connected:  fs.Connected,
 		ActualPort: int32(fs.ActualPort),
+	}
+	if !fs.NextRetry.IsZero() {
+		proto.NextRetry = timestamppb.New(fs.NextRetry)
+	}
+	return proto
+}
+
+func serviceInfoToConfig(si *kubeportv1.ServiceInfo) config.ServiceConfig {
+	return config.ServiceConfig{
+		Name:       si.Name,
+		Service:    si.Service,
+		Pod:        si.Pod,
+		LocalPort:  int(si.LocalPort),
+		RemotePort: int(si.RemotePort),
+		Namespace:  si.Namespace,
 	}
 }
 
