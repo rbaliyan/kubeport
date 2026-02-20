@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -90,6 +91,14 @@ func (a *app) cmdAdd(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: --remote-port is required\n")
 		os.Exit(1)
 	}
+	if localPort < 0 || localPort > math.MaxUint16 {
+		fmt.Fprintf(os.Stderr, "Error: --local-port must be 0-%d\n", math.MaxUint16)
+		os.Exit(1)
+	}
+	if remotePort < 0 || remotePort > math.MaxUint16 {
+		fmt.Fprintf(os.Stderr, "Error: --remote-port must be 1-%d\n", math.MaxUint16)
+		os.Exit(1)
+	}
 
 	dc, err := dialDaemon(a.socketPath())
 	if err != nil {
@@ -100,10 +109,7 @@ func (a *app) cmdAdd(args []string) {
 		fmt.Fprintf(os.Stderr, "Proxy is not running\n")
 		os.Exit(1)
 	}
-	defer dc.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
 	resp, err := dc.client.AddService(ctx, &kubeportv1.AddServiceRequest{
 		Service: &kubeportv1.ServiceInfo{
 			Name:       name,
@@ -116,6 +122,8 @@ func (a *app) cmdAdd(args []string) {
 		Persist: persist,
 	})
 	cancel()
+	dc.Close()
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

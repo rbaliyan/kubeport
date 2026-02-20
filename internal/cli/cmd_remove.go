@@ -45,15 +45,14 @@ func (a *app) cmdRemove(args []string) {
 		fmt.Fprintf(os.Stderr, "Proxy is not running\n")
 		os.Exit(1)
 	}
-	defer dc.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	resp, err := dc.client.RemoveService(ctx, &kubeportv1.RemoveServiceRequest{
 		Name:    name,
 		Persist: persist,
 	})
+	cancel()
+	dc.Close()
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

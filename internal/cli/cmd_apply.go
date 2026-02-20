@@ -68,8 +68,6 @@ func (a *app) cmdApply(args []string) {
 		fmt.Fprintf(os.Stderr, "Proxy is not running\n")
 		os.Exit(1)
 	}
-	defer dc.Close()
-
 	// Convert to proto ServiceInfo
 	protoServices := make([]*kubeportv1.ServiceInfo, 0, len(services))
 	for _, svc := range services {
@@ -84,12 +82,13 @@ func (a *app) cmdApply(args []string) {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
 	resp, err := dc.client.Apply(ctx, &kubeportv1.ApplyRequest{
 		Services: protoServices,
 		Merge:    merge,
 	})
 	cancel()
+	dc.Close()
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

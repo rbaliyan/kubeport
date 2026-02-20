@@ -19,12 +19,11 @@ func (a *app) cmdReload() {
 		fmt.Fprintf(os.Stderr, "Proxy is not running\n")
 		os.Exit(1)
 	}
-	defer dc.Close()
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-
 	resp, err := dc.client.Reload(ctx, &kubeportv1.ReloadRequest{})
 	cancel()
+	dc.Close()
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
