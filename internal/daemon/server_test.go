@@ -14,7 +14,9 @@ import (
 	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/proxy"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 // mockSupervisor implements the Supervisor interface for testing.
@@ -306,7 +308,7 @@ func TestServer_GRPCIntegration(t *testing.T) {
 
 	// Create and start server
 	srv := NewServer(mgr, cfg)
-	srv.socketPath = socketPath
+	srv.listenCfg = config.ListenConfig{Mode: config.ListenUnix, Address: socketPath}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -595,4 +597,122 @@ func TestServer_Apply_EmptyServices(t *testing.T) {
 	if resp.Error == "" {
 		t.Fatal("expected error message")
 	}
+}
+
+func TestServer_TCPIntegration(t *testing.T) {
+	const apiKey = "test-secret-key"
+
+	mgr := &mockSupervisor{
+		statuses: []proxy.ForwardStatus{
+			{
+				Service: config.ServiceConfig{
+					Name:       "web",
+					Service:    "web-svc",
+					LocalPort:  8080,
+					RemotePort: 80,
+				},
+				State:      proxy.StateRunning,
+				Connected:  true,
+				ActualPort: 8080,
+			},
+		},
+	}
+
+	cfg := &config.Config{
+		Context:   "tcp-ctx",
+		Namespace: "tcp-ns",
+		Listen:    "tcp://127.0.0.1:0",
+		APIKey:    apiKey,
+	}
+
+	srv := NewServer(mgr, cfg)
+
+	// Use an ephemeral port: start a listener ourselves, get the port, close it,
+	// then let the server bind to that port.
+	tmpLis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := tmpLis.Addr().String()
+	tmpLis.Close()
+
+	srv.listenCfg = config.ListenConfig{Mode: config.ListenTCP, Address: addr}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start()
+	}()
+
+	// Wait for server to be ready
+	var conn *grpc.ClientConn
+	for i := 0; i < 50; i++ {
+		time.Sleep(50 * time.Millisecond)
+		conn, err = grpc.NewClient(
+			addr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithUnaryInterceptor(APIKeyClientInterceptor(apiKey)),
+		)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		t.Fatalf("dial error: %v", err)
+	}
+	defer conn.Close()
+
+	client := kubeportv1.NewDaemonServiceClient(conn)
+
+	// Test with correct key
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	resp, err := client.Status(ctx, &kubeportv1.StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status RPC error: %v", err)
+	}
+	if resp.Context != "tcp-ctx" {
+		t.Fatalf("expected context 'tcp-ctx', got %s", resp.Context)
+	}
+
+	// Test with wrong key
+	wrongConn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(APIKeyClientInterceptor("wrong-key")),
+	)
+	if err != nil {
+		t.Fatalf("dial error: %v", err)
+	}
+	defer wrongConn.Close()
+
+	wrongClient := kubeportv1.NewDaemonServiceClient(wrongConn)
+	_, err = wrongClient.Status(ctx, &kubeportv1.StatusRequest{})
+	if err == nil {
+		t.Fatal("expected error with wrong API key")
+	}
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", err)
+	}
+
+	// Test with no key
+	noAuthConn, err := grpc.NewClient(
+		addr,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatalf("dial error: %v", err)
+	}
+	defer noAuthConn.Close()
+
+	noAuthClient := kubeportv1.NewDaemonServiceClient(noAuthConn)
+	_, err = noAuthClient.Status(ctx, &kubeportv1.StatusRequest{})
+	if err == nil {
+		t.Fatal("expected error with no API key")
+	}
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.Unauthenticated {
+		t.Fatalf("expected Unauthenticated, got %v", err)
+	}
+
+	srv.Shutdown()
 }

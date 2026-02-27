@@ -42,6 +42,8 @@ type app struct {
 	startTimeout    time.Duration
 	statusJSON      bool
 	statusSort      bool
+	remoteHost      string
+	apiKey          string
 }
 
 // Execute runs the CLI with the given context.
@@ -138,6 +140,26 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 			}
 			a.startTimeout = d
 			a.startWait = true
+		case arg == "--host":
+			if i+1 < len(args) {
+				i++
+				a.remoteHost = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a host:port value\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--host="):
+			a.remoteHost = strings.TrimPrefix(arg, "--host=")
+		case arg == "--api-key":
+			if i+1 < len(args) {
+				i++
+				a.apiKey = args[i]
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--api-key="):
+			a.apiKey = strings.TrimPrefix(arg, "--api-key=")
 		case arg == "--help" || arg == "-h":
 			a.cmdHelp()
 			os.Exit(0)
@@ -392,6 +414,44 @@ func (a *app) socketPath() string {
 		return a.cfg.SocketFile()
 	}
 	return ".kubeport.sock"
+}
+
+// resolveHost returns the remote host from flag, then config.
+func (a *app) resolveHost() string {
+	if a.remoteHost != "" {
+		return a.remoteHost
+	}
+	if a.cfg != nil && a.cfg.Host != "" {
+		return a.cfg.Host
+	}
+	return ""
+}
+
+// resolveAPIKey returns the API key from flag, env, then config.
+func (a *app) resolveAPIKey() string {
+	if a.apiKey != "" {
+		return a.apiKey
+	}
+	if v := os.Getenv("KUBEPORT_API_KEY"); v != "" {
+		return v
+	}
+	if a.cfg != nil {
+		return a.cfg.APIKey
+	}
+	return ""
+}
+
+// dialTarget connects to the daemon via TCP (if --host is set) or Unix socket.
+// Returns (nil, nil) when using Unix mode and the socket does not exist.
+func (a *app) dialTarget() (*daemonClient, error) {
+	if host := a.resolveHost(); host != "" {
+		key := a.resolveAPIKey()
+		if key == "" {
+			return nil, fmt.Errorf("--api-key (or KUBEPORT_API_KEY) is required when using --host")
+		}
+		return dialDaemonTCP(host, key)
+	}
+	return dialDaemon(a.socketPath())
 }
 
 func (a *app) isRunning() (int, bool) {
