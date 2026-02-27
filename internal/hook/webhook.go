@@ -50,6 +50,8 @@ func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
 		payload := map[string]any{
 			"event":       event.Type.String(),
 			"service":     event.Service,
+			"parent_name": event.ParentName,
+			"port_name":   event.PortName,
 			"local_port":  event.LocalPort,
 			"remote_port": event.RemotePort,
 			"pod":         event.PodName,

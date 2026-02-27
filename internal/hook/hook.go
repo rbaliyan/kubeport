@@ -77,6 +77,7 @@ type Event struct {
 	Time       time.Time
 	Service    string // Service name from config (empty for manager events)
 	ParentName string // Parent service name for multi-port expanded forwards (empty otherwise)
+	PortName   string // Kubernetes port name for multi-port expanded forwards (empty otherwise)
 	LocalPort  int    // Actual local port (0 if not yet assigned)
 	RemotePort int    // Configured remote port
 	PodName    string // Resolved pod name (empty if not yet resolved)

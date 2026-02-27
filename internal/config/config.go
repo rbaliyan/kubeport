@@ -137,22 +137,25 @@ func (p PortsConfig) MarshalYAML() (interface{}, error) {
 	return p.Selectors, nil
 }
 
-// UnmarshalTOML implements custom TOML unmarshaling for PortsConfig.
-func (p *PortsConfig) UnmarshalTOML(data any) error {
+// parsePortsFromRaw converts a raw TOML-decoded value into a PortsConfig.
+// Used by the TOML decoding path since go-toml/v2 does not support the
+// UnmarshalTOML(any) interface.
+func parsePortsFromRaw(data any) (PortsConfig, error) {
+	var p PortsConfig
 	switch v := data.(type) {
 	case string:
 		if v == "all" {
 			p.All = true
-			return nil
+			return p, nil
 		}
-		return fmt.Errorf("invalid ports value %q: expected \"all\" or a list", v)
+		return p, fmt.Errorf("invalid ports value %q: expected \"all\" or a list", v)
 	case []any:
 		for _, item := range v {
 			switch elem := item.(type) {
 			case string:
 				if elem == "all" {
 					p.All = true
-					return nil
+					return p, nil
 				}
 				p.Selectors = append(p.Selectors, PortSelector{Name: elem})
 			case map[string]any:
@@ -168,12 +171,12 @@ func (p *PortsConfig) UnmarshalTOML(data any) error {
 				}
 				p.Selectors = append(p.Selectors, ps)
 			default:
-				return fmt.Errorf("invalid port selector: expected string or object")
+				return p, fmt.Errorf("invalid port selector: expected string or object")
 			}
 		}
-		return nil
+		return p, nil
 	default:
-		return fmt.Errorf("ports must be \"all\" or a list")
+		return p, fmt.Errorf("ports must be \"all\" or a list")
 	}
 }
 
@@ -373,7 +376,7 @@ func loadRaw(path string) (*Config, error) {
 
 	switch format {
 	case FormatTOML:
-		if err := toml.Unmarshal(data, cfg); err != nil {
+		if err := unmarshalTOML(data, cfg); err != nil {
 			return nil, fmt.Errorf("parse config %s: %w", path, err)
 		}
 	default:
@@ -386,6 +389,122 @@ func loadRaw(path string) (*Config, error) {
 	cfg.format = format
 
 	return cfg, nil
+}
+
+// serviceConfigTOML is a TOML-specific intermediate struct where Ports is decoded
+// as a raw value (string or array) since go-toml/v2 does not support custom
+// UnmarshalTOML(any) interfaces.
+type serviceConfigTOML struct {
+	Name            string   `toml:"name"`
+	Service         string   `toml:"service,omitempty"`
+	Pod             string   `toml:"pod,omitempty"`
+	LocalPort       int      `toml:"local_port,omitempty"`
+	RemotePort      int      `toml:"remote_port,omitempty"`
+	Namespace       string   `toml:"namespace,omitempty"`
+	Ports           any      `toml:"ports,omitempty"`
+	ExcludePorts    []string `toml:"exclude_ports,omitempty"`
+	LocalPortOffset int      `toml:"local_port_offset,omitempty"`
+}
+
+// configTOML is a TOML-specific intermediate struct for decoding.
+type configTOML struct {
+	Context     string             `toml:"context"`
+	Namespace   string             `toml:"namespace"`
+	LogFilePath string             `toml:"log_file,omitempty"`
+	Listen      string             `toml:"listen,omitempty"`
+	APIKey      string             `toml:"api_key,omitempty"`
+	Host        string             `toml:"host,omitempty"`
+	Services    []serviceConfigTOML `toml:"services"`
+	Hooks       []HookConfig       `toml:"hooks,omitempty"`
+	Supervisor  SupervisorConfig   `toml:"supervisor,omitempty"`
+}
+
+// unmarshalTOML decodes TOML data into a Config, handling the polymorphic ports field.
+func unmarshalTOML(data []byte, cfg *Config) error {
+	var raw configTOML
+	if err := toml.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	cfg.Context = raw.Context
+	cfg.Namespace = raw.Namespace
+	cfg.LogFilePath = raw.LogFilePath
+	cfg.Listen = raw.Listen
+	cfg.APIKey = raw.APIKey
+	cfg.Host = raw.Host
+	cfg.Hooks = raw.Hooks
+	cfg.Supervisor = raw.Supervisor
+
+	cfg.Services = make([]ServiceConfig, len(raw.Services))
+	for i, rs := range raw.Services {
+		cfg.Services[i] = ServiceConfig{
+			Name:            rs.Name,
+			Service:         rs.Service,
+			Pod:             rs.Pod,
+			LocalPort:       rs.LocalPort,
+			RemotePort:      rs.RemotePort,
+			Namespace:       rs.Namespace,
+			ExcludePorts:    rs.ExcludePorts,
+			LocalPortOffset: rs.LocalPortOffset,
+		}
+		if rs.Ports != nil {
+			ports, err := parsePortsFromRaw(rs.Ports)
+			if err != nil {
+				return fmt.Errorf("service %q: %w", rs.Name, err)
+			}
+			cfg.Services[i].Ports = ports
+		}
+	}
+	return nil
+}
+
+// marshalTOML converts a Config to TOML bytes, handling the polymorphic ports field.
+func marshalTOML(c *Config) ([]byte, error) {
+	raw := configTOML{
+		Context:     c.Context,
+		Namespace:   c.Namespace,
+		LogFilePath: c.LogFilePath,
+		Listen:      c.Listen,
+		APIKey:      c.APIKey,
+		Host:        c.Host,
+		Hooks:       c.Hooks,
+		Supervisor:  c.Supervisor,
+		Services:    make([]serviceConfigTOML, len(c.Services)),
+	}
+	for i, svc := range c.Services {
+		raw.Services[i] = serviceConfigTOML{
+			Name:            svc.Name,
+			Service:         svc.Service,
+			Pod:             svc.Pod,
+			LocalPort:       svc.LocalPort,
+			RemotePort:      svc.RemotePort,
+			Namespace:       svc.Namespace,
+			ExcludePorts:    svc.ExcludePorts,
+			LocalPortOffset: svc.LocalPortOffset,
+		}
+		if svc.Ports.All {
+			raw.Services[i].Ports = "all"
+		} else if len(svc.Ports.Selectors) > 0 {
+			// Check if all selectors are simple names
+			allSimple := true
+			for _, s := range svc.Ports.Selectors {
+				if s.Port != 0 || s.LocalPort != 0 {
+					allSimple = false
+					break
+				}
+			}
+			if allSimple {
+				names := make([]string, len(svc.Ports.Selectors))
+				for j, s := range svc.Ports.Selectors {
+					names[j] = s.Name
+				}
+				raw.Services[i].Ports = names
+			} else {
+				raw.Services[i].Ports = svc.Ports.Selectors
+			}
+		}
+	}
+	return toml.Marshal(raw)
 }
 
 // Save writes the config back to the file it was loaded from, in the same format.
@@ -403,7 +522,7 @@ func (c *Config) SaveTo(path string, format Format) error {
 
 	switch format {
 	case FormatTOML:
-		data, err = toml.Marshal(c)
+		data, err = marshalTOML(c)
 	default:
 		data, err = yaml.Marshal(c)
 	}
@@ -544,6 +663,18 @@ func ValidateService(svc ServiceConfig) error {
 		if svc.LocalPortOffset < 0 {
 			return fmt.Errorf("service %q: local_port_offset must be non-negative", svc.Name)
 		}
+		// Validate individual port selectors
+		for j, sel := range svc.Ports.Selectors {
+			if sel.Name == "" && sel.Port == 0 {
+				return fmt.Errorf("service %q: port selector [%d] must have name or port", svc.Name, j)
+			}
+			if sel.Port < 0 || sel.Port > 65535 {
+				return fmt.Errorf("service %q: port selector [%d] invalid port %d", svc.Name, j, sel.Port)
+			}
+			if sel.LocalPort < 0 || sel.LocalPort > 65535 {
+				return fmt.Errorf("service %q: port selector [%d] invalid local_port %d", svc.Name, j, sel.LocalPort)
+			}
+		}
 	} else {
 		// Legacy mode: multi-port fields must not be set
 		if len(svc.ExcludePorts) > 0 {
@@ -570,49 +701,15 @@ func (c *Config) Validate() error {
 
 	seen := make(map[int]string)
 	for i, svc := range c.Services {
-		if svc.Service == "" && svc.Pod == "" {
-			return fmt.Errorf("service[%d] (%s): must set either 'service' or 'pod'", i, svc.Name)
+		if err := ValidateService(svc); err != nil {
+			return fmt.Errorf("service[%d]: %w", i, err)
 		}
-		if svc.Service != "" && svc.Pod != "" {
-			return fmt.Errorf("service[%d] (%s): set 'service' or 'pod', not both", i, svc.Name)
-		}
-
-		if svc.IsMultiPort() {
-			// Multi-port mode: RemotePort and LocalPort must be zero
-			if svc.RemotePort != 0 {
-				return fmt.Errorf("service[%d] (%s): remote_port must not be set in multi-port mode", i, svc.Name)
+		// Cross-service duplicate local port check (only for legacy single-port)
+		if !svc.IsMultiPort() && svc.LocalPort != 0 {
+			if prev, ok := seen[svc.LocalPort]; ok {
+				return fmt.Errorf("service[%d] (%s): local_port %d already used by %s", i, svc.Name, svc.LocalPort, prev)
 			}
-			if svc.LocalPort != 0 {
-				return fmt.Errorf("service[%d] (%s): local_port must not be set in multi-port mode", i, svc.Name)
-			}
-			if len(svc.ExcludePorts) > 0 && !svc.Ports.All {
-				return fmt.Errorf("service[%d] (%s): exclude_ports can only be used with ports: all", i, svc.Name)
-			}
-			if svc.LocalPortOffset < 0 {
-				return fmt.Errorf("service[%d] (%s): local_port_offset must be non-negative", i, svc.Name)
-			}
-			// Skip local port duplicate checking for multi-port (actual ports unknown until resolution)
-		} else {
-			if len(svc.ExcludePorts) > 0 {
-				return fmt.Errorf("service[%d] (%s): exclude_ports requires multi-port mode", i, svc.Name)
-			}
-			if svc.LocalPortOffset != 0 {
-				return fmt.Errorf("service[%d] (%s): local_port_offset requires multi-port mode", i, svc.Name)
-			}
-			// local_port 0 means dynamic port assignment by the OS
-			if svc.LocalPort < 0 || svc.LocalPort > 65535 {
-				return fmt.Errorf("service[%d] (%s): invalid local_port %d", i, svc.Name, svc.LocalPort)
-			}
-			if svc.RemotePort <= 0 || svc.RemotePort > 65535 {
-				return fmt.Errorf("service[%d] (%s): invalid remote_port %d", i, svc.Name, svc.RemotePort)
-			}
-			// Skip duplicate check for dynamic ports (0)
-			if svc.LocalPort != 0 {
-				if prev, ok := seen[svc.LocalPort]; ok {
-					return fmt.Errorf("service[%d] (%s): local_port %d already used by %s", i, svc.Name, svc.LocalPort, prev)
-				}
-				seen[svc.LocalPort] = svc.Name
-			}
+			seen[svc.LocalPort] = svc.Name
 		}
 	}
 

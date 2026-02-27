@@ -41,7 +41,9 @@ Or copy one of the examples in the repository:
 
 ### Service Fields
 
-Each entry in `services` defines one port-forward:
+Each entry in `services` defines one or more port-forwards. There are two modes:
+
+**Single-port mode** (legacy) — specify `remote_port` and `local_port` explicitly:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -51,6 +53,20 @@ Each entry in `services` defines one port-forward:
 | `local_port` | int | yes | Local port to listen on. Use `0` for automatic assignment |
 | `remote_port` | int | yes | Port on the pod to forward to |
 | `namespace` | string | no | Override the top-level namespace for this service |
+
+**Multi-port mode** — automatically discover and forward multiple ports from a service:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | yes | Display name (expanded forwards are named `name/portname`) |
+| `service` | string | one of `service` or `pod` | Kubernetes Service name |
+| `pod` | string | one of `service` or `pod` | Specific pod name |
+| `ports` | string or list | yes | `"all"` to forward every port, or a list of port names/selectors |
+| `exclude_ports` | list | no | Port names to skip (only with `ports: all`) |
+| `local_port_offset` | int | no | Add this offset to each remote port to compute the local port |
+| `namespace` | string | no | Override the top-level namespace for this service |
+
+Multi-port mode is mutually exclusive with `remote_port`/`local_port`. When no local port is specified, each forwarded port defaults to the same number as the remote port.
 
 ### Supervisor Fields
 
@@ -93,6 +109,33 @@ services:
     local_port: 0          # OS picks an available port
     remote_port: 9090
 
+  # Multi-port: forward all ports from a service
+  - name: Platform
+    service: platform-svc
+    ports: all
+
+  # Multi-port: forward specific named ports
+  - name: My Backend
+    service: backend-svc
+    ports:
+      - http
+      - grpc
+
+  # Multi-port: named ports with local port overrides
+  - name: My Backend
+    service: backend-svc
+    ports:
+      - name: http
+        local_port: 8080
+      - name: grpc
+
+  # Multi-port: all ports except metrics, with offset
+  - name: Platform
+    service: platform-svc
+    ports: all
+    exclude_ports: [metrics]
+    local_port_offset: 10000
+
 supervisor:
   max_restarts: 10
   health_check_interval: 10s
@@ -123,6 +166,18 @@ service = "vault"
 local_port = 8200
 remote_port = 8200
 namespace = "vault"
+
+# Multi-port: forward all ports from a service
+[[services]]
+name = "Platform"
+service = "platform-svc"
+ports = "all"
+
+# Multi-port: specific named ports
+[[services]]
+name = "Backend"
+service = "backend-svc"
+ports = ["http", "grpc"]
 ```
 
 ## Environment Variables

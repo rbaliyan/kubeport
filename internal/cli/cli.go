@@ -416,11 +416,8 @@ func parseSvcFlag(s string) (config.ServiceConfig, error) {
 					return config.ServiceConfig{}, fmt.Errorf("invalid offset in --svc %q: %w", s, err)
 				}
 				svc.LocalPortOffset = offset
-			} else if isNumeric(parts[localIdx]) {
-				// Namespace in the 4th slot when no local-spec
-				svc.Namespace = parts[localIdx]
-				return svc, nil
 			} else {
+				// No offset prefix — treat as namespace in the 4th slot
 				svc.Namespace = parts[localIdx]
 				return svc, nil
 			}

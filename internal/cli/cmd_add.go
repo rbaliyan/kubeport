@@ -191,14 +191,15 @@ func (a *app) cmdAdd(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Service %q added", name)
-	if resp.ActualPort > 0 {
-		fmt.Printf(" (local port: %d)", resp.ActualPort)
+	if isMultiPort {
+		fmt.Printf("Service %q added (ports resolving, check 'kubeport status')\n", name)
+	} else {
+		fmt.Printf("Service %q added", name)
+		if resp.ActualPort > 0 {
+			fmt.Printf(" (local port: %d)", resp.ActualPort)
+		}
+		fmt.Println()
 	}
-	if len(resp.ActualPorts) > 0 {
-		fmt.Printf(" (ports: %v)", resp.ActualPorts)
-	}
-	fmt.Println()
 	if persist {
 		fmt.Println("Config file updated")
 	}

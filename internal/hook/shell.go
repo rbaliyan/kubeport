@@ -77,6 +77,8 @@ func eventEnv(e Event) []string {
 	env := []string{
 		"KUBEPORT_EVENT=" + e.Type.String(),
 		"KUBEPORT_SERVICE=" + sanitizeEnvValue(e.Service),
+		"KUBEPORT_PARENT_NAME=" + sanitizeEnvValue(e.ParentName),
+		"KUBEPORT_PORT_NAME=" + sanitizeEnvValue(e.PortName),
 		"KUBEPORT_LOCAL_PORT=" + strconv.Itoa(e.LocalPort),
 		"KUBEPORT_REMOTE_PORT=" + strconv.Itoa(e.RemotePort),
 		"KUBEPORT_POD=" + sanitizeEnvValue(e.PodName),

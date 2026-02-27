@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestValidate_NoServices(t *testing.T) {
@@ -831,6 +833,179 @@ func TestSaveAndReload_MultiPort(t *testing.T) {
 	}
 	if len(cfg2.Services[1].Ports.Selectors) != 2 {
 		t.Errorf("expected 2 selectors after round-trip, got %d", len(cfg2.Services[1].Ports.Selectors))
+	}
+}
+
+func TestLoad_MultiPort_TOML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.toml")
+	content := `context = "test"
+namespace = "default"
+
+[[services]]
+name = "api-all"
+service = "my-api"
+ports = "all"
+
+[[services]]
+name = "api-named"
+service = "my-api"
+ports = ["http", "grpc"]
+
+[[services]]
+name = "api-exclude"
+service = "my-api"
+ports = "all"
+exclude_ports = ["metrics"]
+local_port_offset = 10000
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Services) != 3 {
+		t.Fatalf("expected 3 services, got %d", len(cfg.Services))
+	}
+	if !cfg.Services[0].Ports.All {
+		t.Error("expected ports.All=true for api-all")
+	}
+	if len(cfg.Services[1].Ports.Selectors) != 2 {
+		t.Errorf("expected 2 selectors for api-named, got %d", len(cfg.Services[1].Ports.Selectors))
+	}
+	if !cfg.Services[2].Ports.All {
+		t.Error("expected ports.All=true for api-exclude")
+	}
+	if cfg.Services[2].LocalPortOffset != 10000 {
+		t.Errorf("expected offset 10000, got %d", cfg.Services[2].LocalPortOffset)
+	}
+}
+
+func TestSaveAndReload_MultiPort_TOML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.toml")
+
+	cfg := &Config{
+		Context:   "test",
+		Namespace: "default",
+		Services: []ServiceConfig{
+			{
+				Name:            "api",
+				Service:         "my-api",
+				Ports:           PortsConfig{All: true},
+				ExcludePorts:    []string{"metrics"},
+				LocalPortOffset: 10000,
+			},
+		},
+		filePath: path,
+		format:   FormatTOML,
+	}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save error: %v", err)
+	}
+
+	cfg2, err := Load(path)
+	if err != nil {
+		t.Fatalf("reload error: %v", err)
+	}
+
+	if !cfg2.Services[0].Ports.All {
+		t.Error("expected ports.All after TOML round-trip")
+	}
+	if cfg2.Services[0].LocalPortOffset != 10000 {
+		t.Errorf("expected offset 10000 after TOML round-trip, got %d", cfg2.Services[0].LocalPortOffset)
+	}
+}
+
+func TestPortsConfig_UnmarshalYAML_InvalidString(t *testing.T) {
+	var p PortsConfig
+	err := yaml.Unmarshal([]byte(`"invalid"`), &p)
+	if err == nil {
+		t.Fatal("expected error for invalid ports string")
+	}
+}
+
+func TestPortsConfig_UnmarshalYAML_InvalidType(t *testing.T) {
+	var p PortsConfig
+	err := yaml.Unmarshal([]byte(`123`), &p)
+	if err == nil {
+		t.Fatal("expected error for numeric ports value")
+	}
+}
+
+func TestPortsConfig_UnmarshalYAML_InvalidListItem(t *testing.T) {
+	var p PortsConfig
+	err := yaml.Unmarshal([]byte(`[123]`), &p)
+	if err == nil {
+		t.Fatal("expected error for non-string/non-object list item")
+	}
+}
+
+func TestValidate_MultiPort_NegativeOffset(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{All: true}, LocalPortOffset: -1},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for negative local_port_offset")
+	}
+}
+
+func TestValidate_MultiPort_SelectorWithPort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{
+				Selectors: []PortSelector{{Port: 8080}},
+			}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error for selector with port number: %v", err)
+	}
+}
+
+func TestValidate_MultiPort_SelectorEmptyNameAndPort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{
+				Selectors: []PortSelector{{Name: "", Port: 0}},
+			}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for selector with neither name nor port")
+	}
+}
+
+func TestValidate_MultiPort_SelectorInvalidPort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{
+				Selectors: []PortSelector{{Port: 70000}},
+			}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for selector with port > 65535")
+	}
+}
+
+func TestValidate_MultiPort_SelectorInvalidLocalPort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{
+				Selectors: []PortSelector{{Name: "http", LocalPort: -1}},
+			}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for selector with negative local_port")
 	}
 }
 

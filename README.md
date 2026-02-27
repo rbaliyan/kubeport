@@ -40,6 +40,7 @@ When a connection drops, kubeport detects it within seconds and reconnects autom
 - **Background daemon** — Runs as a background process; control it with simple CLI commands
 - **No kubectl required** — Uses the Kubernetes Go client directly; kubeport is a single self-contained binary
 - **Lifecycle hooks** — Run shell commands, exec binaries, or fire webhooks on connect/disconnect/failure events
+- **Multi-port auto-discovery** — Forward all ports from a service with `ports: all`, or pick specific named ports
 - **Dynamic ports** — Set `local_port: 0` and let the OS pick an available port
 - **Per-service namespaces** — Mix services from different namespaces in one config
 
@@ -87,6 +88,9 @@ services:
     pod: redis-0
     local_port: 6379
     remote_port: 6379
+  - name: Platform
+    service: platform-svc
+    ports: all              # forward every port the service exposes
 ```
 
 **3. Start:**
@@ -111,7 +115,8 @@ Run entirely from the command line:
 kubeport start --no-config \
   --context my-cluster \
   --svc "api:svc/my-api:80:8080" \
-  --svc "redis:pod/redis-0:6379:6379"
+  --svc "redis:pod/redis-0:6379:6379" \
+  --svc "platform:svc/platform-svc:all"
 ```
 
 ## Common Workflows

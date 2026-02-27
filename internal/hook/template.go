@@ -7,8 +7,8 @@ import (
 )
 
 // ExpandVars replaces ${VAR} template variables in a string with event data.
-// Supported variables: ${EVENT}, ${SERVICE}, ${PORT}, ${REMOTE_PORT}, ${POD},
-// ${RESTARTS}, ${ERROR}, ${TIME}.
+// Supported variables: ${EVENT}, ${SERVICE}, ${PARENT_NAME}, ${PORT_NAME},
+// ${PORT}, ${REMOTE_PORT}, ${POD}, ${RESTARTS}, ${ERROR}, ${TIME}.
 func ExpandVars(s string, e Event) string {
 	var errStr string
 	if e.Error != nil {
@@ -17,6 +17,8 @@ func ExpandVars(s string, e Event) string {
 	replacements := []struct{ old, new string }{
 		{"${EVENT}", e.Type.String()},
 		{"${SERVICE}", e.Service},
+		{"${PARENT_NAME}", e.ParentName},
+		{"${PORT_NAME}", e.PortName},
 		{"${PORT}", strconv.Itoa(e.LocalPort)},
 		{"${REMOTE_PORT}", strconv.Itoa(e.RemotePort)},
 		{"${POD}", e.PodName},
