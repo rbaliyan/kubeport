@@ -196,7 +196,21 @@ kubeport config show              # Display current config
 kubeport config validate          # Check config for errors
 kubeport config set context dev   # Set Kubernetes context
 kubeport config set namespace app # Set default namespace
-kubeport config add [options]     # Add a service
+kubeport config add [options]     # Add a service (single-port)
 kubeport config remove <name>     # Remove a service
 kubeport config path              # Print resolved config file path
+```
+
+### Adding multi-port services via CLI
+
+```bash
+# Forward all ports
+kubeport config add --name "Platform" --service platform-svc --ports all
+
+# Forward specific named ports
+kubeport config add --name "Backend" --service backend-svc --ports http,grpc
+
+# All ports except metrics, with local port offset
+kubeport config add --name "Platform" --service platform-svc \
+  --ports all --exclude-ports metrics --local-port-offset 10000
 ```

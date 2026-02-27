@@ -25,10 +25,11 @@ kubeport is a single binary that manages all your port-forwards in the backgroun
 
 ```
 $ kubeport status
-  SERVICE         STATUS       LOCAL     REMOTE    POD
-  My API          connected    :8080  →  :80       my-api-7d4b8c6f9-x2k4m
-  Redis           connected    :6379  →  :6379     redis-0
-  Vault           connected    :8200  →  :8200     vault-0
+  SERVICE           STATUS       LOCAL     REMOTE    POD
+  My API            connected    :8080  →  :80       my-api-7d4b8c6f9-x2k4m
+  Redis             connected    :6379  →  :6379     redis-0
+  Platform/http     connected    :80    →  :80       platform-7f8a9b-q4r2s
+  Platform/grpc     connected    :9090  →  :9090     platform-7f8a9b-q4r2s
 ```
 
 When a connection drops, kubeport detects it within seconds and reconnects automatically — with exponential backoff so it doesn't hammer your cluster.
@@ -146,6 +147,32 @@ kubeport remove "Postgres"
 ```bash
 kubeport reload
 ```
+
+### Forward all ports from a service
+
+Don't want to list every port? Let kubeport discover them:
+
+```yaml
+services:
+  - name: Platform
+    service: platform-svc
+    ports: all                   # forward every port the service exposes
+```
+
+Or pick specific named ports with optional local port overrides:
+
+```yaml
+services:
+  - name: Backend
+    service: backend-svc
+    ports:
+      - name: http
+        local_port: 8080
+      - name: grpc               # local_port defaults to the remote port
+    exclude_ports: []
+```
+
+Each discovered port gets its own supervised forward (`Platform/http`, `Platform/grpc`, etc.) with independent health checks and restart tracking. See the [configuration guide](docs/configuration.md) for all multi-port options.
 
 ### Get notified when things break
 
