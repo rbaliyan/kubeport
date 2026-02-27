@@ -1,8 +1,88 @@
 package cli
 
 import (
+	"os"
 	"testing"
 )
+
+func TestParseArgs_HostFlag(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantHost string
+	}{
+		{"--host with space", []string{"--host", "localhost:9090", "status"}, "localhost:9090"},
+		{"--host= form", []string{"--host=10.0.0.1:9090", "status"}, "10.0.0.1:9090"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &app{}
+			cmd, _ := a.parseArgs(tt.args)
+			if a.remoteHost != tt.wantHost {
+				t.Errorf("remoteHost = %q, want %q", a.remoteHost, tt.wantHost)
+			}
+			if cmd != "status" {
+				t.Errorf("command = %q, want 'status'", cmd)
+			}
+		})
+	}
+}
+
+func TestParseArgs_APIKeyFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantKey string
+	}{
+		{"--api-key with space", []string{"--api-key", "my-secret", "status"}, "my-secret"},
+		{"--api-key= form", []string{"--api-key=my-secret", "status"}, "my-secret"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := &app{}
+			a.parseArgs(tt.args)
+			if a.apiKey != tt.wantKey {
+				t.Errorf("apiKey = %q, want %q", a.apiKey, tt.wantKey)
+			}
+		})
+	}
+}
+
+func TestResolveAPIKey_Priority(t *testing.T) {
+	// Flag takes priority
+	a := &app{apiKey: "from-flag"}
+	t.Setenv("KUBEPORT_API_KEY", "from-env")
+	if got := a.resolveAPIKey(); got != "from-flag" {
+		t.Fatalf("expected from-flag, got %s", got)
+	}
+
+	// Env next
+	a2 := &app{}
+	t.Setenv("KUBEPORT_API_KEY", "from-env")
+	if got := a2.resolveAPIKey(); got != "from-env" {
+		t.Fatalf("expected from-env, got %s", got)
+	}
+
+	// Config last
+	os.Unsetenv("KUBEPORT_API_KEY")
+	a3 := &app{}
+	// resolveAPIKey without config returns empty
+	if got := a3.resolveAPIKey(); got != "" {
+		t.Fatalf("expected empty, got %s", got)
+	}
+}
+
+func TestResolveHost_Priority(t *testing.T) {
+	a := &app{remoteHost: "from-flag"}
+	if got := a.resolveHost(); got != "from-flag" {
+		t.Fatalf("expected from-flag, got %s", got)
+	}
+
+	a2 := &app{}
+	if got := a2.resolveHost(); got != "" {
+		t.Fatalf("expected empty, got %s", got)
+	}
+}
 
 func TestParseSvcFlag(t *testing.T) {
 	tests := []struct {

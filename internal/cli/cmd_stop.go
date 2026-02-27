@@ -14,7 +14,7 @@ import (
 
 func (a *app) cmdStop() {
 	// Try gRPC first
-	dc, err := dialDaemon(a.socketPath())
+	dc, err := a.dialTarget()
 	if dc != nil {
 		defer dc.Close()
 		a.cmdStopGRPC(dc)
@@ -49,11 +49,13 @@ func (a *app) cmdStopGRPC(dc *daemonClient) {
 		return
 	}
 
-	// Wait briefly for the daemon to actually exit
-	for i := 0; i < 10; i++ {
-		time.Sleep(500 * time.Millisecond)
-		if _, err := os.Stat(a.socketPath()); os.IsNotExist(err) {
-			break
+	// Wait briefly for the daemon to actually exit (Unix socket mode only)
+	if a.resolveHost() == "" {
+		for i := 0; i < 10; i++ {
+			time.Sleep(500 * time.Millisecond)
+			if _, err := os.Stat(a.socketPath()); os.IsNotExist(err) {
+				break
+			}
 		}
 	}
 

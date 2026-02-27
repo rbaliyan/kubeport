@@ -206,13 +206,111 @@ func TestSocketFile_Listen(t *testing.T) {
 
 func TestValidate_ListenInvalidScheme(t *testing.T) {
 	cfg := &Config{
-		Listen: "tcp://localhost:9090",
+		Listen: "http://localhost:9090",
 		Services: []ServiceConfig{
 			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
 		},
 	}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for unsupported listen scheme")
+	}
+}
+
+func TestValidate_ListenTCP_Valid(t *testing.T) {
+	cfg := &Config{
+		Listen: "tcp://0.0.0.0:9090",
+		APIKey: "test-secret",
+		Services: []ServiceConfig{
+			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_ListenTCP_MissingAPIKey(t *testing.T) {
+	cfg := &Config{
+		Listen: "tcp://0.0.0.0:9090",
+		Services: []ServiceConfig{
+			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when api_key missing with tcp://")
+	}
+}
+
+func TestValidate_ListenTCP_InvalidAddress(t *testing.T) {
+	cfg := &Config{
+		Listen: "tcp://not-a-valid-address",
+		APIKey: "test-secret",
+		Services: []ServiceConfig{
+			{Name: "web", Service: "web-svc", LocalPort: 8080, RemotePort: 80},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for invalid tcp address")
+	}
+}
+
+func TestListenAddress_TCP(t *testing.T) {
+	cfg := &Config{Listen: "tcp://0.0.0.0:9090"}
+	lc := cfg.ListenAddress()
+	if lc.Mode != ListenTCP {
+		t.Fatalf("expected ListenTCP, got %d", lc.Mode)
+	}
+	if lc.Address != "0.0.0.0:9090" {
+		t.Fatalf("expected 0.0.0.0:9090, got %s", lc.Address)
+	}
+}
+
+func TestListenAddress_Unix(t *testing.T) {
+	cfg := &Config{Listen: "sock:///tmp/custom.sock", filePath: "/home/user/kubeport.yaml"}
+	lc := cfg.ListenAddress()
+	if lc.Mode != ListenUnix {
+		t.Fatalf("expected ListenUnix, got %d", lc.Mode)
+	}
+	if lc.Address != "/tmp/custom.sock" {
+		t.Fatalf("expected /tmp/custom.sock, got %s", lc.Address)
+	}
+}
+
+func TestListenAddress_Default(t *testing.T) {
+	cfg := &Config{filePath: "/home/user/kubeport.yaml"}
+	lc := cfg.ListenAddress()
+	if lc.Mode != ListenUnix {
+		t.Fatalf("expected ListenUnix, got %d", lc.Mode)
+	}
+	if lc.Address != "/home/user/.kubeport.sock" {
+		t.Fatalf("expected /home/user/.kubeport.sock, got %s", lc.Address)
+	}
+}
+
+func TestLoad_APIKeyEnvOverride(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.yaml")
+	content := `context: test
+namespace: default
+services:
+  - name: web
+    service: web-svc
+    local_port: 8080
+    remote_port: 80
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("KUBEPORT_API_KEY", "env-secret")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.APIKey != "env-secret" {
+		t.Fatalf("expected env-secret, got %s", cfg.APIKey)
 	}
 }
 

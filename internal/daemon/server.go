@@ -27,41 +27,53 @@ type Supervisor interface {
 	Apply(services []config.ServiceConfig) (added, skipped int, warnings []string)
 }
 
-// Server wraps a gRPC server that exposes the DaemonService over a Unix domain socket.
+// Server wraps a gRPC server that exposes the DaemonService over a Unix domain socket or TCP.
 type Server struct {
 	kubeportv1.UnimplementedDaemonServiceServer
 
-	mgr        Supervisor
-	cfg        *config.Config
+	mgr       Supervisor
+	cfg       *config.Config
 	grpcServer *grpc.Server
-	socketPath string
+	listenCfg config.ListenConfig
+	apiKey    string
 }
 
 // NewServer creates a new daemon gRPC server.
 func NewServer(mgr Supervisor, cfg *config.Config) *Server {
 	return &Server{
-		mgr:        mgr,
-		cfg:        cfg,
-		socketPath: cfg.SocketFile(),
+		mgr:       mgr,
+		cfg:       cfg,
+		listenCfg: cfg.ListenAddress(),
+		apiKey:    cfg.APIKey,
 	}
 }
 
-// Start listens on the Unix domain socket and serves gRPC requests.
+// Start listens on the configured address and serves gRPC requests.
 // This should be called in a goroutine.
 func (s *Server) Start() error {
-	if err := CleanStaleSocket(s.socketPath); err != nil {
+	switch s.listenCfg.Mode {
+	case config.ListenTCP:
+		return s.startTCP()
+	default:
+		return s.startUnix()
+	}
+}
+
+func (s *Server) startUnix() error {
+	socketPath := s.listenCfg.Address
+	if err := CleanStaleSocket(socketPath); err != nil {
 		return err
 	}
 
-	lis, err := net.Listen("unix", s.socketPath)
+	lis, err := net.Listen("unix", socketPath)
 	if err != nil {
-		return fmt.Errorf("listen on %s: %w", s.socketPath, err)
+		return fmt.Errorf("listen on %s: %w", socketPath, err)
 	}
 
 	// Restrict socket to owner only (prevents other users from controlling daemon)
-	if err := os.Chmod(s.socketPath, 0600); err != nil {
+	if err := os.Chmod(socketPath, 0600); err != nil {
 		_ = lis.Close()
-		return fmt.Errorf("chmod socket %s: %w", s.socketPath, err)
+		return fmt.Errorf("chmod socket %s: %w", socketPath, err)
 	}
 
 	s.grpcServer = grpc.NewServer()
@@ -70,8 +82,20 @@ func (s *Server) Start() error {
 	return s.grpcServer.Serve(lis)
 }
 
+func (s *Server) startTCP() error {
+	lis, err := net.Listen("tcp", s.listenCfg.Address)
+	if err != nil {
+		return fmt.Errorf("listen on tcp %s: %w", s.listenCfg.Address, err)
+	}
+
+	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(apiKeyInterceptor(s.apiKey)))
+	kubeportv1.RegisterDaemonServiceServer(s.grpcServer, s)
+
+	return s.grpcServer.Serve(lis)
+}
+
 // Shutdown gracefully stops the gRPC server with a 5-second hard deadline,
-// then removes the socket file.
+// then removes the socket file (Unix mode only).
 func (s *Server) Shutdown() {
 	if s.grpcServer == nil {
 		return
@@ -89,7 +113,9 @@ func (s *Server) Shutdown() {
 		s.grpcServer.Stop()
 	}
 
-	_ = os.Remove(s.socketPath)
+	if s.listenCfg.Mode == config.ListenUnix {
+		_ = os.Remove(s.listenCfg.Address)
+	}
 }
 
 // Status implements DaemonService.Status.
