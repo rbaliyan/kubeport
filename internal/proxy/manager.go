@@ -684,17 +684,39 @@ func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.S
 		return "", 0, fmt.Errorf("list pods for service %s: %w", svc.Target(), err)
 	}
 
+	// Two-pass selection: prefer Ready pods, fall back to Running pods.
+	// Skip pods marked for deletion (e.g., during rolling updates).
+	var fallback *corev1.Pod
 	for i := range pods.Items {
-		if pods.Items[i].Status.Phase != corev1.PodRunning {
+		pod := &pods.Items[i]
+		if pod.Status.Phase != corev1.PodRunning {
 			continue
 		}
-		// Resolve named targetPort from the pod's container port definitions
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
+		if isPodReady(pod) {
+			if namedTargetPort != "" {
+				if resolved := resolveNamedPort(pod, namedTargetPort); resolved != 0 {
+					targetPort = resolved
+				}
+			}
+			return pod.Name, targetPort, nil
+		}
+		if fallback == nil {
+			fallback = pod
+		}
+	}
+
+	// No Ready pod found — use a Running (but not-yet-ready) pod as fallback.
+	// The port-forward may fail, but the supervisor will retry.
+	if fallback != nil {
 		if namedTargetPort != "" {
-			if resolved := resolveNamedPort(&pods.Items[i], namedTargetPort); resolved != 0 {
+			if resolved := resolveNamedPort(fallback, namedTargetPort); resolved != 0 {
 				targetPort = resolved
 			}
 		}
-		return pods.Items[i].Name, targetPort, nil
+		return fallback.Name, targetPort, nil
 	}
 
 	return "", 0, fmt.Errorf("no running pods for service %s (selector: %s)", svc.Target(), selector.String())
@@ -711,6 +733,16 @@ func resolveNamedPort(pod *corev1.Pod, portName string) int {
 		}
 	}
 	return 0
+}
+
+// isPodReady returns true if the pod has the PodReady condition set to True.
+func isPodReady(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady {
+			return c.Status == corev1.ConditionTrue
+		}
+	}
+	return false
 }
 
 // Stop terminates all port forwards.
