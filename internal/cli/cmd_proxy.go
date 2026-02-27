@@ -133,7 +133,13 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		})
 		dispatcher.Wait()
 	}()
-	_, _ = fmt.Fprintf(output, "gRPC server listening on %s\n", a.cfg.SocketFile())
+	listenCfg := a.cfg.ListenAddress()
+	switch listenCfg.Mode {
+	case config.ListenTCP:
+		_, _ = fmt.Fprintf(output, "gRPC server listening on tcp://%s\n", listenCfg.Address)
+	default:
+		_, _ = fmt.Fprintf(output, "gRPC server listening on %s\n", listenCfg.Address)
+	}
 
 	// Verify namespace access
 	if err := mgr.CheckNamespace(ctx); err != nil {

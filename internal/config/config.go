@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,20 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 )
+
+// ListenMode describes how the daemon listens for connections.
+type ListenMode int
+
+const (
+	ListenUnix ListenMode = iota
+	ListenTCP
+)
+
+// ListenConfig holds the resolved listen mode and address.
+type ListenConfig struct {
+	Mode    ListenMode
+	Address string
+}
 
 
 // Sentinel errors for common failure modes.
@@ -95,6 +110,8 @@ type Config struct {
 	Namespace   string           `yaml:"namespace" toml:"namespace"`
 	LogFilePath string           `yaml:"log_file,omitempty" toml:"log_file,omitempty"`
 	Listen      string           `yaml:"listen,omitempty" toml:"listen,omitempty"`
+	APIKey      string           `yaml:"api_key,omitempty" toml:"api_key,omitempty"`
+	Host        string           `yaml:"host,omitempty" toml:"host,omitempty"`
 	Services    []ServiceConfig  `yaml:"services" toml:"services"`
 	Hooks       []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
@@ -157,6 +174,15 @@ func (c *Config) SocketFile() string {
 	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.sock")
 }
 
+// ListenAddress returns the resolved listen configuration.
+// If Listen starts with "tcp://", mode is ListenTCP; otherwise ListenUnix.
+func (c *Config) ListenAddress() ListenConfig {
+	if addr, ok := strings.CutPrefix(c.Listen, "tcp://"); ok {
+		return ListenConfig{Mode: ListenTCP, Address: addr}
+	}
+	return ListenConfig{Mode: ListenUnix, Address: c.SocketFile()}
+}
+
 // detectFormat returns the format based on file extension.
 func detectFormat(path string) Format {
 	switch strings.ToLower(filepath.Ext(path)) {
@@ -180,6 +206,9 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("K8S_NAMESPACE"); v != "" {
 		cfg.Namespace = v
+	}
+	if v := os.Getenv("KUBEPORT_API_KEY"); v != "" {
+		cfg.APIKey = v
 	}
 
 	return cfg, nil
@@ -399,12 +428,22 @@ func (c *Config) Validate() error {
 
 	// Validate listen address
 	if c.Listen != "" {
-		path, ok := strings.CutPrefix(c.Listen, "sock://")
-		if !ok {
-			return fmt.Errorf("listen: unsupported scheme; must start with sock://")
-		}
-		if path == "" {
-			return fmt.Errorf("listen: empty path after sock://")
+		switch {
+		case strings.HasPrefix(c.Listen, "sock://"):
+			path, _ := strings.CutPrefix(c.Listen, "sock://")
+			if path == "" {
+				return fmt.Errorf("listen: empty path after sock://")
+			}
+		case strings.HasPrefix(c.Listen, "tcp://"):
+			addr, _ := strings.CutPrefix(c.Listen, "tcp://")
+			if _, _, err := net.SplitHostPort(addr); err != nil {
+				return fmt.Errorf("listen: invalid tcp address %q: %w", addr, err)
+			}
+			if c.APIKey == "" {
+				return fmt.Errorf("listen: api_key is required when using tcp:// listener")
+			}
+		default:
+			return fmt.Errorf("listen: unsupported scheme; must start with sock:// or tcp://")
 		}
 	}
 
