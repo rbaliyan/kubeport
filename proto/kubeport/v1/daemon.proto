@@ -28,6 +28,15 @@ message ServiceInfo {
   int32 local_port = 4;
   int32 remote_port = 5;
   string namespace = 6;
+  string parent_name = 7;  // non-empty for multi-port expanded forwards
+  string port_name = 8;    // Kubernetes port name
+}
+
+message PortSpec {
+  bool all = 1;
+  repeated string port_names = 2;
+  repeated string exclude_ports = 3;
+  int32 local_port_offset = 4;
 }
 
 message ForwardStatusProto {
@@ -55,11 +64,13 @@ message StopResponse { bool success = 1; }
 message AddServiceRequest {
   ServiceInfo service = 1;
   bool persist = 2;
+  PortSpec ports = 3;  // if set, multi-port mode
 }
 message AddServiceResponse {
   bool success = 1;
   string error = 2;
-  int32 actual_port = 3;
+  int32 actual_port = 3;            // legacy single-port
+  repeated int32 actual_ports = 4;  // multi-port
 }
 
 message RemoveServiceRequest {

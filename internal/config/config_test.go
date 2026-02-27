@@ -576,3 +576,272 @@ hooks:
 		t.Fatalf("expected 2 shell commands, got %d", len(h.Shell))
 	}
 }
+
+func TestIsMultiPort(t *testing.T) {
+	tests := []struct {
+		name string
+		svc  ServiceConfig
+		want bool
+	}{
+		{"legacy", ServiceConfig{RemotePort: 80}, false},
+		{"ports all", ServiceConfig{Ports: PortsConfig{All: true}}, true},
+		{"ports selectors", ServiceConfig{Ports: PortsConfig{Selectors: []PortSelector{{Name: "http"}}}}, true},
+		{"empty", ServiceConfig{}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.svc.IsMultiPort(); got != tt.want {
+				t.Errorf("IsMultiPort() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidate_MultiPort_All(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{All: true}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_MultiPort_Selectors(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{
+				Selectors: []PortSelector{{Name: "http"}, {Name: "grpc"}},
+			}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_MultiPort_RejectsRemotePort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", RemotePort: 80, Ports: PortsConfig{All: true}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when remote_port set in multi-port mode")
+	}
+}
+
+func TestValidate_MultiPort_RejectsLocalPort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", LocalPort: 8080, Ports: PortsConfig{All: true}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when local_port set in multi-port mode")
+	}
+}
+
+func TestValidate_MultiPort_ExcludePortsOnlyWithAll(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{
+				Selectors: []PortSelector{{Name: "http"}},
+			}, ExcludePorts: []string{"metrics"}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when exclude_ports used without ports: all")
+	}
+}
+
+func TestValidate_MultiPort_ExcludePortsWithAll(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", Ports: PortsConfig{All: true}, ExcludePorts: []string{"metrics"}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_Legacy_RejectsExcludePorts(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", RemotePort: 80, ExcludePorts: []string{"metrics"}},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when exclude_ports used in legacy mode")
+	}
+}
+
+func TestValidate_Legacy_RejectsLocalPortOffset(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "api", Service: "my-api", RemotePort: 80, LocalPortOffset: 10000},
+		},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when local_port_offset used in legacy mode")
+	}
+}
+
+func TestValidateService_MultiPort(t *testing.T) {
+	svc := ServiceConfig{
+		Name:    "api",
+		Service: "my-api",
+		Ports:   PortsConfig{All: true},
+	}
+	if err := ValidateService(svc); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateService_MultiPort_WithOffset(t *testing.T) {
+	svc := ServiceConfig{
+		Name:            "api",
+		Service:         "my-api",
+		Ports:           PortsConfig{All: true},
+		LocalPortOffset: 10000,
+	}
+	if err := ValidateService(svc); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoad_MultiPort_YAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.yaml")
+	content := `context: test
+namespace: default
+services:
+  - name: api-all
+    service: my-api
+    ports: all
+  - name: api-named
+    service: my-api
+    ports:
+      - http
+      - grpc
+  - name: api-detailed
+    service: my-api
+    ports:
+      - name: http
+        local_port: 8080
+      - name: grpc
+  - name: api-exclude
+    service: my-api
+    ports: all
+    exclude_ports: [metrics]
+    local_port_offset: 10000
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.Services) != 4 {
+		t.Fatalf("expected 4 services, got %d", len(cfg.Services))
+	}
+
+	// all
+	if !cfg.Services[0].Ports.All {
+		t.Error("expected ports.All=true for api-all")
+	}
+
+	// named
+	if len(cfg.Services[1].Ports.Selectors) != 2 {
+		t.Errorf("expected 2 selectors for api-named, got %d", len(cfg.Services[1].Ports.Selectors))
+	}
+	if cfg.Services[1].Ports.Selectors[0].Name != "http" {
+		t.Errorf("expected first selector name 'http', got %q", cfg.Services[1].Ports.Selectors[0].Name)
+	}
+
+	// detailed
+	if len(cfg.Services[2].Ports.Selectors) != 2 {
+		t.Errorf("expected 2 selectors for api-detailed, got %d", len(cfg.Services[2].Ports.Selectors))
+	}
+	if cfg.Services[2].Ports.Selectors[0].LocalPort != 8080 {
+		t.Errorf("expected first selector local_port 8080, got %d", cfg.Services[2].Ports.Selectors[0].LocalPort)
+	}
+
+	// exclude + offset
+	if !cfg.Services[3].Ports.All {
+		t.Error("expected ports.All=true for api-exclude")
+	}
+	if len(cfg.Services[3].ExcludePorts) != 1 || cfg.Services[3].ExcludePorts[0] != "metrics" {
+		t.Errorf("unexpected exclude_ports: %v", cfg.Services[3].ExcludePorts)
+	}
+	if cfg.Services[3].LocalPortOffset != 10000 {
+		t.Errorf("expected local_port_offset 10000, got %d", cfg.Services[3].LocalPortOffset)
+	}
+}
+
+func TestSaveAndReload_MultiPort(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.yaml")
+
+	cfg := &Config{
+		Context:   "test",
+		Namespace: "default",
+		Services: []ServiceConfig{
+			{
+				Name:    "api",
+				Service: "my-api",
+				Ports:   PortsConfig{All: true},
+				ExcludePorts: []string{"metrics"},
+				LocalPortOffset: 10000,
+			},
+			{
+				Name:    "web",
+				Service: "web-svc",
+				Ports: PortsConfig{
+					Selectors: []PortSelector{{Name: "http"}, {Name: "grpc"}},
+				},
+			},
+		},
+		filePath: path,
+		format:   FormatYAML,
+	}
+
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("save error: %v", err)
+	}
+
+	cfg2, err := Load(path)
+	if err != nil {
+		t.Fatalf("reload error: %v", err)
+	}
+
+	if len(cfg2.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(cfg2.Services))
+	}
+	if !cfg2.Services[0].Ports.All {
+		t.Error("expected ports.All after round-trip")
+	}
+	if cfg2.Services[0].LocalPortOffset != 10000 {
+		t.Errorf("expected offset 10000, got %d", cfg2.Services[0].LocalPortOffset)
+	}
+	if len(cfg2.Services[1].Ports.Selectors) != 2 {
+		t.Errorf("expected 2 selectors after round-trip, got %d", len(cfg2.Services[1].Ports.Selectors))
+	}
+}
+
+func TestValidate_MixedLegacyAndMultiPort(t *testing.T) {
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "redis", Service: "redis", LocalPort: 6379, RemotePort: 6379},
+			{Name: "api", Service: "my-api", Ports: PortsConfig{All: true}},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("unexpected error for mixed config: %v", err)
+	}
+}

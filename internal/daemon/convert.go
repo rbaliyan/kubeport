@@ -21,6 +21,8 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 			LocalPort:  int32(fs.Service.LocalPort),
 			RemotePort: int32(fs.Service.RemotePort),
 			Namespace:  fs.Service.Namespace,
+			ParentName: fs.Service.ParentName,
+			PortName:   fs.Service.PortName,
 		},
 		State:      convertState(fs.State),
 		Error:      errStr,
@@ -36,7 +38,7 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 }
 
 func serviceInfoToConfig(si *kubeportv1.ServiceInfo) config.ServiceConfig {
-	return config.ServiceConfig{
+	svc := config.ServiceConfig{
 		Name:       si.Name,
 		Service:    si.Service,
 		Pod:        si.Pod,
@@ -44,6 +46,18 @@ func serviceInfoToConfig(si *kubeportv1.ServiceInfo) config.ServiceConfig {
 		RemotePort: int(si.RemotePort),
 		Namespace:  si.Namespace,
 	}
+	return svc
+}
+
+func portSpecToConfig(ps *kubeportv1.PortSpec) (config.PortsConfig, []string, int) {
+	if ps == nil {
+		return config.PortsConfig{}, nil, 0
+	}
+	pc := config.PortsConfig{All: ps.All}
+	for _, name := range ps.PortNames {
+		pc.Selectors = append(pc.Selectors, config.PortSelector{Name: name})
+	}
+	return pc, ps.ExcludePorts, int(ps.LocalPortOffset)
 }
 
 func convertState(s proxy.ForwardState) kubeportv1.ForwardState {

@@ -46,14 +46,150 @@ const (
 	FormatTOML Format = "toml"
 )
 
+// PortSelector specifies a port to forward with optional local port override.
+type PortSelector struct {
+	Name      string `yaml:"name,omitempty" toml:"name,omitempty"`
+	Port      int    `yaml:"port,omitempty" toml:"port,omitempty"`
+	LocalPort int    `yaml:"local_port,omitempty" toml:"local_port,omitempty"`
+}
+
+// PortsConfig handles the polymorphic "ports" field.
+// Can be the string "all" or a list of PortSelector.
+type PortsConfig struct {
+	All       bool
+	Selectors []PortSelector
+}
+
+// IsSet returns true if the PortsConfig specifies any port selection.
+func (p PortsConfig) IsSet() bool {
+	return p.All || len(p.Selectors) > 0
+}
+
+// UnmarshalYAML implements custom YAML unmarshaling for PortsConfig.
+// Accepts: "all", ["http", "grpc"], or [{name: http, local_port: 8080}].
+func (p *PortsConfig) UnmarshalYAML(unmarshal func(any) error) error {
+	// Try string first ("all")
+	var s string
+	if err := unmarshal(&s); err == nil {
+		if s == "all" {
+			p.All = true
+			return nil
+		}
+		return fmt.Errorf("invalid ports value %q: expected \"all\" or a list", s)
+	}
+
+	// Try list of mixed items (strings or objects)
+	var raw []any
+	if err := unmarshal(&raw); err != nil {
+		return fmt.Errorf("ports must be \"all\" or a list of port selectors")
+	}
+
+	for _, item := range raw {
+		switch v := item.(type) {
+		case string:
+			p.Selectors = append(p.Selectors, PortSelector{Name: v})
+		case map[string]any:
+			ps := PortSelector{}
+			if name, ok := v["name"].(string); ok {
+				ps.Name = name
+			}
+			if port, ok := v["port"].(int); ok {
+				ps.Port = port
+			} else if port, ok := v["port"].(float64); ok {
+				ps.Port = int(port)
+			}
+			if lp, ok := v["local_port"].(int); ok {
+				ps.LocalPort = lp
+			} else if lp, ok := v["local_port"].(float64); ok {
+				ps.LocalPort = int(lp)
+			}
+			p.Selectors = append(p.Selectors, ps)
+		default:
+			return fmt.Errorf("invalid port selector: expected string or object")
+		}
+	}
+	return nil
+}
+
+// MarshalYAML implements custom YAML marshaling for PortsConfig.
+func (p PortsConfig) MarshalYAML() (interface{}, error) {
+	if p.All {
+		return "all", nil
+	}
+	if len(p.Selectors) == 0 {
+		return nil, nil
+	}
+	// If all selectors are name-only, emit as string list
+	allSimple := true
+	for _, s := range p.Selectors {
+		if s.Port != 0 || s.LocalPort != 0 {
+			allSimple = false
+			break
+		}
+	}
+	if allSimple {
+		names := make([]string, len(p.Selectors))
+		for i, s := range p.Selectors {
+			names[i] = s.Name
+		}
+		return names, nil
+	}
+	return p.Selectors, nil
+}
+
+// UnmarshalTOML implements custom TOML unmarshaling for PortsConfig.
+func (p *PortsConfig) UnmarshalTOML(data any) error {
+	switch v := data.(type) {
+	case string:
+		if v == "all" {
+			p.All = true
+			return nil
+		}
+		return fmt.Errorf("invalid ports value %q: expected \"all\" or a list", v)
+	case []any:
+		for _, item := range v {
+			switch elem := item.(type) {
+			case string:
+				if elem == "all" {
+					p.All = true
+					return nil
+				}
+				p.Selectors = append(p.Selectors, PortSelector{Name: elem})
+			case map[string]any:
+				ps := PortSelector{}
+				if name, ok := elem["name"].(string); ok {
+					ps.Name = name
+				}
+				if port, ok := elem["port"].(int64); ok {
+					ps.Port = int(port)
+				}
+				if lp, ok := elem["local_port"].(int64); ok {
+					ps.LocalPort = int(lp)
+				}
+				p.Selectors = append(p.Selectors, ps)
+			default:
+				return fmt.Errorf("invalid port selector: expected string or object")
+			}
+		}
+		return nil
+	default:
+		return fmt.Errorf("ports must be \"all\" or a list")
+	}
+}
+
 // ServiceConfig defines a Kubernetes service or pod to port-forward.
 type ServiceConfig struct {
-	Name       string `yaml:"name" toml:"name"`
-	Service    string `yaml:"service,omitempty" toml:"service,omitempty"`
-	Pod        string `yaml:"pod,omitempty" toml:"pod,omitempty"`
-	LocalPort  int    `yaml:"local_port" toml:"local_port"`
-	RemotePort int    `yaml:"remote_port" toml:"remote_port"`
-	Namespace  string `yaml:"namespace,omitempty" toml:"namespace,omitempty"`
+	Name            string      `yaml:"name" toml:"name"`
+	Service         string      `yaml:"service,omitempty" toml:"service,omitempty"`
+	Pod             string      `yaml:"pod,omitempty" toml:"pod,omitempty"`
+	LocalPort       int         `yaml:"local_port,omitempty" toml:"local_port,omitempty"`
+	RemotePort      int         `yaml:"remote_port,omitempty" toml:"remote_port,omitempty"`
+	Namespace       string      `yaml:"namespace,omitempty" toml:"namespace,omitempty"`
+	Ports           PortsConfig `yaml:"ports,omitempty" toml:"ports,omitempty"`
+	ExcludePorts    []string    `yaml:"exclude_ports,omitempty" toml:"exclude_ports,omitempty"`
+	LocalPortOffset int         `yaml:"local_port_offset,omitempty" toml:"local_port_offset,omitempty"`
+	ParentName      string      `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
+	PortName        string      `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 }
 
 // IsPod returns true if this config targets a pod directly.
@@ -67,6 +203,11 @@ func (s ServiceConfig) Target() string {
 		return s.Pod
 	}
 	return s.Service
+}
+
+// IsMultiPort returns true if this config uses multi-port mode.
+func (s ServiceConfig) IsMultiPort() bool {
+	return s.Ports.All || len(s.Ports.Selectors) > 0
 }
 
 // HookConfig defines a lifecycle hook.
@@ -387,11 +528,36 @@ func ValidateService(svc ServiceConfig) error {
 	if svc.Service != "" && svc.Pod != "" {
 		return fmt.Errorf("service %q: set 'service' or 'pod', not both", svc.Name)
 	}
-	if svc.LocalPort < 0 || svc.LocalPort > 65535 {
-		return fmt.Errorf("service %q: invalid local_port %d", svc.Name, svc.LocalPort)
-	}
-	if svc.RemotePort <= 0 || svc.RemotePort > 65535 {
-		return fmt.Errorf("service %q: invalid remote_port %d", svc.Name, svc.RemotePort)
+
+	if svc.IsMultiPort() {
+		// Multi-port mode: RemotePort and LocalPort must be zero
+		if svc.RemotePort != 0 {
+			return fmt.Errorf("service %q: remote_port must not be set in multi-port mode", svc.Name)
+		}
+		if svc.LocalPort != 0 {
+			return fmt.Errorf("service %q: local_port must not be set in multi-port mode", svc.Name)
+		}
+		// ExcludePorts only valid with ports: all
+		if len(svc.ExcludePorts) > 0 && !svc.Ports.All {
+			return fmt.Errorf("service %q: exclude_ports can only be used with ports: all", svc.Name)
+		}
+		if svc.LocalPortOffset < 0 {
+			return fmt.Errorf("service %q: local_port_offset must be non-negative", svc.Name)
+		}
+	} else {
+		// Legacy mode: multi-port fields must not be set
+		if len(svc.ExcludePorts) > 0 {
+			return fmt.Errorf("service %q: exclude_ports requires multi-port mode (set ports field)", svc.Name)
+		}
+		if svc.LocalPortOffset != 0 {
+			return fmt.Errorf("service %q: local_port_offset requires multi-port mode (set ports field)", svc.Name)
+		}
+		if svc.LocalPort < 0 || svc.LocalPort > 65535 {
+			return fmt.Errorf("service %q: invalid local_port %d", svc.Name, svc.LocalPort)
+		}
+		if svc.RemotePort <= 0 || svc.RemotePort > 65535 {
+			return fmt.Errorf("service %q: invalid remote_port %d", svc.Name, svc.RemotePort)
+		}
 	}
 	return nil
 }
@@ -410,19 +576,43 @@ func (c *Config) Validate() error {
 		if svc.Service != "" && svc.Pod != "" {
 			return fmt.Errorf("service[%d] (%s): set 'service' or 'pod', not both", i, svc.Name)
 		}
-		// local_port 0 means dynamic port assignment by the OS
-		if svc.LocalPort < 0 || svc.LocalPort > 65535 {
-			return fmt.Errorf("service[%d] (%s): invalid local_port %d", i, svc.Name, svc.LocalPort)
-		}
-		if svc.RemotePort <= 0 || svc.RemotePort > 65535 {
-			return fmt.Errorf("service[%d] (%s): invalid remote_port %d", i, svc.Name, svc.RemotePort)
-		}
-		// Skip duplicate check for dynamic ports (0)
-		if svc.LocalPort != 0 {
-			if prev, ok := seen[svc.LocalPort]; ok {
-				return fmt.Errorf("service[%d] (%s): local_port %d already used by %s", i, svc.Name, svc.LocalPort, prev)
+
+		if svc.IsMultiPort() {
+			// Multi-port mode: RemotePort and LocalPort must be zero
+			if svc.RemotePort != 0 {
+				return fmt.Errorf("service[%d] (%s): remote_port must not be set in multi-port mode", i, svc.Name)
 			}
-			seen[svc.LocalPort] = svc.Name
+			if svc.LocalPort != 0 {
+				return fmt.Errorf("service[%d] (%s): local_port must not be set in multi-port mode", i, svc.Name)
+			}
+			if len(svc.ExcludePorts) > 0 && !svc.Ports.All {
+				return fmt.Errorf("service[%d] (%s): exclude_ports can only be used with ports: all", i, svc.Name)
+			}
+			if svc.LocalPortOffset < 0 {
+				return fmt.Errorf("service[%d] (%s): local_port_offset must be non-negative", i, svc.Name)
+			}
+			// Skip local port duplicate checking for multi-port (actual ports unknown until resolution)
+		} else {
+			if len(svc.ExcludePorts) > 0 {
+				return fmt.Errorf("service[%d] (%s): exclude_ports requires multi-port mode", i, svc.Name)
+			}
+			if svc.LocalPortOffset != 0 {
+				return fmt.Errorf("service[%d] (%s): local_port_offset requires multi-port mode", i, svc.Name)
+			}
+			// local_port 0 means dynamic port assignment by the OS
+			if svc.LocalPort < 0 || svc.LocalPort > 65535 {
+				return fmt.Errorf("service[%d] (%s): invalid local_port %d", i, svc.Name, svc.LocalPort)
+			}
+			if svc.RemotePort <= 0 || svc.RemotePort > 65535 {
+				return fmt.Errorf("service[%d] (%s): invalid remote_port %d", i, svc.Name, svc.RemotePort)
+			}
+			// Skip duplicate check for dynamic ports (0)
+			if svc.LocalPort != 0 {
+				if prev, ok := seen[svc.LocalPort]; ok {
+					return fmt.Errorf("service[%d] (%s): local_port %d already used by %s", i, svc.Name, svc.LocalPort, prev)
+				}
+				seen[svc.LocalPort] = svc.Name
+			}
 		}
 	}
 

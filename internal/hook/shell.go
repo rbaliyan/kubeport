@@ -53,7 +53,7 @@ func (h *ShellHook) Gate(ctx context.Context, event Event) error {
 }
 
 func (h *ShellHook) run(ctx context.Context, event Event) error {
-	if h.filter != nil && event.Service != "" && !h.filter[event.Service] {
+	if !matchesFilter(h.filter, event) {
 		return nil
 	}
 
