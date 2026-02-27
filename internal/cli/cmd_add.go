@@ -82,8 +82,8 @@ func (a *app) cmdAdd(args []string) {
 			if i+1 < len(args) {
 				i++
 				p, err := strconv.Atoi(args[i])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: invalid --local-port-offset: %v\n", err)
+				if err != nil || p < 0 || p > 65535 {
+					fmt.Fprintf(os.Stderr, "Error: invalid --local-port-offset: must be 0-65535\n")
 					os.Exit(1)
 				}
 				localPortOffset = p
