@@ -14,13 +14,16 @@ import (
 
 func (a *app) cmdAdd(args []string) {
 	var (
-		name      string
-		service   string
-		pod       string
-		namespace string
-		localPort int
-		remotePort int
-		persist   bool
+		name            string
+		service         string
+		pod             string
+		namespace       string
+		localPort       int
+		remotePort      int
+		persist         bool
+		portsFlag       string
+		excludePorts    string
+		localPortOffset int
 	)
 
 	for i := 0; i < len(args); i++ {
@@ -65,6 +68,26 @@ func (a *app) cmdAdd(args []string) {
 				}
 				remotePort = p
 			}
+		case "--ports":
+			if i+1 < len(args) {
+				i++
+				portsFlag = args[i]
+			}
+		case "--exclude-ports":
+			if i+1 < len(args) {
+				i++
+				excludePorts = args[i]
+			}
+		case "--local-port-offset":
+			if i+1 < len(args) {
+				i++
+				p, err := strconv.Atoi(args[i])
+				if err != nil || p < 0 || p > 65535 {
+					fmt.Fprintf(os.Stderr, "Error: invalid --local-port-offset: must be 0-65535\n")
+					os.Exit(1)
+				}
+				localPortOffset = p
+			}
 		case "--persist":
 			persist = true
 		default:
@@ -87,17 +110,33 @@ func (a *app) cmdAdd(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: specify --service or --pod, not both\n")
 		os.Exit(1)
 	}
-	if remotePort == 0 {
-		fmt.Fprintf(os.Stderr, "Error: --remote-port is required\n")
-		os.Exit(1)
-	}
-	if localPort < 0 || localPort > math.MaxUint16 {
-		fmt.Fprintf(os.Stderr, "Error: --local-port must be 0-%d\n", math.MaxUint16)
-		os.Exit(1)
-	}
-	if remotePort < 0 || remotePort > math.MaxUint16 {
-		fmt.Fprintf(os.Stderr, "Error: --remote-port must be 1-%d\n", math.MaxUint16)
-		os.Exit(1)
+
+	isMultiPort := portsFlag != ""
+
+	if isMultiPort {
+		// Multi-port mode validation
+		if remotePort != 0 || localPort != 0 {
+			fmt.Fprintf(os.Stderr, "Error: --remote-port and --local-port cannot be used with --ports\n")
+			os.Exit(1)
+		}
+	} else {
+		// Legacy mode validation
+		if remotePort == 0 {
+			fmt.Fprintf(os.Stderr, "Error: --remote-port is required (or use --ports for multi-port mode)\n")
+			os.Exit(1)
+		}
+		if localPort < 0 || localPort > math.MaxUint16 {
+			fmt.Fprintf(os.Stderr, "Error: --local-port must be 0-%d\n", math.MaxUint16)
+			os.Exit(1)
+		}
+		if remotePort < 0 || remotePort > math.MaxUint16 {
+			fmt.Fprintf(os.Stderr, "Error: --remote-port must be 1-%d\n", math.MaxUint16)
+			os.Exit(1)
+		}
+		if excludePorts != "" || localPortOffset != 0 {
+			fmt.Fprintf(os.Stderr, "Error: --exclude-ports and --local-port-offset require --ports\n")
+			os.Exit(1)
+		}
 	}
 
 	dc, err := a.dialTarget()
@@ -109,8 +148,8 @@ func (a *app) cmdAdd(args []string) {
 		fmt.Fprintf(os.Stderr, "Proxy is not running\n")
 		os.Exit(1)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	resp, err := dc.client.AddService(ctx, &kubeportv1.AddServiceRequest{
+
+	req := &kubeportv1.AddServiceRequest{
 		Service: &kubeportv1.ServiceInfo{
 			Name:       name,
 			Service:    service,
@@ -120,7 +159,25 @@ func (a *app) cmdAdd(args []string) {
 			Namespace:  namespace,
 		},
 		Persist: persist,
-	})
+	}
+
+	if isMultiPort {
+		ps := &kubeportv1.PortSpec{
+			LocalPortOffset: int32(localPortOffset),
+		}
+		if portsFlag == "all" {
+			ps.All = true
+		} else {
+			ps.PortNames = strings.Split(portsFlag, ",")
+		}
+		if excludePorts != "" {
+			ps.ExcludePorts = strings.Split(excludePorts, ",")
+		}
+		req.Ports = ps
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	resp, err := dc.client.AddService(ctx, req)
 	cancel()
 	dc.Close()
 
@@ -134,11 +191,15 @@ func (a *app) cmdAdd(args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Service %q added", name)
-	if resp.ActualPort > 0 {
-		fmt.Printf(" (local port: %d)", resp.ActualPort)
+	if isMultiPort {
+		fmt.Printf("Service %q added (ports resolving, check 'kubeport status')\n", name)
+	} else {
+		fmt.Printf("Service %q added", name)
+		if resp.ActualPort > 0 {
+			fmt.Printf(" (local port: %d)", resp.ActualPort)
+		}
+		fmt.Println()
 	}
-	fmt.Println()
 	if persist {
 		fmt.Println("Config file updated")
 	}

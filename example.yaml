@@ -52,3 +52,30 @@ services:
     service: debug-svc
     local_port: 0
     remote_port: 9090
+
+  # Multi-port: forward all ports from a service (local_port = remote_port)
+  # - name: Platform
+  #   service: platform-svc
+  #   ports: all
+
+  # Multi-port: forward specific named ports
+  # - name: Backend
+  #   service: backend-svc
+  #   ports:
+  #     - http
+  #     - grpc
+
+  # Multi-port: named ports with local port overrides
+  # - name: Backend
+  #   service: backend-svc
+  #   ports:
+  #     - name: http
+  #       local_port: 8080
+  #     - name: grpc
+
+  # Multi-port: all ports except metrics, with offset
+  # - name: Platform
+  #   service: platform-svc
+  #   ports: all
+  #   exclude_ports: [metrics]
+  #   local_port_offset: 10000

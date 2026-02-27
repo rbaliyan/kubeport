@@ -35,6 +35,7 @@ Parses commands and flags, then either:
 The core engine. Manages one goroutine per port-forward with:
 
 - **Service resolution** — translates Kubernetes Service names into running pods using label selectors. Handles named `targetPort` resolution from pod container specs.
+- **Multi-port expansion** — when a service is configured with `ports: all` or a list of port names, the manager queries the Kubernetes API for the service's ports and spawns an independent supervised goroutine for each. Each expanded forward is named `parent/portname` (e.g., `my-api/http`) and has its own health checks, restart tracking, and status entry. A parent-child map tracks the relationship for removal and reload.
 - **Port-forward lifecycle** — creates SPDY connections via client-go (the same library kubectl uses), waits for readiness, and extracts the actual local port.
 - **Health checks** — periodic TCP probes to verify the forward is alive. After a configurable number of consecutive failures, the forward is restarted.
 - **Auto-restart with backoff** — exponential backoff from 1s to 30s with 25% jitter. Backoff resets if a connection stays healthy for more than 30 seconds.
@@ -62,11 +63,11 @@ Hooks can operate as **gates** (using `fail_mode: closed`) to block operations l
 
 ### Configuration (`internal/config/`)
 
-Loads and validates YAML/TOML config files. Manages file discovery, environment variable overrides, and path resolution for PID files, log files, and sockets.
+Loads and validates YAML/TOML config files. Manages file discovery, environment variable overrides, and path resolution for PID files, log files, and sockets. Supports two service modes: single-port (explicit `remote_port`/`local_port`) and multi-port (`ports: all` or a list of named ports), with custom YAML and TOML unmarshalers to handle the polymorphic `ports` field.
 
 ## How a Port-Forward Works
 
-1. **Resolve target** — If a Service is specified, kubeport fetches the Service object, extracts its pod selector, lists matching Running pods, and resolves the service port to a container port (including named targetPort lookup).
+1. **Resolve target** — If a Service is specified, kubeport fetches the Service object, extracts its pod selector, lists matching Running pods, and resolves the service port to a container port (including named targetPort lookup). For multi-port services, this step also queries all service ports and expands each into a separate forward.
 2. **Establish connection** — Creates an SPDY transport and dials the Kubernetes API server to set up a port-forward tunnel to the target pod.
 3. **Wait for ready** — Blocks until the tunnel is established or the ready timeout expires. Extracts the actual local port (important when using dynamic port `0`).
 4. **Health-check loop** — Periodically opens a TCP connection to `localhost:<port>` to verify the tunnel is alive.

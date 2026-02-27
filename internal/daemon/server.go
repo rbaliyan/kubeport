@@ -153,6 +153,16 @@ func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest
 
 	svc := serviceInfoToConfig(req.Service)
 
+	// Apply multi-port config if provided
+	if req.Ports != nil {
+		ports, excludePorts, offset := portSpecToConfig(req.Ports)
+		svc.Ports = ports
+		svc.ExcludePorts = excludePorts
+		svc.LocalPortOffset = offset
+		svc.RemotePort = 0
+		svc.LocalPort = 0
+	}
+
 	if err := s.mgr.AddService(svc); err != nil {
 		return &kubeportv1.AddServiceResponse{Error: err.Error()}, nil
 	}

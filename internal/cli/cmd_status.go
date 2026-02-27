@@ -33,6 +33,8 @@ type forwardStatusOutput struct {
 	RemotePort int    `json:"remote_port"`
 	Target     string `json:"target,omitempty"`
 	Namespace  string `json:"namespace,omitempty"`
+	ParentName string `json:"parent_name,omitempty"`
+	PortName   string `json:"port_name,omitempty"`
 	Restarts   int    `json:"restarts,omitempty"`
 	Error      string `json:"error,omitempty"`
 	NextRetry  string `json:"next_retry,omitempty"`
@@ -196,6 +198,8 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 		RemotePort: int(svc.GetRemotePort()),
 		Target:     target,
 		Namespace:  svc.GetNamespace(),
+		ParentName: svc.GetParentName(),
+		PortName:   svc.GetPortName(),
 		Restarts:   int(fw.Restarts),
 		Error:      fw.Error,
 	}

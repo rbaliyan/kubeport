@@ -358,25 +358,19 @@ func (a *app) hasDiscoverableConfig() bool {
 }
 
 func parseSvcFlag(s string) (config.ServiceConfig, error) {
-	// Format: name:type/target:remoteport:localport[:namespace]
+	// Format: name:type/target:port-spec[:local-spec[:namespace]]
+	// Legacy: name:type/target:remoteport:localport[:namespace]
+	// Multi-port: name:type/target:all[:local-spec[:namespace]]
+	//             name:type/target:http,grpc[:local-spec[:namespace]]
 	parts := strings.SplitN(s, ":", 5)
-	if len(parts) < 4 {
+	if len(parts) < 3 {
 		return config.ServiceConfig{}, fmt.Errorf(
-			"invalid --svc format %q: expected name:type/target:remoteport:localport[:namespace]", s)
+			"invalid --svc format %q: expected name:type/target:port-spec[:local-spec[:namespace]]", s)
 	}
 
 	name := parts[0]
 	typTarget := parts[1]
-
-	remote, err := strconv.Atoi(parts[2])
-	if err != nil {
-		return config.ServiceConfig{}, fmt.Errorf("invalid remote port in --svc %q: %w", s, err)
-	}
-
-	local, err := strconv.Atoi(parts[3])
-	if err != nil {
-		return config.ServiceConfig{}, fmt.Errorf("invalid local port in --svc %q: %w", s, err)
-	}
+	portSpec := parts[2]
 
 	slash := strings.SplitN(typTarget, "/", 2)
 	if len(slash) != 2 || slash[1] == "" {
@@ -384,11 +378,7 @@ func parseSvcFlag(s string) (config.ServiceConfig, error) {
 			"invalid target in --svc %q: expected svc/<name> or pod/<name>", s)
 	}
 
-	svc := config.ServiceConfig{
-		Name:       name,
-		LocalPort:  local,
-		RemotePort: remote,
-	}
+	svc := config.ServiceConfig{Name: name}
 
 	switch slash[0] {
 	case "svc", "service":
@@ -400,11 +390,73 @@ func parseSvcFlag(s string) (config.ServiceConfig, error) {
 			"invalid type %q in --svc %q: expected 'svc' or 'pod'", slash[0], s)
 	}
 
+	// Detect multi-port mode
+	isMultiPort := portSpec == "all" || (!isNumeric(portSpec) && strings.Contains(portSpec, ","))
+
+	if isMultiPort {
+		if portSpec == "all" {
+			svc.Ports = config.PortsConfig{All: true}
+		} else {
+			names := strings.Split(portSpec, ",")
+			for _, n := range names {
+				n = strings.TrimSpace(n)
+				if n != "" {
+					svc.Ports.Selectors = append(svc.Ports.Selectors, config.PortSelector{Name: n})
+				}
+			}
+		}
+
+		// Parse optional local-spec (offset or omitted)
+		localIdx := 3
+		nsIdx := 4
+		if localIdx < len(parts) && parts[localIdx] != "" {
+			if strings.HasPrefix(parts[localIdx], "+") {
+				offset, err := strconv.Atoi(parts[localIdx][1:])
+				if err != nil {
+					return config.ServiceConfig{}, fmt.Errorf("invalid offset in --svc %q: %w", s, err)
+				}
+				svc.LocalPortOffset = offset
+			} else {
+				// No offset prefix — treat as namespace in the 4th slot
+				svc.Namespace = parts[localIdx]
+				return svc, nil
+			}
+		}
+		if nsIdx < len(parts) && parts[nsIdx] != "" {
+			svc.Namespace = parts[nsIdx]
+		}
+		return svc, nil
+	}
+
+	// Legacy mode: requires 4+ parts
+	if len(parts) < 4 {
+		return config.ServiceConfig{}, fmt.Errorf(
+			"invalid --svc format %q: expected name:type/target:remoteport:localport[:namespace]", s)
+	}
+
+	remote, err := strconv.Atoi(portSpec)
+	if err != nil {
+		return config.ServiceConfig{}, fmt.Errorf("invalid remote port in --svc %q: %w", s, err)
+	}
+
+	local, err := strconv.Atoi(parts[3])
+	if err != nil {
+		return config.ServiceConfig{}, fmt.Errorf("invalid local port in --svc %q: %w", s, err)
+	}
+
+	svc.RemotePort = remote
+	svc.LocalPort = local
+
 	if len(parts) == 5 && parts[4] != "" {
 		svc.Namespace = parts[4]
 	}
 
 	return svc, nil
+}
+
+func isNumeric(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
 
 // Process management helpers

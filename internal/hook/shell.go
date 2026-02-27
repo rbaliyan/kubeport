@@ -53,7 +53,7 @@ func (h *ShellHook) Gate(ctx context.Context, event Event) error {
 }
 
 func (h *ShellHook) run(ctx context.Context, event Event) error {
-	if h.filter != nil && event.Service != "" && !h.filter[event.Service] {
+	if !matchesFilter(h.filter, event) {
 		return nil
 	}
 
@@ -77,6 +77,8 @@ func eventEnv(e Event) []string {
 	env := []string{
 		"KUBEPORT_EVENT=" + e.Type.String(),
 		"KUBEPORT_SERVICE=" + sanitizeEnvValue(e.Service),
+		"KUBEPORT_PARENT_NAME=" + sanitizeEnvValue(e.ParentName),
+		"KUBEPORT_PORT_NAME=" + sanitizeEnvValue(e.PortName),
 		"KUBEPORT_LOCAL_PORT=" + strconv.Itoa(e.LocalPort),
 		"KUBEPORT_REMOTE_PORT=" + strconv.Itoa(e.RemotePort),
 		"KUBEPORT_POD=" + sanitizeEnvValue(e.PodName),

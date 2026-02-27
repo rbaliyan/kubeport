@@ -33,7 +33,7 @@ func NewExecHook(name string, command, filterServices []string) (*ExecHook, erro
 func (h *ExecHook) Name() string { return h.name }
 
 func (h *ExecHook) OnEvent(ctx context.Context, event Event) error {
-	if h.filter != nil && event.Service != "" && !h.filter[event.Service] {
+	if !matchesFilter(h.filter, event) {
 		return nil
 	}
 

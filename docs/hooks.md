@@ -74,7 +74,7 @@ Sends an HTTP POST with a JSON body to a URL:
 | `events` | all events | List of events this hook listens for |
 | `timeout` | `10s` | Maximum time the hook can run |
 | `fail_mode` | `open` | `open` = log and continue; `closed` = abort the operation if the hook fails |
-| `filter_services` | all services | Only trigger for these named services |
+| `filter_services` | all services | Only trigger for these named services. For multi-port forwards, matches both the expanded name (`api/http`) and the parent name (`api`) |
 
 ## Environment Variables
 
@@ -83,7 +83,9 @@ Shell and exec hooks receive context about the event via environment variables:
 | Variable | Description |
 |----------|-------------|
 | `KUBEPORT_EVENT` | Event name (e.g., `forward_connected`) |
-| `KUBEPORT_SERVICE` | Service name from config |
+| `KUBEPORT_SERVICE` | Service name from config (for multi-port forwards, this is `parent/portname`) |
+| `KUBEPORT_PARENT_NAME` | Parent service name (non-empty for multi-port expanded forwards) |
+| `KUBEPORT_PORT_NAME` | Kubernetes port name (non-empty for multi-port expanded forwards) |
 | `KUBEPORT_LOCAL_PORT` | Actual local port number |
 | `KUBEPORT_REMOTE_PORT` | Remote port number |
 | `KUBEPORT_POD` | Resolved pod name |
@@ -94,7 +96,7 @@ Shell and exec hooks receive context about the event via environment variables:
 
 Exec `command` arguments and webhook `body_template` support `${VAR}` expansion:
 
-`${EVENT}`, `${SERVICE}`, `${PORT}`, `${REMOTE_PORT}`, `${POD}`, `${RESTARTS}`, `${ERROR}`, `${TIME}`
+`${EVENT}`, `${SERVICE}`, `${PARENT_NAME}`, `${PORT_NAME}`, `${PORT}`, `${REMOTE_PORT}`, `${POD}`, `${RESTARTS}`, `${ERROR}`, `${TIME}`
 
 ## Use Cases
 

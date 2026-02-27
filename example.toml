@@ -54,3 +54,23 @@ name = "Debug Server"
 service = "debug-svc"
 local_port = 0
 remote_port = 9090
+
+# Multi-port: forward all ports from a service (local_port = remote_port)
+# [[services]]
+# name = "Platform"
+# service = "platform-svc"
+# ports = "all"
+
+# Multi-port: forward specific named ports
+# [[services]]
+# name = "Backend"
+# service = "backend-svc"
+# ports = ["http", "grpc"]
+
+# Multi-port: all except metrics, with offset
+# [[services]]
+# name = "Platform"
+# service = "platform-svc"
+# ports = "all"
+# exclude_ports = ["metrics"]
+# local_port_offset = 10000

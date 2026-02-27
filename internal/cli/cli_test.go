@@ -139,7 +139,7 @@ func TestParseSvcFlag(t *testing.T) {
 		},
 		{
 			name:    "too few parts",
-			input:   "Atlas:svc/atlas:80",
+			input:   "Atlas:svc/atlas",
 			wantErr: true,
 		},
 		{
@@ -195,6 +195,100 @@ func TestParseSvcFlag(t *testing.T) {
 			}
 			if svc.LocalPort != tt.wantLocal {
 				t.Errorf("LocalPort = %d, want %d", svc.LocalPort, tt.wantLocal)
+			}
+			if svc.Namespace != tt.wantNS {
+				t.Errorf("Namespace = %q, want %q", svc.Namespace, tt.wantNS)
+			}
+		})
+	}
+}
+
+func TestParseSvcFlag_MultiPort(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		wantName   string
+		wantSvc    string
+		wantAll    bool
+		wantPorts  []string // expected selector names
+		wantOffset int
+		wantNS     string
+		wantErr    bool
+	}{
+		{
+			name:     "all ports",
+			input:    "api:svc/my-api:all",
+			wantName: "api",
+			wantSvc:  "my-api",
+			wantAll:  true,
+		},
+		{
+			name:      "named ports",
+			input:     "api:svc/my-api:http,grpc",
+			wantName:  "api",
+			wantSvc:   "my-api",
+			wantPorts: []string{"http", "grpc"},
+		},
+		{
+			name:       "all with offset",
+			input:      "api:svc/my-api:all:+10000",
+			wantName:   "api",
+			wantSvc:    "my-api",
+			wantAll:    true,
+			wantOffset: 10000,
+		},
+		{
+			name:       "all with offset and namespace",
+			input:      "api:svc/my-api:all:+10000:prod",
+			wantName:   "api",
+			wantSvc:    "my-api",
+			wantAll:    true,
+			wantOffset: 10000,
+			wantNS:     "prod",
+		},
+		{
+			name:     "all with namespace no offset",
+			input:    "api:svc/my-api:all:prod",
+			wantName: "api",
+			wantSvc:  "my-api",
+			wantAll:  true,
+			wantNS:   "prod",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc, err := parseSvcFlag(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error for input %q, got nil", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if svc.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", svc.Name, tt.wantName)
+			}
+			if svc.Service != tt.wantSvc {
+				t.Errorf("Service = %q, want %q", svc.Service, tt.wantSvc)
+			}
+			if svc.Ports.All != tt.wantAll {
+				t.Errorf("Ports.All = %v, want %v", svc.Ports.All, tt.wantAll)
+			}
+			if tt.wantPorts != nil {
+				if len(svc.Ports.Selectors) != len(tt.wantPorts) {
+					t.Fatalf("Selectors count = %d, want %d", len(svc.Ports.Selectors), len(tt.wantPorts))
+				}
+				for i, want := range tt.wantPorts {
+					if svc.Ports.Selectors[i].Name != want {
+						t.Errorf("Selector[%d].Name = %q, want %q", i, svc.Ports.Selectors[i].Name, want)
+					}
+				}
+			}
+			if svc.LocalPortOffset != tt.wantOffset {
+				t.Errorf("LocalPortOffset = %d, want %d", svc.LocalPortOffset, tt.wantOffset)
 			}
 			if svc.Namespace != tt.wantNS {
 				t.Errorf("Namespace = %q, want %q", svc.Namespace, tt.wantNS)

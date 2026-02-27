@@ -78,8 +78,15 @@ type portForward struct {
 // serviceCmd represents an add or remove command sent to the event loop.
 type serviceCmd struct {
 	add    *config.ServiceConfig // non-nil for add
-	remove string               // non-empty for remove
+	remove string                // non-empty for remove
 	result chan error
+}
+
+// resolvedPort is a single port pair produced by expanding a multi-port ServiceConfig.
+type resolvedPort struct {
+	Name       string // Kubernetes port name (e.g., "http") or "" for unnamed
+	RemotePort int    // The service port number
+	LocalPort  int    // Computed local port (0 = dynamic)
 }
 
 // Manager supervises multiple Kubernetes port forwards.
@@ -88,7 +95,8 @@ type Manager struct {
 	restConfig *rest.Config
 	clientset  kubernetes.Interface
 	forwards   map[string]*portForward
-	order      []string // service names in config-defined insertion order
+	order      []string            // service names in config-defined insertion order
+	children   map[string][]string // parent service name → list of expanded forward names
 	mu         sync.RWMutex
 	output     io.Writer
 	cancel     context.CancelFunc
@@ -148,6 +156,7 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		restConfig:           restConfig,
 		clientset:            clientset,
 		forwards:             make(map[string]*portForward),
+		children:             make(map[string][]string),
 		output:               output,
 		logger:               slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
 		maxRestarts:          sup.MaxRestarts,
@@ -220,6 +229,8 @@ func (m *Manager) Start(ctx context.Context) {
 						Type:       hook.EventServiceAdded,
 						Time:       time.Now(),
 						Service:    svc.Name,
+						ParentName: svc.ParentName,
+						PortName:   svc.PortName,
 						RemotePort: svc.RemotePort,
 					})
 					cmd.result <- nil
@@ -244,7 +255,12 @@ func (m *Manager) AddService(svc config.ServiceConfig) error {
 		m.mu.RUnlock()
 		return fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
 	}
-	if svc.LocalPort != 0 {
+	// Also check if a multi-port parent with this name already exists
+	if _, exists := m.children[svc.Name]; exists {
+		m.mu.RUnlock()
+		return fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
+	}
+	if !svc.IsMultiPort() && svc.LocalPort != 0 {
 		for _, pf := range m.forwards {
 			pf.mu.Lock()
 			port := pf.svc.LocalPort
@@ -286,8 +302,33 @@ func (m *Manager) RemoveService(name string) error {
 }
 
 // doRemove cancels and removes a service (called from event loop).
+// If the name is a multi-port parent, all its children are also removed.
 func (m *Manager) doRemove(ctx context.Context, name string) error {
 	m.mu.Lock()
+
+	// Check if this is a multi-port parent
+	childNames, isParent := m.children[name]
+	if isParent {
+		delete(m.children, name)
+		// Also remove the parent's own forward entry (present when resolution failed)
+		if _, hasFwd := m.forwards[name]; hasFwd {
+			delete(m.forwards, name)
+			for i, n := range m.order {
+				if n == name {
+					m.order = append(m.order[:i], m.order[i+1:]...)
+					break
+				}
+			}
+		}
+		m.mu.Unlock()
+
+		// Remove all children
+		for _, childName := range childNames {
+			_ = m.doRemove(ctx, childName)
+		}
+		return nil
+	}
+
 	pf, exists := m.forwards[name]
 	if !exists {
 		m.mu.Unlock()
@@ -313,18 +354,26 @@ func (m *Manager) doRemove(ctx context.Context, name string) error {
 		Type:       hook.EventServiceRemoved,
 		Time:       time.Now(),
 		Service:    name,
+		ParentName: pf.svc.ParentName,
+		PortName:   pf.svc.PortName,
 		RemotePort: pf.svc.RemotePort,
 	})
 	return nil
 }
 
 // Reload diffs current config vs running services. Adds new, removes deleted.
+// Multi-port services are re-resolved on reload (their ports may have changed).
 func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
-	// Build sets of running and desired service names
+	// Build sets of running service names and parent names
 	m.mu.RLock()
 	running := make(map[string]bool, len(m.forwards))
 	for name := range m.forwards {
 		running[name] = true
+	}
+	// Also track multi-port parents
+	parents := make(map[string]bool, len(m.children))
+	for name := range m.children {
+		parents[name] = true
 	}
 	m.mu.RUnlock()
 
@@ -333,9 +382,32 @@ func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
 		desired[svc.Name] = svc
 	}
 
-	// Remove services no longer in config
+	// Remove services/parents no longer in config
+	for name := range parents {
+		if _, ok := desired[name]; !ok {
+			if removeErr := m.RemoveService(name); removeErr != nil {
+				m.logger.Warn("reload: failed to remove multi-port service", "service", name, "error", removeErr)
+				continue
+			}
+			removed++
+		}
+	}
+	// Pre-build child set for O(1) lookup
+	m.mu.RLock()
+	childSet := make(map[string]bool)
+	for _, children := range m.children {
+		for _, child := range children {
+			childSet[child] = true
+		}
+	}
+	m.mu.RUnlock()
+
 	for name := range running {
 		if _, ok := desired[name]; !ok {
+			// Skip children of multi-port parents (handled above)
+			if childSet[name] {
+				continue
+			}
 			if removeErr := m.RemoveService(name); removeErr != nil {
 				m.logger.Warn("reload: failed to remove service", "service", name, "error", removeErr)
 				continue
@@ -344,9 +416,25 @@ func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
 		}
 	}
 
+	// For multi-port services already running, remove and re-add to pick up port changes
+	for name, svc := range desired {
+		if svc.IsMultiPort() && parents[name] {
+			if removeErr := m.RemoveService(name); removeErr != nil {
+				m.logger.Warn("reload: failed to remove multi-port service for re-add", "service", name, "error", removeErr)
+				continue
+			}
+			if addErr := m.AddService(svc); addErr != nil {
+				m.logger.Warn("reload: failed to re-add multi-port service", "service", name, "error", addErr)
+				continue
+			}
+			// Net effect counted as re-resolution, not add+remove
+			continue
+		}
+	}
+
 	// Add new services from config
 	for name, svc := range desired {
-		if !running[name] {
+		if !running[name] && !parents[name] {
 			if addErr := m.AddService(svc); addErr != nil {
 				m.logger.Warn("reload: failed to add service", "service", name, "error", addErr)
 				continue
@@ -373,6 +461,237 @@ func (m *Manager) Apply(services []config.ServiceConfig) (added, skipped int, wa
 }
 
 func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
+	if svc.IsMultiPort() {
+		m.superviseMulti(ctx, svc)
+		return
+	}
+	m.superviseSingle(ctx, svc)
+}
+
+// superviseMulti resolves all ports from a multi-port service and spawns a
+// superviseSingle goroutine for each expanded port.
+func (m *Manager) superviseMulti(ctx context.Context, svc config.ServiceConfig) {
+	namespace := svc.Namespace
+	if namespace == "" {
+		namespace = m.cfg.Namespace
+	}
+
+	resolved, err := m.resolveServicePorts(ctx, namespace, svc)
+	if err != nil {
+		m.logger.Error("failed to resolve multi-port service",
+			"service", svc.Name,
+			"error", err,
+		)
+		// Register parent as failed so status shows something
+		pf := &portForward{
+			svc:       svc,
+			namespace: namespace,
+			state:     StateFailed,
+			err:       err,
+		}
+		m.mu.Lock()
+		m.forwards[svc.Name] = pf
+		m.order = append(m.order, svc.Name)
+		m.children[svc.Name] = nil // register as parent so Reload can retry
+		m.mu.Unlock()
+		return
+	}
+
+	var childNames []string
+	var wg sync.WaitGroup
+	for _, rp := range resolved {
+		childName := svc.Name + "/" + rp.Name
+		if rp.Name == "" {
+			childName = fmt.Sprintf("%s/%d", svc.Name, rp.RemotePort)
+		}
+		childNames = append(childNames, childName)
+
+		childSvc := config.ServiceConfig{
+			Name:       childName,
+			Service:    svc.Service,
+			Pod:        svc.Pod,
+			LocalPort:  rp.LocalPort,
+			RemotePort: rp.RemotePort,
+			Namespace:  svc.Namespace,
+			ParentName: svc.Name,
+			PortName:   rp.Name,
+		}
+
+		wg.Add(1)
+		go func(s config.ServiceConfig) {
+			defer wg.Done()
+			m.superviseSingle(ctx, s)
+		}(childSvc)
+	}
+
+	m.mu.Lock()
+	m.children[svc.Name] = childNames
+	m.mu.Unlock()
+
+	wg.Wait()
+}
+
+// resolveServicePorts queries the Kubernetes API for a service's ports and
+// returns a list of resolvedPort entries based on the multi-port config.
+func (m *Manager) resolveServicePorts(ctx context.Context, namespace string, svc config.ServiceConfig) ([]resolvedPort, error) {
+	if m.clientset == nil {
+		return nil, fmt.Errorf("kubernetes client not initialized")
+	}
+
+	opCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if svc.IsPod() {
+		return m.resolvePodPorts(opCtx, namespace, svc)
+	}
+
+	service, err := m.clientset.CoreV1().Services(namespace).Get(opCtx, svc.Target(), metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get service %s/%s: %w", namespace, svc.Target(), err)
+	}
+
+	var ports []corev1.ServicePort
+	if svc.Ports.All {
+		ports = service.Spec.Ports
+	} else {
+		for _, sel := range svc.Ports.Selectors {
+			found := false
+			for _, sp := range service.Spec.Ports {
+				if (sel.Name != "" && sp.Name == sel.Name) || (sel.Port != 0 && int(sp.Port) == sel.Port) {
+					ports = append(ports, sp)
+					found = true
+					break
+				}
+			}
+			if !found {
+				id := sel.Name
+				if id == "" {
+					id = fmt.Sprintf("%d", sel.Port)
+				}
+				return nil, fmt.Errorf("port %s not found on service %s", id, svc.Target())
+			}
+		}
+	}
+
+	// Build exclude set
+	excludeSet := make(map[string]bool, len(svc.ExcludePorts))
+	for _, name := range svc.ExcludePorts {
+		excludeSet[name] = true
+	}
+
+	// Build selector override map (by name)
+	selectorOverrides := make(map[string]config.PortSelector, len(svc.Ports.Selectors))
+	for _, sel := range svc.Ports.Selectors {
+		if sel.Name != "" {
+			selectorOverrides[sel.Name] = sel
+		}
+	}
+
+	var resolved []resolvedPort
+	for _, sp := range ports {
+		if excludeSet[sp.Name] {
+			continue
+		}
+
+		rp := resolvedPort{
+			Name:       sp.Name,
+			RemotePort: int(sp.Port),
+		}
+
+		// Compute local port
+		if sel, ok := selectorOverrides[sp.Name]; ok && sel.LocalPort != 0 {
+			rp.LocalPort = sel.LocalPort
+		} else if svc.LocalPortOffset > 0 {
+			rp.LocalPort = int(sp.Port) + svc.LocalPortOffset
+		} else {
+			rp.LocalPort = int(sp.Port) // default: same as remote
+		}
+
+		if rp.LocalPort < 1 || rp.LocalPort > 65535 {
+			return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
+				sp.Name, rp.LocalPort, sp.Port, svc.LocalPortOffset)
+		}
+
+		resolved = append(resolved, rp)
+	}
+
+	if len(resolved) == 0 {
+		return nil, fmt.Errorf("no ports resolved for service %s after filtering", svc.Target())
+	}
+
+	return resolved, nil
+}
+
+// resolvePodPorts resolves ports from a pod's container spec.
+func (m *Manager) resolvePodPorts(ctx context.Context, namespace string, svc config.ServiceConfig) ([]resolvedPort, error) {
+	pod, err := m.clientset.CoreV1().Pods(namespace).Get(ctx, svc.Target(), metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get pod %s/%s: %w", namespace, svc.Target(), err)
+	}
+
+	excludeSet := make(map[string]bool, len(svc.ExcludePorts))
+	for _, name := range svc.ExcludePorts {
+		excludeSet[name] = true
+	}
+
+	selectorOverrides := make(map[string]config.PortSelector, len(svc.Ports.Selectors))
+	for _, sel := range svc.Ports.Selectors {
+		if sel.Name != "" {
+			selectorOverrides[sel.Name] = sel
+		}
+	}
+
+	var resolved []resolvedPort
+	for _, c := range pod.Spec.Containers {
+		for _, cp := range c.Ports {
+			if excludeSet[cp.Name] {
+				continue
+			}
+
+			if !svc.Ports.All {
+				// Match against selectors
+				matched := false
+				for _, sel := range svc.Ports.Selectors {
+					if (sel.Name != "" && cp.Name == sel.Name) || (sel.Port != 0 && int(cp.ContainerPort) == sel.Port) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					continue
+				}
+			}
+
+			rp := resolvedPort{
+				Name:       cp.Name,
+				RemotePort: int(cp.ContainerPort),
+			}
+
+			if sel, ok := selectorOverrides[cp.Name]; ok && sel.LocalPort != 0 {
+				rp.LocalPort = sel.LocalPort
+			} else if svc.LocalPortOffset > 0 {
+				rp.LocalPort = int(cp.ContainerPort) + svc.LocalPortOffset
+			} else {
+				rp.LocalPort = int(cp.ContainerPort)
+			}
+
+			if rp.LocalPort < 1 || rp.LocalPort > 65535 {
+				return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
+					cp.Name, rp.LocalPort, cp.ContainerPort, svc.LocalPortOffset)
+			}
+
+			resolved = append(resolved, rp)
+		}
+	}
+
+	if len(resolved) == 0 {
+		return nil, fmt.Errorf("no ports resolved for pod %s after filtering", svc.Target())
+	}
+
+	return resolved, nil
+}
+
+func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig) {
 	namespace := svc.Namespace
 	if namespace == "" {
 		namespace = m.cfg.Namespace
@@ -401,6 +720,8 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 				Type:       hook.EventForwardStopped,
 				Time:       time.Now(),
 				Service:    svc.Name,
+				ParentName: svc.ParentName,
+				PortName:   svc.PortName,
 				RemotePort: svc.RemotePort,
 			})
 			return
@@ -451,6 +772,8 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 			Type:       hook.EventForwardDisconnected,
 			Time:       time.Now(),
 			Service:    svc.Name,
+			ParentName: svc.ParentName,
+			PortName:   svc.PortName,
 			LocalPort:  pf.actualPort,
 			RemotePort: svc.RemotePort,
 			Restarts:   restarts,
@@ -467,6 +790,8 @@ func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
 				Type:       hook.EventForwardFailed,
 				Time:       time.Now(),
 				Service:    svc.Name,
+				ParentName: svc.ParentName,
+				PortName:   svc.PortName,
 				LocalPort:  pf.actualPort,
 				RemotePort: svc.RemotePort,
 				Restarts:   restarts,
@@ -590,6 +915,8 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		Type:       hook.EventForwardConnected,
 		Time:       time.Now(),
 		Service:    pf.svc.Name,
+		ParentName: pf.svc.ParentName,
+		PortName:   pf.svc.PortName,
 		LocalPort:  actualPort,
 		RemotePort: pf.svc.RemotePort,
 		PodName:    podName,
@@ -617,6 +944,8 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 					Type:       hook.EventHealthCheckFailed,
 					Time:       time.Now(),
 					Service:    pf.svc.Name,
+					ParentName: pf.svc.ParentName,
+					PortName:   pf.svc.PortName,
 					LocalPort:  actualPort,
 					RemotePort: pf.svc.RemotePort,
 					PodName:    podName,

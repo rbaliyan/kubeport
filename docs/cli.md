@@ -59,12 +59,20 @@ kubeport fg
 Dynamically add a service to the running daemon.
 
 ```bash
+# Single-port
 kubeport add "My API" svc/my-api:80:8080
 kubeport add "Redis" pod/redis-0:6379:6379
 kubeport add "Vault" svc/vault:8200:8200:vault-ns
+
+# Multi-port
+kubeport add "Platform" svc/platform-svc --ports all
+kubeport add "Backend" svc/backend-svc --ports http,grpc
+kubeport add "Platform" svc/platform-svc --ports all --exclude-ports metrics --local-port-offset 10000
 ```
 
-Format: `<name> <type>/<target>:<remote>:<local>[:<namespace>]`
+Single-port format: `<name> <type>/<target>:<remote>:<local>[:<namespace>]`
+
+Multi-port flags (`--ports`, `--exclude-ports`, `--local-port-offset`) are mutually exclusive with explicit remote/local ports.
 
 ### `kubeport remove`
 
@@ -120,7 +128,7 @@ kubeport version
 | `--context` | | Kubernetes context (overrides config) |
 | `--kube-context` | | Alias for `--context` |
 | `--namespace` | `-n` | Default namespace (overrides config) |
-| `--svc` | | Inline service spec (repeatable). Format: `name:type/target:remote:local[:namespace]` |
+| `--svc` | | Inline service spec (repeatable). Format: `name:type/target:remote:local[:namespace]` or `name:type/target:all[:+offset[:namespace]]` for multi-port |
 | `--disable-svc` | | Disable a named service from config (repeatable) |
 | `--no-config` | | Ignore config files, use only `--svc` flags |
 | `--json` | | JSON output for commands that support it |
@@ -139,5 +147,7 @@ kubeport start --no-config \
   --context my-cluster \
   --namespace default \
   --svc "api:svc/my-api:80:8080" \
-  --svc "redis:pod/redis-0:6379:6379"
+  --svc "redis:pod/redis-0:6379:6379" \
+  --svc "platform:svc/platform-svc:all" \
+  --svc "backend:svc/backend-svc:http,grpc:+10000"
 ```

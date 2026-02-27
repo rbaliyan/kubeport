@@ -76,6 +76,8 @@ type Event struct {
 	Type       EventType
 	Time       time.Time
 	Service    string // Service name from config (empty for manager events)
+	ParentName string // Parent service name for multi-port expanded forwards (empty otherwise)
+	PortName   string // Kubernetes port name for multi-port expanded forwards (empty otherwise)
 	LocalPort  int    // Actual local port (0 if not yet assigned)
 	RemotePort int    // Configured remote port
 	PodName    string // Resolved pod name (empty if not yet resolved)
@@ -250,4 +252,23 @@ func buildFilter(services []string) map[string]bool {
 		m[s] = true
 	}
 	return m
+}
+
+// matchesFilter returns true if the event should be processed by this filter.
+// It checks the event's service name and, for multi-port expanded forwards,
+// also checks the parent name.
+func matchesFilter(filter map[string]bool, event Event) bool {
+	if filter == nil {
+		return true
+	}
+	if event.Service == "" {
+		return true
+	}
+	if filter[event.Service] {
+		return true
+	}
+	if event.ParentName != "" && filter[event.ParentName] {
+		return true
+	}
+	return false
 }

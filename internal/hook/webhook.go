@@ -37,7 +37,7 @@ func NewWebhookHook(name, url string, headers map[string]string, bodyTemplate st
 func (h *WebhookHook) Name() string { return h.name }
 
 func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
-	if h.filter != nil && event.Service != "" && !h.filter[event.Service] {
+	if !matchesFilter(h.filter, event) {
 		return nil
 	}
 
@@ -50,6 +50,8 @@ func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
 		payload := map[string]any{
 			"event":       event.Type.String(),
 			"service":     event.Service,
+			"parent_name": event.ParentName,
+			"port_name":   event.PortName,
 			"local_port":  event.LocalPort,
 			"remote_port": event.RemotePort,
 			"pod":         event.PodName,
