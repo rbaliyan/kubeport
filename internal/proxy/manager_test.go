@@ -799,6 +799,204 @@ func TestSupervise_NamespaceOverride(t *testing.T) {
 	}
 }
 
+func TestResolvePod_PrefersReadyPod(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-svc",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-not-ready",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				// No Ready condition
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-ready",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+				},
+			},
+		},
+	)
+
+	m := &Manager{clientset: client}
+	svc := config.ServiceConfig{
+		Name:       "test",
+		Service:    "my-svc",
+		RemotePort: 80,
+	}
+
+	name, _, err := m.resolvePod(context.Background(), "default", svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "pod-ready" {
+		t.Fatalf("expected ready pod 'pod-ready', got %q", name)
+	}
+}
+
+func TestResolvePod_FallsBackToRunningIfNoneReady(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-svc",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-starting",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+				},
+			},
+		},
+	)
+
+	m := &Manager{clientset: client}
+	svc := config.ServiceConfig{
+		Name:       "test",
+		Service:    "my-svc",
+		RemotePort: 80,
+	}
+
+	name, _, err := m.resolvePod(context.Background(), "default", svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "pod-starting" {
+		t.Fatalf("expected fallback to 'pod-starting', got %q", name)
+	}
+}
+
+func TestResolvePod_SkipsDeletingPods(t *testing.T) {
+	now := metav1.Now()
+	client := fake.NewSimpleClientset(
+		&corev1.Service{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-svc",
+				Namespace: "default",
+			},
+			Spec: corev1.ServiceSpec{
+				Selector: map[string]string{"app": "test"},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:              "pod-deleting",
+				Namespace:         "default",
+				Labels:            map[string]string{"app": "test"},
+				DeletionTimestamp: &now,
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+				},
+			},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "pod-new",
+				Namespace: "default",
+				Labels:    map[string]string{"app": "test"},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				Conditions: []corev1.PodCondition{
+					{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+				},
+			},
+		},
+	)
+
+	m := &Manager{clientset: client}
+	svc := config.ServiceConfig{
+		Name:       "test",
+		Service:    "my-svc",
+		RemotePort: 80,
+	}
+
+	name, _, err := m.resolvePod(context.Background(), "default", svc)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if name != "pod-new" {
+		t.Fatalf("expected 'pod-new' (not deleting), got %q", name)
+	}
+}
+
+func TestIsPodReady(t *testing.T) {
+	tests := []struct {
+		name       string
+		conditions []corev1.PodCondition
+		want       bool
+	}{
+		{
+			name:       "no conditions",
+			conditions: nil,
+			want:       false,
+		},
+		{
+			name: "ready true",
+			conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
+			},
+			want: true,
+		},
+		{
+			name: "ready false",
+			conditions: []corev1.PodCondition{
+				{Type: corev1.PodReady, Status: corev1.ConditionFalse},
+			},
+			want: false,
+		},
+		{
+			name: "other condition only",
+			conditions: []corev1.PodCondition{
+				{Type: corev1.PodInitialized, Status: corev1.ConditionTrue},
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				Status: corev1.PodStatus{Conditions: tt.conditions},
+			}
+			if got := isPodReady(pod); got != tt.want {
+				t.Fatalf("isPodReady() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStart_ConcurrentFailures(t *testing.T) {
 	// All services will fail (no pods exist) — verify concurrent failures
 	// don't cause panics, data races, or leave stale state.
