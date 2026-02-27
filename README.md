@@ -2,317 +2,198 @@
 
 [![CI](https://github.com/rbaliyan/kubeport/actions/workflows/ci.yml/badge.svg)](https://github.com/rbaliyan/kubeport/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/rbaliyan/kubeport)](https://github.com/rbaliyan/kubeport/releases/latest)
-[![Go Reference](https://pkg.go.dev/badge/github.com/rbaliyan/kubeport.svg)](https://pkg.go.dev/github.com/rbaliyan/kubeport)
 [![Go Report Card](https://goreportcard.com/badge/github.com/rbaliyan/kubeport)](https://goreportcard.com/report/github.com/rbaliyan/kubeport)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rbaliyan/kubeport/badge)](https://scorecard.dev/viewer/?uri=github.com/rbaliyan/kubeport)
 
-A Kubernetes port-forward supervisor with health checks, automatic restarts, and lifecycle hooks.
+**Port-forward to Kubernetes services that just works.** kubeport keeps your connections alive, restarts them when they drop, and gets out of your way.
 
-## Features
+---
 
-- **Persistent port-forwarding** - Automatically restarts failed connections
-- **Health checks** - Periodic connectivity probes with exponential backoff
-- **Multiple services** - Forward multiple services/pods in a single config
-- **Background daemon** - Run as a background process with gRPC control
-- **Lifecycle hooks** - Execute shell commands or webhooks on events
-- **Dynamic ports** - Use port 0 for automatic local port assignment
-- **Config formats** - YAML and TOML configuration support
+## The Problem
 
-## Installation
+If you develop against a Kubernetes cluster, you know the pain:
 
-**Homebrew (macOS/Linux):**
+- `kubectl port-forward` dies silently and you don't notice for 20 minutes
+- You have to juggle multiple terminal windows for multiple services
+- You restart everything manually after your laptop wakes from sleep
+- There's no visibility into what's connected and what's broken
+
+## The Solution
+
+kubeport is a single binary that manages all your port-forwards in the background. Define your services once in a config file, run `kubeport start`, and forget about it.
+
+```
+$ kubeport status
+  SERVICE         STATUS       LOCAL     REMOTE    POD
+  My API          connected    :8080  →  :80       my-api-7d4b8c6f9-x2k4m
+  Redis           connected    :6379  →  :6379     redis-0
+  Vault           connected    :8200  →  :8200     vault-0
+```
+
+When a connection drops, kubeport detects it within seconds and reconnects automatically — with exponential backoff so it doesn't hammer your cluster.
+
+## Key Features
+
+- **Self-healing connections** — Health checks detect failures and restart forwards automatically with exponential backoff
+- **One config, many services** — Define all your forwards in a single YAML or TOML file
+- **Background daemon** — Runs as a background process; control it with simple CLI commands
+- **No kubectl required** — Uses the Kubernetes Go client directly; kubeport is a single self-contained binary
+- **Lifecycle hooks** — Run shell commands, exec binaries, or fire webhooks on connect/disconnect/failure events
+- **Dynamic ports** — Set `local_port: 0` and let the OS pick an available port
+- **Per-service namespaces** — Mix services from different namespaces in one config
+
+## Install
+
 ```bash
+# Homebrew
 brew install rbaliyan/tap/kubeport
-```
 
-**Install script:**
-```bash
+# Install script
 curl -sSfL https://raw.githubusercontent.com/rbaliyan/kubeport/main/install.sh | sh
-```
 
-**Go install:**
-```bash
+# Go
 go install github.com/rbaliyan/kubeport@latest
 ```
 
-**Download binary:**
-
-Download from [GitHub Releases](https://github.com/rbaliyan/kubeport/releases) for your platform.
+Pre-built binaries are available on the [releases page](https://github.com/rbaliyan/kubeport/releases). See the [installation guide](docs/installation.md) for all options.
 
 ## Quick Start
 
-1. **Create a configuration file:**
+**1. Create a config file:**
 
 ```bash
 kubeport config init
 ```
 
-2. **Add services to forward:**
+**2. Add your services:**
 
 ```bash
 kubeport config add --name "My API" --service my-api --local-port 8080 --remote-port 80
 kubeport config add --name "Redis" --pod redis-0 --local-port 6379 --remote-port 6379
 ```
 
-3. **Start the proxy:**
+Or write the config directly (`kubeport.yaml`):
+
+```yaml
+context: my-cluster
+namespace: default
+services:
+  - name: My API
+    service: my-api
+    local_port: 8080
+    remote_port: 80
+  - name: Redis
+    pod: redis-0
+    local_port: 6379
+    remote_port: 6379
+```
+
+**3. Start:**
 
 ```bash
 kubeport start
 ```
 
-4. **Check status:**
+**4. Check status:**
 
 ```bash
 kubeport status
 ```
 
-## Commands
+That's it. Your forwards are running in the background, health-checked, and will auto-restart if anything goes wrong.
+
+### No Config File? No Problem
+
+Run entirely from the command line:
 
 ```bash
-kubeport start      # Start proxy in background
-kubeport stop       # Stop running proxy
-kubeport status     # Show proxy and port status
-kubeport logs       # Follow proxy logs
-kubeport restart    # Restart proxy
-kubeport fg         # Run in foreground (blocking)
-kubeport config     # Configuration management
-kubeport version    # Show version
-kubeport help       # Show help
+kubeport start --no-config \
+  --context my-cluster \
+  --svc "api:svc/my-api:80:8080" \
+  --svc "redis:pod/redis-0:6379:6379"
 ```
 
-### Config Subcommands
+## Common Workflows
+
+### Stop and restart
 
 ```bash
-kubeport config init              # Create new config file
-kubeport config show              # Display configuration
-kubeport config validate          # Validate configuration
-kubeport config set context dev   # Set Kubernetes context
-kubeport config set namespace app # Set default namespace
-kubeport config add [options]     # Add service to forward
-kubeport config remove <name>     # Remove service
-kubeport config path              # Print config file path
+kubeport stop
+kubeport restart
 ```
 
-## Configuration
+### Run in the foreground (for debugging or containers)
 
-### YAML Format
-
-```yaml
-context: my-cluster-context
-namespace: default
-services:
-  - name: My API
-    service: my-api-service
-    local_port: 8080
-    remote_port: 80
-
-  - name: Redis Node 0
-    pod: redis-node-0
-    local_port: 6379
-    remote_port: 6379
-
-  - name: Vault
-    service: vault
-    local_port: 8200
-    remote_port: 8200
-    namespace: vault  # Override namespace
-
-  - name: Debug Server
-    service: debug-svc
-    local_port: 0     # Dynamic port assignment
-    remote_port: 9090
+```bash
+kubeport fg
 ```
 
-### TOML Format
+### Add/remove services on the fly
 
-```toml
-context = "my-cluster-context"
-namespace = "default"
-
-[[services]]
-name = "My API"
-service = "my-api-service"
-local_port = 8080
-remote_port = 80
-
-[[services]]
-name = "Redis"
-pod = "redis-0"
-local_port = 6379
-remote_port = 6379
+```bash
+kubeport add "Postgres" svc/postgres:5432:5432
+kubeport remove "Postgres"
 ```
 
-### Config Discovery
+### Reload after editing config
 
-kubeport searches for configuration in this order:
+```bash
+kubeport reload
+```
 
-1. `--config` flag value
-2. `kubeport.{yaml,yml,toml}` in current directory
-3. `~/.config/kubeport/kubeport.{yaml,yml,toml}`
-4. `~/.kubeport/kubeport.{yaml,yml,toml}`
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `K8S_CONTEXT` | Override Kubernetes context |
-| `K8S_NAMESPACE` | Override default namespace |
-
-## Lifecycle Hooks
-
-Execute actions on port-forward events:
+### Get notified when things break
 
 ```yaml
 hooks:
-  - name: startup-gate
-    type: shell
-    events: [manager_starting]
-    fail_mode: closed     # Block startup if hook fails
-    timeout: 30s
-    shell:
-      manager_starting: ./scripts/ensure-vpn.sh
-
-  - name: notify
+  - name: alert
     type: shell
     shell:
-      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
-      forward_disconnected: echo "${KUBEPORT_SERVICE} disconnected (restart #${KUBEPORT_RESTARTS})"
-
-  - name: slack-alert
-    type: webhook
-    events: [forward_failed]
-    webhook:
-      url: https://hooks.slack.com/services/...
-      headers:
-        Content-Type: application/json
-      body_template: '{"text": "Port forward failed: ${SERVICE} - ${ERROR}"}'
-
-  - name: log-events
-    type: exec
-    events: [forward_connected, forward_disconnected]
-    exec:
-      command: ["logger", "-t", "kubeport", "${EVENT}: ${SERVICE} port ${PORT}"]
+      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready"
+      forward_failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed"
 ```
 
-### Hook Types
+See the [hooks guide](docs/hooks.md) for Slack webhooks, VPN gating, syslog integration, and more.
 
-| Type | Description |
-|------|-------------|
-| **shell** | Run shell commands via `sh -c`. Map event names to commands. |
-| **exec** | Execute a binary directly with template-expanded arguments. |
-| **webhook** | POST JSON to an HTTP endpoint. Supports custom headers and body templates. |
+## Documentation
 
-### Events
-
-| Event | Description |
+| Guide | Description |
 |-------|-------------|
-| `manager_starting` | Before any forwards begin (gate event) |
-| `manager_stopped` | All forwards stopped, cleanup done |
-| `forward_connected` | Port-forward is ready and healthy |
-| `forward_disconnected` | Port-forward dropped (will retry) |
-| `forward_failed` | Port-forward failed permanently |
-| `forward_stopped` | Port-forward intentionally stopped |
-| `health_check_failed` | A single health check failed |
+| [Installation](docs/installation.md) | All installation methods, requirements, and shell completions |
+| [Configuration](docs/configuration.md) | Config file format, service definitions, supervisor tuning |
+| [CLI Reference](docs/cli.md) | Every command and flag |
+| [Lifecycle Hooks](docs/hooks.md) | Shell, exec, and webhook hooks with real-world examples |
+| [Architecture](docs/architecture.md) | How kubeport works under the hood |
+| [Shell Completions](docs/shell-completions.md) | Tab completion for bash, zsh, and fish |
 
-### Hook Options
+Example config files: [YAML](example.yaml) | [TOML](example.toml)
 
-| Option | Description |
-|--------|-------------|
-| `events` | List of events to listen for (default: all events) |
-| `timeout` | Execution timeout (default: 10s) |
-| `fail_mode` | `open` (log and continue, default) or `closed` (abort operation) |
-| `filter_services` | Only trigger for named services |
+## Contributing
 
-### Environment Variables (Shell/Exec Hooks)
+Contributions are welcome! Here's how to get started:
 
-Shell and exec hooks receive event context via environment variables:
+1. Fork the repository
+2. Create a feature branch (`git checkout -b my-feature`)
+3. Make your changes
+4. Run the tests: `just test`
+5. Run the linter: `just lint`
+6. Commit and push your branch
+7. Open a pull request
 
-| Variable | Description |
-|----------|-------------|
-| `KUBEPORT_EVENT` | Event name (e.g., `forward_connected`) |
-| `KUBEPORT_SERVICE` | Service name from config |
-| `KUBEPORT_LOCAL_PORT` | Actual local port |
-| `KUBEPORT_REMOTE_PORT` | Remote port |
-| `KUBEPORT_POD` | Resolved pod name |
-| `KUBEPORT_RESTARTS` | Number of restarts |
-| `KUBEPORT_ERROR` | Error message (if applicable) |
+### Development Setup
 
-### Security Considerations
+This project uses [mise](https://mise.jdx.dev) for tool management and [just](https://github.com/casey/just) as a command runner.
 
-Shell and exec hooks execute commands from your config file via `sh -c` or direct exec.
-Treat kubeport config files like scripts — only use configs you trust, and ensure
-they are owned by the user running the daemon (not world-writable). Avoid interpolating
-untrusted input into hook commands. Environment variables passed to hooks are sanitized
-(newlines and null bytes stripped) to prevent injection.
-
-### Template Variables (Exec/Webhook)
-
-Exec command arguments and webhook `body_template` support `${VAR}` expansion:
-`${EVENT}`, `${SERVICE}`, `${PORT}`, `${REMOTE_PORT}`, `${POD}`, `${RESTARTS}`, `${ERROR}`, `${TIME}`
-
-## Supervisor Configuration
-
-Tune the port-forward supervisor behavior:
-
-```yaml
-supervisor:
-  max_restarts: 10           # Stop retrying after N restarts (0 = unlimited)
-  health_check_interval: 10s # Health check frequency
-  health_check_threshold: 3  # Consecutive failures before restart
-  ready_timeout: 15s         # Timeout waiting for port-forward ready
-  backoff_initial: 1s        # Initial backoff between restarts
-  backoff_max: 30s           # Maximum backoff duration
-```
-
-All values have sensible defaults. Omit the `supervisor` section to use defaults.
-
-## Shell Completions
-
-Shell completions are included in release archives:
-
-**Bash:**
 ```bash
-source completions/kubeport.bash
-# Or copy to /etc/bash_completion.d/kubeport
+mise install       # Install Go, linters, protoc, etc.
+just build         # Build the binary
+just test          # Run tests
+just lint          # Run linter
+just fmt           # Format code
 ```
 
-**Zsh:**
-```bash
-source completions/kubeport.zsh
-# Or copy to ~/.zsh/completions/_kubeport
-```
-
-**Fish:**
-```bash
-source completions/kubeport.fish
-# Or copy to ~/.config/fish/completions/kubeport.fish
-```
-
-## How It Works
-
-1. **Start** - kubeport daemonizes itself and starts a gRPC server on a Unix socket
-2. **Connect** - For each configured service, it creates a port-forward using kubectl logic
-3. **Monitor** - Health checks run every 10 seconds to verify connectivity
-4. **Recover** - Failed connections are restarted with exponential backoff (1s to 30s)
-5. **Control** - CLI commands communicate with the daemon via gRPC
-
-```
-┌─────────┐     gRPC      ┌────────────┐     port-forward     ┌─────────────┐
-│   CLI   │──────────────▶│   Daemon   │────────────────────▶│  Kubernetes │
-└─────────┘  Unix Socket  └────────────┘    kubectl logic     └─────────────┘
-                                │
-                                ▼
-                         Health Checks
-                         Auto-Restart
-                         Lifecycle Hooks
-```
-
-## Requirements
-
-- Kubernetes cluster access (via kubeconfig)
-- `kubectl` is NOT required - uses client-go directly
+See the [justfile](justfile) for all available recipes.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file.
+[MIT](LICENSE)
