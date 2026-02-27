@@ -40,7 +40,7 @@ type forwardStatusOutput struct {
 
 func (a *app) cmdStatus() {
 	// Try gRPC first
-	dc, err := dialDaemon(a.socketPath())
+	dc, err := a.dialTarget()
 	if dc != nil {
 		defer dc.Close()
 		a.cmdStatusGRPC(dc)

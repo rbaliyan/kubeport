@@ -116,7 +116,7 @@ func (a *app) cmdStart(_ context.Context) {
 		case <-time.After(200 * time.Millisecond):
 			if _, running := a.isRunning(); running {
 				// Try to connect to gRPC socket for definitive confirmation
-				if dc, _ := dialDaemon(a.socketPath()); dc != nil {
+				if dc, _ := a.dialTarget(); dc != nil {
 					dc.Close()
 					started = true
 				}
@@ -165,7 +165,7 @@ func (a *app) cmdStart(_ context.Context) {
 
 // allForwardsReady checks if all forwards are in RUNNING state via gRPC.
 func (a *app) allForwardsReady() bool {
-	dc, err := dialDaemon(a.socketPath())
+	dc, err := a.dialTarget()
 	if dc == nil || err != nil {
 		return false
 	}
@@ -208,7 +208,7 @@ func (a *app) waitForReady() error {
 			// Build a summary of what's not ready
 			return fmt.Errorf("timeout after %s waiting for forwards to be ready\nRun 'kubeport status' to check current state", timeout)
 		case <-ticker.C:
-			dc, _ := dialDaemon(a.socketPath())
+			dc, _ := a.dialTarget()
 			if dc == nil {
 				// Daemon not reachable yet, keep waiting
 				if _, running := a.isRunning(); !running {

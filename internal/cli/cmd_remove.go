@@ -36,7 +36,7 @@ func (a *app) cmdRemove(args []string) {
 		os.Exit(1)
 	}
 
-	dc, err := dialDaemon(a.socketPath())
+	dc, err := a.dialTarget()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error connecting to daemon: %v\n", err)
 		os.Exit(1)
