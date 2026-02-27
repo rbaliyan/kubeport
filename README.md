@@ -6,22 +6,36 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/rbaliyan/kubeport/badge)](https://scorecard.dev/viewer/?uri=github.com/rbaliyan/kubeport)
 
-**Port-forward to Kubernetes services that just works.** kubeport keeps your connections alive, restarts them when they drop, and gets out of your way.
+**The persistent, configuration-driven proxy for Kubernetes developers.** Stop restarting `kubectl port-forward`. Start coding.
 
 ---
 
-## The Problem
+## Why Kubeport?
 
-If you develop against a Kubernetes cluster, you know the pain:
+Standard port-forwarding is brittle. Kubeport transforms flaky tunnels into a stable, automated local development gateway.
 
-- `kubectl port-forward` dies silently and you don't notice for 20 minutes
-- You have to juggle multiple terminal windows for multiple services
-- You restart everything manually after your laptop wakes from sleep
-- There's no visibility into what's connected and what's broken
+- **Self-Healing** — Dropped connections? Kubeport detects and restarts them instantly with exponential backoff.
+- **Config-as-Code** — Define all your services in one `kubeport.yaml` and check it into your repo for the whole team.
+- **Lifecycle Hooks** — Run shell commands, exec binaries, or fire webhooks when tunnels connect, disconnect, or fail.
+- **Multi-Port Discovery** — Forward every port a service exposes with `ports: all`, or pick specific named ports.
+- **Background Daemon** — Runs quietly in the background; control everything with simple CLI commands.
+- **Zero Cluster Footprint** — Pure client-side SPDY tunnels. Nothing deployed to your cluster.
 
-## The Solution
+## Quick Start
 
-kubeport is a single binary that manages all your port-forwards in the background. Define your services once in a config file, run `kubeport start`, and forget about it.
+```bash
+# Install
+brew install rbaliyan/tap/kubeport
+
+# Create a config
+kubeport config init
+
+# Start all services
+kubeport start
+
+# Check what's running
+kubeport status
+```
 
 ```
 $ kubeport status
@@ -32,81 +46,147 @@ $ kubeport status
   Platform/grpc     connected    :9090  →  :9090     platform-7f8a9b-q4r2s
 ```
 
-When a connection drops, kubeport detects it within seconds and reconnects automatically — with exponential backoff so it doesn't hammer your cluster.
+## The `kubeport.yaml`
 
-## Key Features
-
-- **Self-healing connections** — Health checks detect failures and restart forwards automatically with exponential backoff
-- **One config, many services** — Define all your forwards in a single YAML or TOML file
-- **Background daemon** — Runs as a background process; control it with simple CLI commands
-- **No kubectl required** — Uses the Kubernetes Go client directly; kubeport is a single self-contained binary
-- **Lifecycle hooks** — Run shell commands, exec binaries, or fire webhooks on connect/disconnect/failure events
-- **Multi-port auto-discovery** — Forward all ports from a service with `ports: all`, or pick specific named ports
-- **Dynamic ports** — Set `local_port: 0` and let the OS pick an available port
-- **Per-service namespaces** — Mix services from different namespaces in one config
-
-## Install
-
-```bash
-# Homebrew
-brew install rbaliyan/tap/kubeport
-
-# Install script
-curl -sSfL https://raw.githubusercontent.com/rbaliyan/kubeport/main/install.sh | sh
-
-# Go
-go install github.com/rbaliyan/kubeport@latest
-```
-
-Pre-built binaries are available on the [releases page](https://github.com/rbaliyan/kubeport/releases). See the [installation guide](docs/installation.md) for all options.
-
-## Quick Start
-
-**1. Create a config file:**
-
-```bash
-kubeport config init
-```
-
-**2. Add your services:**
-
-```bash
-kubeport config add --name "My API" --service my-api --local-port 8080 --remote-port 80
-kubeport config add --name "Redis" --pod redis-0 --local-port 6379 --remote-port 6379
-```
-
-Or write the config directly (`kubeport.yaml`):
+Don't make your teammates guess which ports to forward. Check this into your project root:
 
 ```yaml
+# kubeport.yaml
 context: my-cluster
 namespace: default
+
 services:
-  - name: My API
-    service: my-api
+  - name: Auth API
+    service: auth-api
     local_port: 8080
-    remote_port: 80
-  - name: Redis
-    pod: redis-0
-    local_port: 6379
-    remote_port: 6379
+    remote_port: 8080
+
+  - name: Postgres
+    pod: postgres-0
+    local_port: 5432
+    remote_port: 5432
+    namespace: databases
+
   - name: Platform
     service: platform-svc
-    ports: all              # forward every port the service exposes
+    ports: all                  # auto-discover and forward every port
+
+supervisor:
+  health_check_interval: 10s   # TCP probe frequency
+  health_check_threshold: 3    # consecutive failures before restart
+  max_restarts: 0              # 0 = unlimited
+
+hooks:
+  - name: notify
+    type: shell
+    shell:
+      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
+      forward_failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed: ${KUBEPORT_ERROR}"
 ```
 
-**3. Start:**
+Both YAML and TOML formats are supported. See [example.yaml](example.yaml) and [example.toml](example.toml).
+
+## Feature Deep Dive
+
+### Self-Healing Connections
+
+Each port-forward runs in its own supervised goroutine with:
+
+- **TCP health checks** every 10s (configurable) to detect silent failures
+- **Automatic restart** with exponential backoff (1s → 30s) and 25% jitter
+- **Backoff reset** if a connection stays healthy for 30+ seconds
+- **Smart pod selection** — prefers Ready pods, skips terminating pods during rollouts
+
+### Multi-Port Auto-Discovery
+
+Don't list every port manually. Let kubeport discover them from the Kubernetes API:
+
+```yaml
+services:
+  # Forward all ports
+  - name: Platform
+    service: platform-svc
+    ports: all
+
+  # Pick specific named ports with local overrides
+  - name: Backend
+    service: backend-svc
+    ports:
+      - name: http
+        local_port: 8080
+      - name: grpc
+
+  # All ports except metrics, shifted by an offset
+  - name: Infra
+    service: infra-svc
+    ports: all
+    exclude_ports: [metrics]
+    local_port_offset: 10000
+```
+
+Each discovered port becomes an independent supervised forward (`Platform/http`, `Platform/grpc`) with its own health checks and restart tracking.
+
+### Lifecycle Hooks
+
+Kubeport isn't just a tunnel — it's a workflow engine. Use hooks to bridge the gap between your cluster and your local machine.
+
+| Event | When It Fires |
+|-------|---------------|
+| `manager_starting` | Before any forwards begin (gate event — can block startup) |
+| `manager_stopped` | All forwards stopped, cleanup complete |
+| `forward_connected` | A tunnel is ready and healthy |
+| `forward_disconnected` | A tunnel dropped (will retry) |
+| `forward_failed` | Max restarts exceeded — permanently failed |
+| `forward_stopped` | A forward was intentionally stopped |
+| `health_check_failed` | A single health-check probe failed |
+| `service_added` | A service was dynamically added |
+| `service_removed` | A service was dynamically removed |
+
+Three hook types: **shell** (`sh -c`), **exec** (direct binary), and **webhook** (HTTP POST).
+
+**Gate startup on VPN:**
+
+```yaml
+hooks:
+  - name: vpn-check
+    type: shell
+    events: [manager_starting]
+    fail_mode: closed              # block startup if VPN is down
+    shell:
+      manager_starting: ./scripts/ensure-vpn.sh
+```
+
+**Slack alerts on failures:**
+
+```yaml
+hooks:
+  - name: slack
+    type: webhook
+    events: [forward_failed]
+    webhook:
+      url: https://hooks.slack.com/services/T.../B.../xxx
+      body_template: '{"text": ":warning: ${SERVICE} failed: ${ERROR}"}'
+```
+
+See the [hooks guide](docs/hooks.md) for all options, environment variables, and more examples.
+
+### Dynamic Service Management
+
+Add, remove, and reload services without restarting the daemon:
 
 ```bash
-kubeport start
+# Add a service on the fly (--persist writes it to the config file)
+kubeport add "Postgres" svc/postgres:5432:5432 --persist
+
+# Remove a running service
+kubeport remove "Postgres"
+
+# Reload after editing the config file
+kubeport reload
+
+# Merge services from another file
+kubeport apply overlay.yaml
 ```
-
-**4. Check status:**
-
-```bash
-kubeport status
-```
-
-That's it. Your forwards are running in the background, health-checked, and will auto-restart if anything goes wrong.
 
 ### No Config File? No Problem
 
@@ -122,70 +202,56 @@ kubeport start --no-config \
 
 ## Common Workflows
 
-### Stop and restart
+```bash
+kubeport start              # Start daemon in background
+kubeport status             # Check all forwards
+kubeport status --json      # Machine-readable output
+kubeport fg                 # Run in foreground (for debugging or containers)
+kubeport stop               # Graceful shutdown
+kubeport restart            # Stop + start
+kubeport logs               # Follow daemon logs
+kubeport reload             # Sync config changes to running daemon
+```
+
+### Config Management
 
 ```bash
-kubeport stop
-kubeport restart
+kubeport config init        # Create a starter config (YAML or TOML)
+kubeport config show        # Display current config in a table
+kubeport config validate    # Validate config file
+kubeport config set context my-cluster
+kubeport config add --name "Redis" --pod redis-0 --local-port 6379 --remote-port 6379
+kubeport config remove "Redis"
+kubeport config path        # Print resolved config file path
 ```
 
-### Run in the foreground (for debugging or containers)
+## Comparison
+
+| Capability | kubectl | Telepresence | Kubeport |
+|---|---|---|---|
+| Auto-reconnect | | x | x |
+| Health checks | | | x |
+| Config file | | | x |
+| Multi-port discovery | | | x |
+| Lifecycle hooks | | x | x |
+| Dynamic add/remove | | | x |
+| Background daemon | | x | x |
+| Zero cluster footprint | x | | x |
+
+## Install
 
 ```bash
-kubeport fg
+# Homebrew
+brew install rbaliyan/tap/kubeport
+
+# Install script
+curl -sSfL https://raw.githubusercontent.com/rbaliyan/kubeport/main/install.sh | sh
+
+# Go
+go install github.com/rbaliyan/kubeport@latest
 ```
 
-### Add/remove services on the fly
-
-```bash
-kubeport add "Postgres" svc/postgres:5432:5432
-kubeport remove "Postgres"
-```
-
-### Reload after editing config
-
-```bash
-kubeport reload
-```
-
-### Forward all ports from a service
-
-Don't want to list every port? Let kubeport discover them:
-
-```yaml
-services:
-  - name: Platform
-    service: platform-svc
-    ports: all                   # forward every port the service exposes
-```
-
-Or pick specific named ports with optional local port overrides:
-
-```yaml
-services:
-  - name: Backend
-    service: backend-svc
-    ports:
-      - name: http
-        local_port: 8080
-      - name: grpc               # local_port defaults to the remote port
-    exclude_ports: []
-```
-
-Each discovered port gets its own supervised forward (`Platform/http`, `Platform/grpc`, etc.) with independent health checks and restart tracking. See the [configuration guide](docs/configuration.md) for all multi-port options.
-
-### Get notified when things break
-
-```yaml
-hooks:
-  - name: alert
-    type: shell
-    shell:
-      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready"
-      forward_failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed"
-```
-
-See the [hooks guide](docs/hooks.md) for Slack webhooks, VPN gating, syslog integration, and more.
+Pre-built binaries for Linux and macOS (amd64/arm64) are available on the [releases page](https://github.com/rbaliyan/kubeport/releases). Shell completions for bash, zsh, and fish are included. See the [installation guide](docs/installation.md) for all options.
 
 ## Documentation
 
