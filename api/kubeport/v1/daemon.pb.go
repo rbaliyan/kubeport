@@ -993,6 +993,178 @@ func (x *ApplyResponse) GetWarnings() []string {
 	return nil
 }
 
+type AddressMapping struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	InternalAddr  string                 `protobuf:"bytes,1,opt,name=internal_addr,json=internalAddr,proto3" json:"internal_addr,omitempty"` // K8s internal address (e.g., "web-api.demo.svc.cluster.local:80")
+	LocalAddr     string                 `protobuf:"bytes,2,opt,name=local_addr,json=localAddr,proto3" json:"local_addr,omitempty"`          // Local address (e.g., "localhost:8080")
+	ServiceName   string                 `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`    // kubeport service name
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AddressMapping) Reset() {
+	*x = AddressMapping{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AddressMapping) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AddressMapping) ProtoMessage() {}
+
+func (x *AddressMapping) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AddressMapping.ProtoReflect.Descriptor instead.
+func (*AddressMapping) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *AddressMapping) GetInternalAddr() string {
+	if x != nil {
+		return x.InternalAddr
+	}
+	return ""
+}
+
+func (x *AddressMapping) GetLocalAddr() string {
+	if x != nil {
+		return x.LocalAddr
+	}
+	return ""
+}
+
+func (x *AddressMapping) GetServiceName() string {
+	if x != nil {
+		return x.ServiceName
+	}
+	return ""
+}
+
+type MappingsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	ClusterDomain string                 `protobuf:"bytes,1,opt,name=cluster_domain,json=clusterDomain,proto3" json:"cluster_domain,omitempty"` // Custom cluster domain (default: "cluster.local")
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MappingsRequest) Reset() {
+	*x = MappingsRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MappingsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MappingsRequest) ProtoMessage() {}
+
+func (x *MappingsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MappingsRequest.ProtoReflect.Descriptor instead.
+func (*MappingsRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *MappingsRequest) GetClusterDomain() string {
+	if x != nil {
+		return x.ClusterDomain
+	}
+	return ""
+}
+
+type MappingsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Addrs         map[string]string      `protobuf:"bytes,1,rep,name=addrs,proto3" json:"addrs,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Flat map: internal addr -> local addr
+	Mappings      []*AddressMapping      `protobuf:"bytes,2,rep,name=mappings,proto3" json:"mappings,omitempty"`                                                                     // Structured mappings with metadata
+	Context       string                 `protobuf:"bytes,3,opt,name=context,proto3" json:"context,omitempty"`
+	Namespace     string                 `protobuf:"bytes,4,opt,name=namespace,proto3" json:"namespace,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MappingsResponse) Reset() {
+	*x = MappingsResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MappingsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MappingsResponse) ProtoMessage() {}
+
+func (x *MappingsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MappingsResponse.ProtoReflect.Descriptor instead.
+func (*MappingsResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *MappingsResponse) GetAddrs() map[string]string {
+	if x != nil {
+		return x.Addrs
+	}
+	return nil
+}
+
+func (x *MappingsResponse) GetMappings() []*AddressMapping {
+	if x != nil {
+		return x.Mappings
+	}
+	return nil
+}
+
+func (x *MappingsResponse) GetContext() string {
+	if x != nil {
+		return x.Context
+	}
+	return ""
+}
+
+func (x *MappingsResponse) GetNamespace() string {
+	if x != nil {
+		return x.Namespace
+	}
+	return ""
+}
+
 var File_kubeport_v1_daemon_proto protoreflect.FileDescriptor
 
 const file_kubeport_v1_daemon_proto_rawDesc = "" +
@@ -1067,13 +1239,29 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x14\n" +
 	"\x05added\x18\x03 \x01(\x05R\x05added\x12\x18\n" +
 	"\askipped\x18\x04 \x01(\x05R\askipped\x12\x1a\n" +
-	"\bwarnings\x18\x05 \x03(\tR\bwarnings*\x99\x01\n" +
+	"\bwarnings\x18\x05 \x03(\tR\bwarnings\"w\n" +
+	"\x0eAddressMapping\x12#\n" +
+	"\rinternal_addr\x18\x01 \x01(\tR\finternalAddr\x12\x1d\n" +
+	"\n" +
+	"local_addr\x18\x02 \x01(\tR\tlocalAddr\x12!\n" +
+	"\fservice_name\x18\x03 \x01(\tR\vserviceName\"8\n" +
+	"\x0fMappingsRequest\x12%\n" +
+	"\x0ecluster_domain\x18\x01 \x01(\tR\rclusterDomain\"\xfd\x01\n" +
+	"\x10MappingsResponse\x12>\n" +
+	"\x05addrs\x18\x01 \x03(\v2(.kubeport.v1.MappingsResponse.AddrsEntryR\x05addrs\x127\n" +
+	"\bmappings\x18\x02 \x03(\v2\x1b.kubeport.v1.AddressMappingR\bmappings\x12\x18\n" +
+	"\acontext\x18\x03 \x01(\tR\acontext\x12\x1c\n" +
+	"\tnamespace\x18\x04 \x01(\tR\tnamespace\x1a8\n" +
+	"\n" +
+	"AddrsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\x99\x01\n" +
 	"\fForwardState\x12\x1d\n" +
 	"\x19FORWARD_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FORWARD_STATE_STARTING\x10\x01\x12\x19\n" +
 	"\x15FORWARD_STATE_RUNNING\x10\x02\x12\x18\n" +
 	"\x14FORWARD_STATE_FAILED\x10\x03\x12\x19\n" +
-	"\x15FORWARD_STATE_STOPPED\x10\x042\xb9\x03\n" +
+	"\x15FORWARD_STATE_STOPPED\x10\x042\x82\x04\n" +
 	"\rDaemonService\x12A\n" +
 	"\x06Status\x12\x1a.kubeport.v1.StatusRequest\x1a\x1b.kubeport.v1.StatusResponse\x12;\n" +
 	"\x04Stop\x12\x18.kubeport.v1.StopRequest\x1a\x19.kubeport.v1.StopResponse\x12M\n" +
@@ -1081,7 +1269,8 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"AddService\x12\x1e.kubeport.v1.AddServiceRequest\x1a\x1f.kubeport.v1.AddServiceResponse\x12V\n" +
 	"\rRemoveService\x12!.kubeport.v1.RemoveServiceRequest\x1a\".kubeport.v1.RemoveServiceResponse\x12A\n" +
 	"\x06Reload\x12\x1a.kubeport.v1.ReloadRequest\x1a\x1b.kubeport.v1.ReloadResponse\x12>\n" +
-	"\x05Apply\x12\x19.kubeport.v1.ApplyRequest\x1a\x1a.kubeport.v1.ApplyResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
+	"\x05Apply\x12\x19.kubeport.v1.ApplyRequest\x1a\x1a.kubeport.v1.ApplyResponse\x12G\n" +
+	"\bMappings\x12\x1c.kubeport.v1.MappingsRequest\x1a\x1d.kubeport.v1.MappingsResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
 
 var (
 	file_kubeport_v1_daemon_proto_rawDescOnce sync.Once
@@ -1096,7 +1285,7 @@ func file_kubeport_v1_daemon_proto_rawDescGZIP() []byte {
 }
 
 var file_kubeport_v1_daemon_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_kubeport_v1_daemon_proto_goTypes = []any{
 	(ForwardState)(0),             // 0: kubeport.v1.ForwardState
 	(*ServiceInfo)(nil),           // 1: kubeport.v1.ServiceInfo
@@ -1114,34 +1303,42 @@ var file_kubeport_v1_daemon_proto_goTypes = []any{
 	(*ReloadResponse)(nil),        // 13: kubeport.v1.ReloadResponse
 	(*ApplyRequest)(nil),          // 14: kubeport.v1.ApplyRequest
 	(*ApplyResponse)(nil),         // 15: kubeport.v1.ApplyResponse
-	(*timestamppb.Timestamp)(nil), // 16: google.protobuf.Timestamp
+	(*AddressMapping)(nil),        // 16: kubeport.v1.AddressMapping
+	(*MappingsRequest)(nil),       // 17: kubeport.v1.MappingsRequest
+	(*MappingsResponse)(nil),      // 18: kubeport.v1.MappingsResponse
+	nil,                           // 19: kubeport.v1.MappingsResponse.AddrsEntry
+	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
 }
 var file_kubeport_v1_daemon_proto_depIdxs = []int32{
 	1,  // 0: kubeport.v1.ForwardStatusProto.service:type_name -> kubeport.v1.ServiceInfo
 	0,  // 1: kubeport.v1.ForwardStatusProto.state:type_name -> kubeport.v1.ForwardState
-	16, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
-	16, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
+	20, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
+	20, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
 	3,  // 4: kubeport.v1.StatusResponse.forwards:type_name -> kubeport.v1.ForwardStatusProto
 	1,  // 5: kubeport.v1.AddServiceRequest.service:type_name -> kubeport.v1.ServiceInfo
 	2,  // 6: kubeport.v1.AddServiceRequest.ports:type_name -> kubeport.v1.PortSpec
 	1,  // 7: kubeport.v1.ApplyRequest.services:type_name -> kubeport.v1.ServiceInfo
-	4,  // 8: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
-	6,  // 9: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
-	8,  // 10: kubeport.v1.DaemonService.AddService:input_type -> kubeport.v1.AddServiceRequest
-	10, // 11: kubeport.v1.DaemonService.RemoveService:input_type -> kubeport.v1.RemoveServiceRequest
-	12, // 12: kubeport.v1.DaemonService.Reload:input_type -> kubeport.v1.ReloadRequest
-	14, // 13: kubeport.v1.DaemonService.Apply:input_type -> kubeport.v1.ApplyRequest
-	5,  // 14: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
-	7,  // 15: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
-	9,  // 16: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
-	11, // 17: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
-	13, // 18: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
-	15, // 19: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
-	14, // [14:20] is the sub-list for method output_type
-	8,  // [8:14] is the sub-list for method input_type
-	8,  // [8:8] is the sub-list for extension type_name
-	8,  // [8:8] is the sub-list for extension extendee
-	0,  // [0:8] is the sub-list for field type_name
+	19, // 8: kubeport.v1.MappingsResponse.addrs:type_name -> kubeport.v1.MappingsResponse.AddrsEntry
+	16, // 9: kubeport.v1.MappingsResponse.mappings:type_name -> kubeport.v1.AddressMapping
+	4,  // 10: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
+	6,  // 11: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
+	8,  // 12: kubeport.v1.DaemonService.AddService:input_type -> kubeport.v1.AddServiceRequest
+	10, // 13: kubeport.v1.DaemonService.RemoveService:input_type -> kubeport.v1.RemoveServiceRequest
+	12, // 14: kubeport.v1.DaemonService.Reload:input_type -> kubeport.v1.ReloadRequest
+	14, // 15: kubeport.v1.DaemonService.Apply:input_type -> kubeport.v1.ApplyRequest
+	17, // 16: kubeport.v1.DaemonService.Mappings:input_type -> kubeport.v1.MappingsRequest
+	5,  // 17: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
+	7,  // 18: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
+	9,  // 19: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
+	11, // 20: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
+	13, // 21: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
+	15, // 22: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
+	18, // 23: kubeport.v1.DaemonService.Mappings:output_type -> kubeport.v1.MappingsResponse
+	17, // [17:24] is the sub-list for method output_type
+	10, // [10:17] is the sub-list for method input_type
+	10, // [10:10] is the sub-list for extension type_name
+	10, // [10:10] is the sub-list for extension extendee
+	0,  // [0:10] is the sub-list for field type_name
 }
 
 func init() { file_kubeport_v1_daemon_proto_init() }
@@ -1155,7 +1352,7 @@ func file_kubeport_v1_daemon_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kubeport_v1_daemon_proto_rawDesc), len(file_kubeport_v1_daemon_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
