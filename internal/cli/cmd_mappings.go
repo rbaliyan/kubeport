@@ -52,6 +52,8 @@ func (a *app) cmdMappings(args []string) {
 		ClusterDomain: clusterDomain,
 	})
 	if err != nil {
+		cancel()
+		dc.Close()
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -63,7 +65,7 @@ func (a *app) cmdMappings(args []string) {
 		_ = enc.Encode(resp.Addrs)
 	case outputYAML:
 		data, _ := yaml.Marshal(resp.Addrs)
-		os.Stdout.Write(data)
+		_, _ = os.Stdout.Write(data)
 	default:
 		if len(resp.Mappings) == 0 {
 			fmt.Println("No active mappings (no running forwards)")

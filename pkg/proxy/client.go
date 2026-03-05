@@ -106,20 +106,21 @@ func newClient(o *options) (Proxy, error) {
 		err  error
 	)
 
-	if o.host != "" {
+	switch {
+	case o.host != "":
 		// Explicit TCP target
 		conn, err = grpc.NewClient(
 			o.host,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithUnaryInterceptor(daemon.APIKeyClientInterceptor(o.apiKey)),
 		)
-	} else if o.socketPath != "" {
+	case o.socketPath != "":
 		// Explicit socket path
 		conn, err = grpc.NewClient(
 			"unix://"+o.socketPath,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 		)
-	} else {
+	default:
 		// Auto-discover from kubeport config file or standard socket locations
 		target, discoverErr := discoverTarget()
 		if discoverErr != nil {
@@ -151,7 +152,7 @@ func newClient(o *options) (Proxy, error) {
 		ClusterDomain: o.clusterDomain,
 	})
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return nil, fmt.Errorf("fetch mappings from kubeport: %w", err)
 	}
 

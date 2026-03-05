@@ -35,7 +35,7 @@ type proxyResolver struct {
 }
 
 func (r *proxyResolver) updateState() {
-	r.cc.UpdateState(resolver.State{
+	_ = r.cc.UpdateState(resolver.State{
 		Addresses: []resolver.Address{{Addr: r.addr}},
 	})
 }
