@@ -1,0 +1,22 @@
+context: kind-kind-cluster
+namespace: demo
+
+services:
+  - name: Web API
+    service: web-api
+    local_port: 8080
+    remote_port: 80
+
+  - name: Cache
+    service: cache
+    local_port: 6379
+    remote_port: 6379
+
+  - name: Platform
+    service: platform
+    ports: all
+    local_port_offset: 10000
+
+supervisor:
+  health_check_interval: 10s
+  health_check_threshold: 3
