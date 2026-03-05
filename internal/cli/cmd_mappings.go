@@ -43,17 +43,9 @@ func (a *app) cmdMappings(args []string) {
 		fmt.Fprintf(os.Stderr, "%sProxy is not running%s\n", colorYellow, colorReset)
 		os.Exit(1)
 	}
-	defer dc.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	resp, err := dc.client.Mappings(ctx, &kubeportv1.MappingsRequest{
-		ClusterDomain: clusterDomain,
-	})
+	resp, err := a.fetchMappings(dc, clusterDomain)
+	dc.Close()
 	if err != nil {
-		cancel()
-		dc.Close()
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
@@ -84,4 +76,12 @@ func (a *app) cmdMappings(args []string) {
 			fmt.Printf("  %s → %s\n", m.InternalAddr, m.LocalAddr)
 		}
 	}
+}
+
+func (a *app) fetchMappings(dc *daemonClient, clusterDomain string) (*kubeportv1.MappingsResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return dc.client.Mappings(ctx, &kubeportv1.MappingsRequest{
+		ClusterDomain: clusterDomain,
+	})
 }
