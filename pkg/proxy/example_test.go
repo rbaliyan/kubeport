@@ -103,9 +103,9 @@ func ExampleNoop() {
 	p := proxy.Noop()
 	defer p.Close(context.Background())
 
-	fmt.Println(p.GRPCTarget("localhost:8080")) // prints: localhost:8080
-	fmt.Println(p.Addrs())                      // prints: map[]
-	fmt.Println(p.Refresh(context.Background()))                     // prints: <nil>
+	fmt.Println(p.GRPCTarget("localhost:8080"))  // prints: localhost:8080
+	fmt.Println(p.Addrs())                       // prints: map[]
+	fmt.Println(p.Refresh(context.Background())) // prints: <nil>
 
 	// Output:
 	// localhost:8080

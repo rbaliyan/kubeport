@@ -21,31 +21,31 @@ var _ Proxy = (*client)(nil)
 
 // client is the real Proxy implementation backed by a kubeport daemon connection.
 type client struct {
-	conn       *grpc.ClientConn
-	grpcClient kubeportv1.DaemonServiceClient
-	addrs      map[string]string
-	mu sync.Mutex
+	conn         *grpc.ClientConn
+	grpcClient   kubeportv1.DaemonServiceClient
+	addrs        map[string]string
+	mu           sync.Mutex
 	shutdownChan chan struct{}
-	logger     *slog.Logger
+	logger       *slog.Logger
 }
 
 // Option configures the Proxy.
 type Option func(*options)
 
 type options struct {
-	enabled       *bool // nil = always connect; true = connect, noop on error; false = noop
-	socketPath    string
-	host          string
-	apiKey        string
-	clusterDomain string
+	enabled         *bool // nil = always connect; true = connect, noop on error; false = noop
+	socketPath      string
+	host            string
+	apiKey          string
+	clusterDomain   string
 	refreshInterval time.Duration
-	logger        *slog.Logger
+	logger          *slog.Logger
 }
 
 // WithRefreshInterval sets the referesh interval for auto refresh
 // If not set defaults to 10 seconds
-func WithRefreshInterval(t time.Duration) Option{
-	return func(o *options){ o.refreshInterval = t}
+func WithRefreshInterval(t time.Duration) Option {
+	return func(o *options) { o.refreshInterval = t }
 }
 
 // WithSocketPath sets the Unix socket path to connect to the kubeport daemon.
@@ -88,7 +88,7 @@ func WithLogger(l *slog.Logger) Option {
 // instead of failing. If WithEnabled is not set, New returns an error on failure.
 func New(opts ...Option) (Proxy, error) {
 	o := &options{
-		logger: slog.Default(),
+		logger:          slog.Default(),
 		refreshInterval: time.Second * 10,
 	}
 	for _, opt := range opts {
@@ -169,26 +169,26 @@ func newClient(o *options) (Proxy, error) {
 	}
 
 	c := &client{
-		conn:       conn,
-		grpcClient: grpcClient,
-		addrs:      resp.Addrs,
+		conn:         conn,
+		grpcClient:   grpcClient,
+		addrs:        resp.Addrs,
 		shutdownChan: make(chan struct{}),
-		logger:     o.logger.With(slog.String("component", "kubeport-proxy")),
+		logger:       o.logger.With(slog.String("component", "kubeport-proxy")),
 	}
 
 	// Register gRPC resolver
 	c.registerResolver()
-	
+
 	// auto refresh entries
-	if o.refreshInterval > 0{
-		go func(){
+	if o.refreshInterval > 0 {
+		go func() {
 			t := time.NewTicker(o.refreshInterval)
 			for {
 				select {
 				case <-c.shutdownChan:
 					return
 				case <-t.C:
-					ctx , cancel := context.WithTimeout(context.Background(), time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 					_ = c.Refresh(ctx)
 					cancel()
 				}
@@ -213,7 +213,7 @@ func (c *client) Refresh(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("refresh mappings: %w", err)
 	}
-    c.mu.Lock()
+	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.addrs = resp.Addrs
 	return nil

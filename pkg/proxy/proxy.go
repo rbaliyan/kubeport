@@ -85,7 +85,7 @@ func (n noopProxy) DialFunc() func(ctx context.Context, network, addr string) (n
 	return n.DialContext
 }
 
-func (noopProxy) GRPCTarget(addr string) string    { return addr }
-func (noopProxy) Addrs() map[string]string          { return nil }
-func (noopProxy) Refresh(_ context.Context) error                    { return nil }
-func (noopProxy) Close(_ context.Context) error                      { return nil }
+func (noopProxy) GRPCTarget(addr string) string   { return addr }
+func (noopProxy) Addrs() map[string]string        { return nil }
+func (noopProxy) Refresh(_ context.Context) error { return nil }
+func (noopProxy) Close(_ context.Context) error   { return nil }
