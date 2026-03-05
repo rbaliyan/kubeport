@@ -263,6 +263,7 @@ Pre-built binaries for Linux and macOS (amd64/arm64) are available on the [relea
 | [Lifecycle Hooks](docs/hooks.md) | Shell, exec, and webhook hooks with real-world examples |
 | [Architecture](docs/architecture.md) | How kubeport works under the hood |
 | [Shell Completions](docs/shell-completions.md) | Tab completion for bash, zsh, and fish |
+| [Client Library (SDK)](docs/sdk.md) | Use kubeport address translation in your Go application |
 
 Example config files: [YAML](example.yaml) | [TOML](example.toml)
 
@@ -291,6 +292,54 @@ just fmt           # Format code
 ```
 
 See the [justfile](justfile) for all available recipes.
+
+### Local Testing with a Cluster
+
+Kubeport requires a Kubernetes cluster for end-to-end testing. We recommend [kind](https://kind.sigs.k8s.io/) (Kubernetes in Docker) for local development:
+
+```bash
+# Create a test cluster
+kind create cluster --name kubeport-dev
+
+# Deploy sample services
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: nginx }
+  template:
+    metadata:
+      labels: { app: nginx }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  selector: { app: nginx }
+  ports: [{ port: 80 }]
+EOF
+
+# Test kubeport
+just build
+./bin/kubeport start --no-config --context kind-kubeport-dev \
+  --svc "nginx:svc/nginx:80:8080"
+./bin/kubeport status
+
+# Clean up
+kind delete cluster --name kubeport-dev
+```
+
+[minikube](https://minikube.sigs.k8s.io/) also works — set `--context minikube` instead. Unit tests (`just test`) do not require a cluster.
 
 ## License
 

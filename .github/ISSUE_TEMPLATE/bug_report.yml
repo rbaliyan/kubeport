@@ -1,0 +1,93 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of what happened and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Create kubeport.yaml with ...
+        2. Run `kubeport start`
+        3. Run `kubeport status`
+        4. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Your kubeport.yaml (redact any sensitive values).
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output from `kubeport logs` or `kubeport fg`.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: Kubeport Version
+      description: Output of `kubeport version`
+      placeholder: "v0.5.0"
+    validations:
+      required: true
+
+  - type: input
+    id: k8s-version
+    attributes:
+      label: Kubernetes Version
+      description: Output of `kubectl version --short` (server version)
+      placeholder: "v1.30.0"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Linux (amd64)
+        - Linux (arm64)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: k8s-provider
+    attributes:
+      label: Kubernetes Provider
+      description: Where is your cluster running?
+      options:
+        - kind
+        - minikube
+        - Docker Desktop
+        - EKS
+        - GKE
+        - AKS
+        - Rancher/k3s
+        - Other
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Anything else that might help (screenshots, related issues, workarounds tried).
