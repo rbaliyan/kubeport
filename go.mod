@@ -3,6 +3,7 @@ module github.com/rbaliyan/kubeport
 go 1.25.7
 
 require (
+	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20250520111509-a70c2aa677fa
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/rbaliyan/go-version v1.2.3
 	google.golang.org/grpc v1.79.1
@@ -14,6 +15,7 @@ require (
 )
 
 require (
+	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/emicklei/go-restful/v3 v3.12.2 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
