@@ -27,6 +27,7 @@ func (a *app) cmdHelp() {
 	fmt.Println("  remove      Remove a service from running proxy")
 	fmt.Println("  reload      Reload config file (add new, remove deleted services)")
 	fmt.Println("  apply       Apply services from a YAML/TOML file to running proxy")
+	fmt.Println("  mappings    Show K8s DNS to localhost address mappings")
 	fmt.Println("  fg          Run in foreground (blocks terminal)")
 	fmt.Println("  config      Manage configuration (init, show, validate, set, add, remove, path)")
 	fmt.Println("  version     Show version information")

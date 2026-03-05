@@ -1097,6 +1097,89 @@ func (m *Manager) Stop() {
 	}
 }
 
+// AddressMapping represents a single K8s internal address to local address mapping.
+type AddressMapping struct {
+	InternalAddr string // e.g., "web-api.demo.svc.cluster.local:80"
+	LocalAddr    string // e.g., "localhost:8080"
+	ServiceName  string // kubeport service name
+}
+
+// Mappings returns address mappings for all running forwards. For each connected forward,
+// it generates all Kubernetes DNS name variants that could be used to reach the service
+// (short name, namespace-qualified, svc-qualified, and FQDN) mapped to localhost:<port>.
+func (m *Manager) Mappings(clusterDomain string) []AddressMapping {
+	if clusterDomain == "" {
+		clusterDomain = "cluster.local"
+	}
+
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	defaultNS := m.cfg.Namespace
+
+	var mappings []AddressMapping
+	for _, name := range m.order {
+		pf := m.forwards[name]
+		pf.mu.Lock()
+		state := pf.state
+		port := pf.actualPort
+		if port == 0 {
+			port = pf.svc.LocalPort
+		}
+		svc := pf.svc
+		pf.mu.Unlock()
+
+		if state != StateRunning || port <= 0 {
+			continue
+		}
+
+		localAddr := fmt.Sprintf("localhost:%d", port)
+		ns := svc.Namespace
+		if ns == "" {
+			ns = defaultNS
+		}
+		remotePort := fmt.Sprintf("%d", svc.RemotePort)
+
+		// For service-backed forwards, generate DNS name variants
+		target := svc.Service
+		if target == "" {
+			target = svc.Pod
+		}
+		if target == "" {
+			continue
+		}
+
+		if svc.Service != "" {
+			// Service DNS variants:
+			//   <svc>:<port>
+			//   <svc>.<ns>:<port>
+			//   <svc>.<ns>.svc:<port>
+			//   <svc>.<ns>.svc.<domain>:<port>
+			dnsNames := []string{
+				target,
+				target + "." + ns,
+				target + "." + ns + ".svc",
+				target + "." + ns + ".svc." + clusterDomain,
+			}
+			for _, dns := range dnsNames {
+				mappings = append(mappings, AddressMapping{
+					InternalAddr: dns + ":" + remotePort,
+					LocalAddr:    localAddr,
+					ServiceName:  name,
+				})
+			}
+		} else {
+			// Pod target: just use the pod name
+			mappings = append(mappings, AddressMapping{
+				InternalAddr: target + ":" + remotePort,
+				LocalAddr:    localAddr,
+				ServiceName:  name,
+			})
+		}
+	}
+	return mappings
+}
+
 // Status returns the status of all port forwards.
 func (m *Manager) Status() []ForwardStatus {
 	m.mu.RLock()

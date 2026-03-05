@@ -11,6 +11,7 @@ service DaemonService {
   rpc RemoveService(RemoveServiceRequest) returns (RemoveServiceResponse);
   rpc Reload(ReloadRequest) returns (ReloadResponse);
   rpc Apply(ApplyRequest) returns (ApplyResponse);
+  rpc Mappings(MappingsRequest) returns (MappingsResponse);
 }
 
 enum ForwardState {
@@ -100,4 +101,20 @@ message ApplyResponse {
   int32 added = 3;
   int32 skipped = 4;
   repeated string warnings = 5;
+}
+
+message AddressMapping {
+  string internal_addr = 1;  // K8s internal address (e.g., "web-api.demo.svc.cluster.local:80")
+  string local_addr = 2;     // Local address (e.g., "localhost:8080")
+  string service_name = 3;   // kubeport service name
+}
+
+message MappingsRequest {
+  string cluster_domain = 1;  // Custom cluster domain (default: "cluster.local")
+}
+message MappingsResponse {
+  map<string, string> addrs = 1;            // Flat map: internal addr -> local addr
+  repeated AddressMapping mappings = 2;     // Structured mappings with metadata
+  string context = 3;
+  string namespace = 4;
 }

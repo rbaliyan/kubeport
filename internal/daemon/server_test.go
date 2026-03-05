@@ -61,6 +61,10 @@ func (m *mockSupervisor) Apply(_ []config.ServiceConfig) (int, int, []string) {
 	return m.applyAdded, m.applySkipped, m.applyWarnings
 }
 
+func (m *mockSupervisor) Mappings(_ string) []proxy.AddressMapping {
+	return nil
+}
+
 func TestServer_Status(t *testing.T) {
 	mgr := &mockSupervisor{
 		statuses: []proxy.ForwardStatus{

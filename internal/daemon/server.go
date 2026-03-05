@@ -25,6 +25,7 @@ type Supervisor interface {
 	RemoveService(name string) error
 	Reload(cfg *config.Config) (added, removed int, err error)
 	Apply(services []config.ServiceConfig) (added, skipped int, warnings []string)
+	Mappings(clusterDomain string) []proxy.AddressMapping
 }
 
 // Server wraps a gRPC server that exposes the DaemonService over a Unix domain socket or TCP.
@@ -228,6 +229,29 @@ func (s *Server) Reload(_ context.Context, _ *kubeportv1.ReloadRequest) (*kubepo
 		Success: true,
 		Added:   int32(added),
 		Removed: int32(removed),
+	}, nil
+}
+
+// Mappings implements DaemonService.Mappings.
+func (s *Server) Mappings(_ context.Context, req *kubeportv1.MappingsRequest) (*kubeportv1.MappingsResponse, error) {
+	mappings := s.mgr.Mappings(req.GetClusterDomain())
+
+	addrs := make(map[string]string, len(mappings))
+	protos := make([]*kubeportv1.AddressMapping, 0, len(mappings))
+	for _, m := range mappings {
+		addrs[m.InternalAddr] = m.LocalAddr
+		protos = append(protos, &kubeportv1.AddressMapping{
+			InternalAddr: m.InternalAddr,
+			LocalAddr:    m.LocalAddr,
+			ServiceName:  m.ServiceName,
+		})
+	}
+
+	return &kubeportv1.MappingsResponse{
+		Addrs:     addrs,
+		Mappings:  protos,
+		Context:   s.cfg.Context,
+		Namespace: s.cfg.Namespace,
 	}, nil
 }
 

@@ -1,10 +1,9 @@
 name: ClusterFuzzLite Batch
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch: # Manual trigger
   schedule:
-    - cron: '0 6 * * 1' # Monday 06:00 UTC
+    - cron: '0 0 28 * *' # 28th of every month, 00:00 UTC
 
 permissions: read-all
 

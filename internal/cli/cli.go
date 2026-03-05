@@ -200,7 +200,8 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		if err := a.loadConfig(); err != nil {
 			// Allow stop/status/logs/add/remove/reload without valid config
 			if command != "stop" && command != "status" && command != "logs" &&
-				command != "add" && command != "remove" && command != "reload" && command != "apply" {
+				command != "add" && command != "remove" && command != "reload" && command != "apply" &&
+				command != "mappings" {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
@@ -230,6 +231,8 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		a.cmdReload()
 	case "apply":
 		a.cmdApply(remaining)
+	case "mappings":
+		a.cmdMappings(remaining)
 	case "_daemon":
 		a.cmdDaemon(ctx, remaining)
 	default:
