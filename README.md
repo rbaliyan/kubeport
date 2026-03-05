@@ -8,6 +8,10 @@
 
 **The persistent, configuration-driven proxy for Kubernetes developers.** Stop restarting `kubectl port-forward`. Start coding.
 
+<p align="center">
+  <img src="demo/demo.gif" alt="kubeport demo" width="800">
+</p>
+
 ---
 
 ## Why Kubeport?
@@ -176,7 +180,7 @@ Add, remove, and reload services without restarting the daemon:
 
 ```bash
 # Add a service on the fly (--persist writes it to the config file)
-kubeport add "Postgres" svc/postgres:5432:5432 --persist
+kubeport add --name "Postgres" --pod postgres-0 --remote-port 5432 --local-port 5432 --persist
 
 # Remove a running service
 kubeport remove "Postgres"
@@ -262,33 +266,23 @@ Pre-built binaries for Linux and macOS (amd64/arm64) are available on the [relea
 | [CLI Reference](docs/cli.md) | Every command and flag |
 | [Lifecycle Hooks](docs/hooks.md) | Shell, exec, and webhook hooks with real-world examples |
 | [Architecture](docs/architecture.md) | How kubeport works under the hood |
+| [Advanced Usage](docs/advanced-usage.md) | CI/CD integration, multiple clusters, remote control |
+| [Troubleshooting](docs/troubleshooting.md) | Common issues, RBAC errors, and debugging tips |
 | [Shell Completions](docs/shell-completions.md) | Tab completion for bash, zsh, and fish |
 | [Client Library (SDK)](docs/sdk.md) | Use kubeport address translation in your Go application |
 
-Example config files: [YAML](example.yaml) | [TOML](example.toml)
+Example config files: [YAML](example.yaml) | [TOML](example.toml) | [Changelog](CHANGELOG.md)
 
 ## Contributing
 
-Contributions are welcome! Here's how to get started:
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and PR guidelines.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b my-feature`)
-3. Make your changes
-4. Run the tests: `just test`
-5. Run the linter: `just lint`
-6. Commit and push your branch
-7. Open a pull request
-
-### Development Setup
-
-This project uses [mise](https://mise.jdx.dev) for tool management and [just](https://github.com/casey/just) as a command runner.
+Quick start for contributors:
 
 ```bash
 mise install       # Install Go, linters, protoc, etc.
 just build         # Build the binary
-just test          # Run tests
-just lint          # Run linter
-just fmt           # Format code
+just check         # Format + lint + test
 ```
 
 See the [justfile](justfile) for all available recipes.
