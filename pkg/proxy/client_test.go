@@ -292,6 +292,20 @@ func TestClientClose_ClosesShutdownChan(t *testing.T) {
 	}
 }
 
+func TestClientClose_IdempotentNoPanic(t *testing.T) {
+	srv := &fakeDaemon{addrs: map[string]string{}}
+	addr := startFakeDaemon(t, srv)
+	c := makeClient(t, addr, nil)
+
+	// Calling Close multiple times must not panic.
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatalf("first Close: %v", err)
+	}
+	if err := c.Close(context.Background()); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
 // ── client.DialContext ────────────────────────────────────────────────────────
 
 func TestClientDialContext_TranslatesAddr(t *testing.T) {

@@ -25,6 +25,7 @@ type client struct {
 	grpcClient   kubeportv1.DaemonServiceClient
 	addrs        map[string]string
 	mu           sync.Mutex
+	closeOnce    sync.Once
 	shutdownChan chan struct{}
 	logger       *slog.Logger
 }
@@ -199,13 +200,12 @@ func newClient(o *options) (Proxy, error) {
 }
 
 func (c *client) Close(_ context.Context) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.conn != nil {
+	var err error
+	c.closeOnce.Do(func() {
 		close(c.shutdownChan)
-		return c.conn.Close()
-	}
-	return nil
+		err = c.conn.Close()
+	})
+	return err
 }
 
 func (c *client) Refresh(ctx context.Context) error {
