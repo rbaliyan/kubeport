@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
+	"sync"
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
@@ -22,6 +24,8 @@ type client struct {
 	conn       *grpc.ClientConn
 	grpcClient kubeportv1.DaemonServiceClient
 	addrs      map[string]string
+	mu sync.Mutex
+	shutdownChan chan struct{}
 	logger     *slog.Logger
 }
 
@@ -34,7 +38,14 @@ type options struct {
 	host          string
 	apiKey        string
 	clusterDomain string
+	refreshInterval time.Duration
 	logger        *slog.Logger
+}
+
+// WithRefreshInterval sets the referesh interval for auto refresh
+// If not set defaults to 10 seconds
+func WithRefreshInterval(t time.Duration) Option{
+	return func(o *options){ o.refreshInterval = t}
 }
 
 // WithSocketPath sets the Unix socket path to connect to the kubeport daemon.
@@ -78,6 +89,7 @@ func WithLogger(l *slog.Logger) Option {
 func New(opts ...Option) (Proxy, error) {
 	o := &options{
 		logger: slog.Default(),
+		refreshInterval: time.Second * 10,
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -160,37 +172,57 @@ func newClient(o *options) (Proxy, error) {
 		conn:       conn,
 		grpcClient: grpcClient,
 		addrs:      resp.Addrs,
+		shutdownChan: make(chan struct{}),
 		logger:     o.logger.With(slog.String("component", "kubeport-proxy")),
 	}
 
 	// Register gRPC resolver
 	c.registerResolver()
-
+	
+	// auto refresh entries
+	if o.refreshInterval > 0{
+		go func(){
+			t := time.NewTicker(o.refreshInterval)
+			for {
+				select {
+				case <-c.shutdownChan:
+					return
+				case <-t.C:
+					ctx , cancel := context.WithTimeout(context.Background(), time.Second)
+					_ = c.Refresh(ctx)
+					cancel()
+				}
+			}
+		}()
+	}
 	return c, nil
 }
 
-func (c *client) Close() error {
+func (c *client) Close(_ context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.conn != nil {
+		close(c.shutdownChan)
 		return c.conn.Close()
 	}
 	return nil
 }
 
-func (c *client) Refresh() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+func (c *client) Refresh(ctx context.Context) error {
 	resp, err := c.grpcClient.Mappings(ctx, &kubeportv1.MappingsRequest{})
 	if err != nil {
 		return fmt.Errorf("refresh mappings: %w", err)
 	}
-
+    c.mu.Lock()
+	defer c.mu.Unlock()
 	c.addrs = resp.Addrs
 	return nil
 }
 
 func (c *client) Addrs() map[string]string {
-	return c.addrs
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return maps.Clone(c.addrs)
 }
 
 func (c *client) DialContext(ctx context.Context, network, addr string) (net.Conn, error) {
