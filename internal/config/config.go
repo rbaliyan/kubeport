@@ -28,14 +28,13 @@ type ListenConfig struct {
 	Address string
 }
 
-
 // Sentinel errors for common failure modes.
 var (
-	ErrNoConfig       = errors.New("no config file found")
-	ErrNoServices     = errors.New("no services defined")
-	ErrServiceExists  = errors.New("service already exists")
+	ErrNoConfig        = errors.New("no config file found")
+	ErrNoServices      = errors.New("no services defined")
+	ErrServiceExists   = errors.New("service already exists")
 	ErrServiceNotFound = errors.New("service not found")
-	ErrConfigExists   = errors.New("config file already exists")
+	ErrConfigExists    = errors.New("config file already exists")
 )
 
 // Format represents the config file format.
@@ -408,15 +407,15 @@ type serviceConfigTOML struct {
 
 // configTOML is a TOML-specific intermediate struct for decoding.
 type configTOML struct {
-	Context     string             `toml:"context"`
-	Namespace   string             `toml:"namespace"`
-	LogFilePath string             `toml:"log_file,omitempty"`
-	Listen      string             `toml:"listen,omitempty"`
-	APIKey      string             `toml:"api_key,omitempty"`
-	Host        string             `toml:"host,omitempty"`
+	Context     string              `toml:"context"`
+	Namespace   string              `toml:"namespace"`
+	LogFilePath string              `toml:"log_file,omitempty"`
+	Listen      string              `toml:"listen,omitempty"`
+	APIKey      string              `toml:"api_key,omitempty"`
+	Host        string              `toml:"host,omitempty"`
 	Services    []serviceConfigTOML `toml:"services"`
-	Hooks       []HookConfig       `toml:"hooks,omitempty"`
-	Supervisor  SupervisorConfig   `toml:"supervisor,omitempty"`
+	Hooks       []HookConfig        `toml:"hooks,omitempty"`
+	Supervisor  SupervisorConfig    `toml:"supervisor,omitempty"`
 }
 
 // unmarshalTOML decodes TOML data into a Config, handling the polymorphic ports field.

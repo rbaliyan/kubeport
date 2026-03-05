@@ -21,7 +21,7 @@ func ExampleNew() {
 		fmt.Println("kubeport not running, using direct connections")
 		p = proxy.Noop()
 	}
-	defer p.Close()
+	defer p.Close(context.Background())
 
 	// Use the proxy's dialer with an HTTP client
 	client := &http.Client{
@@ -46,7 +46,7 @@ func ExampleNew_withEnabled() {
 		// This branch is never reached with WithEnabled(true)
 		panic("unreachable")
 	}
-	defer p.Close()
+	defer p.Close(context.Background())
 
 	// Works whether kubeport is running or not
 	client := &http.Client{
@@ -64,7 +64,7 @@ func ExampleNew_withSocketPath() {
 		fmt.Printf("failed to connect: %v\n", err)
 		return
 	}
-	defer p.Close()
+	defer p.Close(context.Background())
 
 	fmt.Printf("connected with %d address mappings\n", len(p.Addrs()))
 }
@@ -76,13 +76,13 @@ func ExampleNew_withTCP() {
 		fmt.Printf("failed to connect: %v\n", err)
 		return
 	}
-	defer p.Close()
+	defer p.Close(context.Background())
 	_ = p
 }
 
 func ExampleProxy_dialContext() {
 	p, _ := proxy.New(proxy.WithEnabled(true))
-	defer p.Close()
+	defer p.Close(context.Background())
 
 	// DialContext respects the provided context for timeouts and cancellation.
 	ctx, cancel := context.WithTimeout(context.Background(), 5e9) // 5s
@@ -101,11 +101,11 @@ func ExampleNoop() {
 	// Noop returns a passthrough proxy that dials addresses directly.
 	// All methods work transparently with no translation.
 	p := proxy.Noop()
-	defer p.Close()
+	defer p.Close(context.Background())
 
-	fmt.Println(p.GRPCTarget("localhost:8080")) // prints: localhost:8080
-	fmt.Println(p.Addrs())                      // prints: map[]
-	fmt.Println(p.Refresh())                     // prints: <nil>
+	fmt.Println(p.GRPCTarget("localhost:8080"))  // prints: localhost:8080
+	fmt.Println(p.Addrs())                       // prints: map[]
+	fmt.Println(p.Refresh(context.Background())) // prints: <nil>
 
 	// Output:
 	// localhost:8080
