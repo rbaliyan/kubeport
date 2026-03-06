@@ -8,10 +8,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/httpstream"
 )
 
-// byteCounter tracks cumulative bytes read and written across all streams.
+// byteCounter tracks cumulative bytes and stream health across all streams.
 type byteCounter struct {
-	bytesIn  atomic.Int64
-	bytesOut atomic.Int64
+	bytesIn      atomic.Int64
+	bytesOut     atomic.Int64
+	streamErrors atomic.Int64 // stream creation failures (per-connection, reset on reconnect)
 }
 
 // countingDialer wraps an httpstream.Dialer to count bytes on all streams.
@@ -25,10 +26,13 @@ func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, strin
 	if err != nil {
 		return nil, proto, err
 	}
+	// Reset per-connection stream error count on fresh connection
+	d.counter.streamErrors.Store(0)
 	return &countingConnection{conn: conn, counter: d.counter}, proto, nil
 }
 
-// countingConnection wraps an httpstream.Connection to count bytes on created streams.
+// countingConnection wraps an httpstream.Connection to count bytes on created streams
+// and detect SPDY connection degradation via stream creation failures.
 type countingConnection struct {
 	conn    httpstream.Connection
 	counter *byteCounter
@@ -37,6 +41,10 @@ type countingConnection struct {
 func (c *countingConnection) CreateStream(headers http.Header) (httpstream.Stream, error) {
 	stream, err := c.conn.CreateStream(headers)
 	if err != nil {
+		// Stream creation failure indicates SPDY connection degradation.
+		// The 30-second CreateStream timeout in client-go means every failure
+		// cost a client 30s of waiting before their connection was dropped.
+		c.counter.streamErrors.Add(1)
 		return nil, err
 	}
 	return &countingStream{stream: stream, counter: c.counter}, nil

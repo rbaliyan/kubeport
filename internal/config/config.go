@@ -245,6 +245,7 @@ type SupervisorConfig struct {
 	ReadyTimeout         string `yaml:"ready_timeout,omitempty" toml:"ready_timeout,omitempty"`                   // e.g., "15s"
 	BackoffInitial       string `yaml:"backoff_initial,omitempty" toml:"backoff_initial,omitempty"`               // e.g., "1s"
 	BackoffMax           string `yaml:"backoff_max,omitempty" toml:"backoff_max,omitempty"`                       // e.g., "30s"
+	MaxConnectionAge     string `yaml:"max_connection_age,omitempty" toml:"max_connection_age,omitempty"`         // e.g., "30m"; 0 = disabled
 }
 
 // Config holds the full proxy configuration.
@@ -776,6 +777,7 @@ func (s SupervisorConfig) validate() error {
 		{"ready_timeout", s.ReadyTimeout},
 		{"backoff_initial", s.BackoffInitial},
 		{"backoff_max", s.BackoffMax},
+		{"max_connection_age", s.MaxConnectionAge},
 	} {
 		if pair.val != "" {
 			if _, err := time.ParseDuration(pair.val); err != nil {
@@ -794,6 +796,7 @@ type ParsedSupervisorConfig struct {
 	ReadyTimeout         time.Duration
 	BackoffInitial       time.Duration
 	BackoffMax           time.Duration
+	MaxConnectionAge     time.Duration
 }
 
 // ParsedSupervisor returns supervisor config with defaults applied.
@@ -809,6 +812,7 @@ func (s SupervisorConfig) ParsedSupervisor() ParsedSupervisorConfig {
 		ReadyTimeout:         parseDurationOr(s.ReadyTimeout, 15*time.Second),
 		BackoffInitial:       parseDurationOr(s.BackoffInitial, 1*time.Second),
 		BackoffMax:           parseDurationOr(s.BackoffMax, 30*time.Second),
+		MaxConnectionAge:     parseDurationOr(s.MaxConnectionAge, 30*time.Minute),
 	}
 }
 

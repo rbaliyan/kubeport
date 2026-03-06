@@ -114,6 +114,7 @@ type Manager struct {
 	readyTimeout         time.Duration
 	backoffInitial       time.Duration
 	backoffMax           time.Duration
+	maxConnectionAge     time.Duration
 }
 
 // Option configures optional Manager behavior.
@@ -168,6 +169,7 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		readyTimeout:         sup.ReadyTimeout,
 		backoffInitial:       sup.BackoffInitial,
 		backoffMax:           sup.BackoffMax,
+		maxConnectionAge:     sup.MaxConnectionAge,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -930,7 +932,18 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	ticker := time.NewTicker(m.healthCheckInterval)
 	defer ticker.Stop()
 
+	// Max connection age timer — proactively reconnect to prevent SPDY degradation.
+	// The SPDY connection can become stale over time (load balancer timeouts,
+	// API server connection limits), causing stream creation to fail silently.
+	var maxAgeCh <-chan time.Time
+	if m.maxConnectionAge > 0 {
+		maxAgeTimer := time.NewTimer(m.maxConnectionAge)
+		defer maxAgeTimer.Stop()
+		maxAgeCh = maxAgeTimer.C
+	}
+
 	failCount := 0
+	lastStreamErrors := pf.counter.streamErrors.Load()
 
 	for {
 		select {
@@ -941,7 +954,29 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 			return fmt.Errorf("port forward closed")
 		case <-fwCtx.Done():
 			return fwCtx.Err()
+		case <-maxAgeCh:
+			m.logger.Info("max connection age reached, reconnecting",
+				"service", pf.svc.Name,
+				"max_age", m.maxConnectionAge,
+			)
+			fwCancel()
+			return fmt.Errorf("max connection age (%s) reached", m.maxConnectionAge)
 		case <-ticker.C:
+			// Check for SPDY stream creation failures. Each failure means a
+			// client connection was dropped after a 30-second timeout waiting
+			// for a SYN_REPLY that never came — the SPDY connection is degraded.
+			currentStreamErrors := pf.counter.streamErrors.Load()
+			if currentStreamErrors > lastStreamErrors {
+				newErrors := currentStreamErrors - lastStreamErrors
+				m.logger.Warn("SPDY stream errors detected, forcing reconnection",
+					"service", pf.svc.Name,
+					"new_errors", newErrors,
+					"total_errors", currentStreamErrors,
+				)
+				fwCancel()
+				return fmt.Errorf("SPDY connection degraded: %d stream creation failures", currentStreamErrors)
+			}
+
 			if !netutil.IsPortOpen(actualPort) {
 				failCount++
 				_ = m.hooks.Fire(ctx, hook.Event{
