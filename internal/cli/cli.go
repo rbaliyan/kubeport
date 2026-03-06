@@ -44,6 +44,7 @@ type app struct {
 	statusSort      bool
 	remoteHost      string
 	apiKey          string
+	watchInterval   time.Duration
 }
 
 // Execute runs the CLI with the given context.
@@ -160,6 +161,26 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 			}
 		case strings.HasPrefix(arg, "--api-key="):
 			a.apiKey = strings.TrimPrefix(arg, "--api-key=")
+		case arg == "--time":
+			if i+1 < len(args) {
+				i++
+				d, err := time.ParseDuration(args[i])
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error: invalid --time value %q: %v\n", args[i], err)
+					os.Exit(1)
+				}
+				a.watchInterval = d
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: %s requires a duration (e.g., 2s)\n", arg)
+				os.Exit(1)
+			}
+		case strings.HasPrefix(arg, "--time="):
+			d, err := time.ParseDuration(strings.TrimPrefix(arg, "--time="))
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid --time value: %v\n", err)
+				os.Exit(1)
+			}
+			a.watchInterval = d
 		case arg == "--help" || arg == "-h":
 			a.cmdHelp()
 			os.Exit(0)
@@ -201,7 +222,7 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 			// Allow stop/status/logs/add/remove/reload without valid config
 			if command != "stop" && command != "status" && command != "logs" &&
 				command != "add" && command != "remove" && command != "reload" && command != "apply" &&
-				command != "mappings" {
+				command != "mappings" && command != "watch" {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
@@ -233,6 +254,8 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		a.cmdApply(remaining)
 	case "mappings":
 		a.cmdMappings(remaining)
+	case "watch":
+		a.cmdWatch()
 	case "_daemon":
 		a.cmdDaemon(ctx, remaining)
 	default:

@@ -71,6 +71,50 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 	a.runProxy(ctx, os.Stdout)
 }
 
+// watchConfigFile polls the config file for modifications and triggers a reload
+// when changes are detected. It uses a debounce to avoid rapid successive reloads
+// (e.g., editors that write atomically via rename).
+func (a *app) watchConfigFile(ctx context.Context, logger *slog.Logger, reload func(string)) {
+	if a.configFile == "" {
+		return
+	}
+
+	const pollInterval = 2 * time.Second
+	const debounce = 500 * time.Millisecond
+
+	info, err := os.Stat(a.configFile)
+	if err != nil {
+		logger.Warn("config file watch: cannot stat file", "error", err)
+		return
+	}
+	lastModTime := info.ModTime()
+	lastSize := info.Size()
+
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			info, err := os.Stat(a.configFile)
+			if err != nil {
+				continue
+			}
+			modTime := info.ModTime()
+			size := info.Size()
+			if modTime != lastModTime || size != lastSize {
+				lastModTime = modTime
+				lastSize = size
+				// Debounce: wait briefly in case the editor is still writing
+				time.Sleep(debounce)
+				reload("file change detected")
+			}
+		}
+	}
+}
+
 func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	_, _ = fmt.Fprintf(output, "kubeport %s starting\n", version.Get().Raw)
 	_, _ = fmt.Fprintf(output, "Context:   %s\n", a.cfg.Context)
@@ -147,30 +191,38 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		_, _ = fmt.Fprintf(output, "Continuing anyway (namespace checks may fail for some services)\n\n")
 	}
 
+	// Config reload helper shared by SIGHUP and file watcher
+	reloadConfig := func(reason string) {
+		logger.Info("reloading config", "trigger", reason)
+		newCfg, err := config.Load(a.configFile)
+		if err != nil {
+			logger.Error("reload config failed", "error", err)
+			return
+		}
+		if err := newCfg.Validate(); err != nil {
+			logger.Error("reload config validation failed", "error", err)
+			return
+		}
+		added, removed, err := mgr.Reload(newCfg)
+		if err != nil {
+			logger.Error("reload failed", "error", err)
+			return
+		}
+		logger.Info("config reloaded", "trigger", reason, "added", added, "removed", removed)
+	}
+
 	// SIGHUP triggers config reload
 	if a.configFile != "" {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGHUP)
 		go func() {
 			for range sigCh {
-				logger.Info("SIGHUP received, reloading config")
-				newCfg, err := config.Load(a.configFile)
-				if err != nil {
-					logger.Error("reload config failed", "error", err)
-					continue
-				}
-				if err := newCfg.Validate(); err != nil {
-					logger.Error("reload config validation failed", "error", err)
-					continue
-				}
-				added, removed, err := mgr.Reload(newCfg)
-				if err != nil {
-					logger.Error("reload failed", "error", err)
-					continue
-				}
-				logger.Info("config reloaded", "added", added, "removed", removed)
+				reloadConfig("SIGHUP")
 			}
 		}()
+
+		// Watch config file for changes (poll-based)
+		go a.watchConfigFile(ctx, logger, reloadConfig)
 	}
 
 	_, _ = fmt.Fprintf(output, "Starting port forwards...\n\n")
