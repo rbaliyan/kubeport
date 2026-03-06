@@ -38,6 +38,8 @@ type forwardStatusOutput struct {
 	Restarts   int    `json:"restarts,omitempty"`
 	Error      string `json:"error,omitempty"`
 	NextRetry  string `json:"next_retry,omitempty"`
+	BytesIn    int64  `json:"bytes_in"`
+	BytesOut   int64  `json:"bytes_out"`
 }
 
 func (a *app) cmdStatus() {
@@ -202,6 +204,8 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 		PortName:   svc.GetPortName(),
 		Restarts:   int(fw.Restarts),
 		Error:      fw.Error,
+		BytesIn:    fw.BytesIn,
+		BytesOut:   fw.BytesOut,
 	}
 	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
 		out.NextRetry = fw.NextRetry.AsTime().Format(time.RFC3339)
@@ -275,6 +279,17 @@ func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
 	if fw.Restarts > 0 {
 		fmt.Printf(" (restarts: %d)", fw.Restarts)
 	}
+	if fw.BytesIn > 0 || fw.BytesOut > 0 {
+		fmt.Printf(" (in: %s, out: %s", formatBytes(fw.BytesIn), formatBytes(fw.BytesOut))
+		if fw.State == kubeportv1.ForwardState_FORWARD_STATE_RUNNING && fw.LastStart != nil && fw.LastStart.IsValid() {
+			elapsed := time.Since(fw.LastStart.AsTime()).Seconds()
+			if elapsed > 0 {
+				totalBytes := fw.BytesIn + fw.BytesOut
+				fmt.Printf(", %s/s", formatBytes(int64(float64(totalBytes)/elapsed)))
+			}
+		}
+		fmt.Print(")")
+	}
 	fmt.Println()
 
 	if fw.Error != "" {
@@ -288,5 +303,24 @@ func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
 		} else {
 			fmt.Printf("         Reconnecting now\n")
 		}
+	}
+}
+
+// formatBytes formats a byte count into a human-readable string.
+func formatBytes(b int64) string {
+	const (
+		kB = 1024
+		mB = 1024 * kB
+		gB = 1024 * mB
+	)
+	switch {
+	case b >= gB:
+		return fmt.Sprintf("%.1f GB", float64(b)/float64(gB))
+	case b >= mB:
+		return fmt.Sprintf("%.1f MB", float64(b)/float64(mB))
+	case b >= kB:
+		return fmt.Sprintf("%.1f KB", float64(b)/float64(kB))
+	default:
+		return fmt.Sprintf("%d B", b)
 	}
 }

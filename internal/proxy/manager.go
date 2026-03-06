@@ -60,6 +60,8 @@ type ForwardStatus struct {
 	Connected  bool
 	ActualPort int       // The actual local port (differs from config when local_port is 0)
 	NextRetry  time.Time // When next reconnection attempt will be made (zero if not reconnecting)
+	BytesIn    int64     // Total bytes received from the remote side
+	BytesOut   int64     // Total bytes sent to the remote side
 }
 
 type portForward struct {
@@ -72,6 +74,7 @@ type portForward struct {
 	lastStart  time.Time
 	actualPort int // Actual port assigned by OS (relevant when local_port is 0)
 	nextRetry  time.Time
+	counter    byteCounter // cumulative bytes across all connection attempts
 	mu         sync.Mutex
 }
 
@@ -855,7 +858,8 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		return fmt.Errorf("create SPDY transport: %w", err)
 	}
 
-	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
+	rawDialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
+	dialer := &countingDialer{dialer: rawDialer, counter: &pf.counter}
 
 	// stopChan is closed exactly once when fwCtx is cancelled.
 	stopChan := make(chan struct{})
@@ -1202,6 +1206,8 @@ func (m *Manager) Status() []ForwardStatus {
 			Connected:  port > 0 && netutil.IsPortOpen(port),
 			ActualPort: port,
 			NextRetry:  pf.nextRetry,
+			BytesIn:    pf.counter.bytesIn.Load(),
+			BytesOut:   pf.counter.bytesOut.Load(),
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)
