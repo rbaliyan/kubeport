@@ -379,4 +379,3 @@ func TestManager_Reload(t *testing.T) {
 	cancel()
 	wg.Wait()
 }
-

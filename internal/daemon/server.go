@@ -32,11 +32,11 @@ type Supervisor interface {
 type Server struct {
 	kubeportv1.UnimplementedDaemonServiceServer
 
-	mgr       Supervisor
-	cfg       *config.Config
+	mgr        Supervisor
+	cfg        *config.Config
 	grpcServer *grpc.Server
-	listenCfg config.ListenConfig
-	apiKey    string
+	listenCfg  config.ListenConfig
+	apiKey     string
 }
 
 // NewServer creates a new daemon gRPC server.

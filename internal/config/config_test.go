@@ -795,10 +795,10 @@ func TestSaveAndReload_MultiPort(t *testing.T) {
 		Namespace: "default",
 		Services: []ServiceConfig{
 			{
-				Name:    "api",
-				Service: "my-api",
-				Ports:   PortsConfig{All: true},
-				ExcludePorts: []string{"metrics"},
+				Name:            "api",
+				Service:         "my-api",
+				Ports:           PortsConfig{All: true},
+				ExcludePorts:    []string{"metrics"},
 				LocalPortOffset: 10000,
 			},
 			{
