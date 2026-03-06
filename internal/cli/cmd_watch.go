@@ -97,7 +97,7 @@ func (a *app) cmdWatch() {
 		oldState, err := term.MakeRaw(fd)
 		if err == nil {
 			rawMode = true
-			defer term.Restore(fd, oldState)
+			defer func() { _ = term.Restore(fd, oldState) }()
 			go func() {
 				buf := make([]byte, 1)
 				for {
@@ -136,7 +136,7 @@ func writeRaw(buf []byte, rawMode bool) {
 	if rawMode {
 		buf = bytes.ReplaceAll(buf, []byte("\n"), []byte("\r\n"))
 	}
-	os.Stdout.Write(buf)
+	_, _ = os.Stdout.Write(buf)
 }
 
 func (a *app) renderWatch(interval time.Duration, rawMode bool) {
