@@ -30,6 +30,8 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		LastStart:  timestamppb.New(fs.LastStart),
 		Connected:  fs.Connected,
 		ActualPort: int32(fs.ActualPort),
+		BytesIn:    fs.BytesIn,
+		BytesOut:   fs.BytesOut,
 	}
 	if !fs.NextRetry.IsZero() {
 		proto.NextRetry = timestamppb.New(fs.NextRetry)

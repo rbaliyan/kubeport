@@ -60,6 +60,8 @@ type ForwardStatus struct {
 	Connected  bool
 	ActualPort int       // The actual local port (differs from config when local_port is 0)
 	NextRetry  time.Time // When next reconnection attempt will be made (zero if not reconnecting)
+	BytesIn    int64     // Total bytes received from the remote side
+	BytesOut   int64     // Total bytes sent to the remote side
 }
 
 type portForward struct {
@@ -72,6 +74,7 @@ type portForward struct {
 	lastStart  time.Time
 	actualPort int // Actual port assigned by OS (relevant when local_port is 0)
 	nextRetry  time.Time
+	counter    byteCounter // cumulative bytes across all connection attempts
 	mu         sync.Mutex
 }
 
@@ -111,6 +114,7 @@ type Manager struct {
 	readyTimeout         time.Duration
 	backoffInitial       time.Duration
 	backoffMax           time.Duration
+	maxConnectionAge     time.Duration
 }
 
 // Option configures optional Manager behavior.
@@ -165,6 +169,7 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		readyTimeout:         sup.ReadyTimeout,
 		backoffInitial:       sup.BackoffInitial,
 		backoffMax:           sup.BackoffMax,
+		maxConnectionAge:     sup.MaxConnectionAge,
 	}
 	for _, opt := range opts {
 		opt(m)
@@ -855,7 +860,8 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		return fmt.Errorf("create SPDY transport: %w", err)
 	}
 
-	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
+	rawDialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
+	dialer := &countingDialer{dialer: rawDialer, counter: &pf.counter}
 
 	// stopChan is closed exactly once when fwCtx is cancelled.
 	stopChan := make(chan struct{})
@@ -926,7 +932,18 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	ticker := time.NewTicker(m.healthCheckInterval)
 	defer ticker.Stop()
 
+	// Max connection age timer — proactively reconnect to prevent SPDY degradation.
+	// The SPDY connection can become stale over time (load balancer timeouts,
+	// API server connection limits), causing stream creation to fail silently.
+	var maxAgeCh <-chan time.Time
+	if m.maxConnectionAge > 0 {
+		maxAgeTimer := time.NewTimer(m.maxConnectionAge)
+		defer maxAgeTimer.Stop()
+		maxAgeCh = maxAgeTimer.C
+	}
+
 	failCount := 0
+	lastStreamErrors := pf.counter.streamErrors.Load()
 
 	for {
 		select {
@@ -937,7 +954,29 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 			return fmt.Errorf("port forward closed")
 		case <-fwCtx.Done():
 			return fwCtx.Err()
+		case <-maxAgeCh:
+			m.logger.Info("max connection age reached, reconnecting",
+				"service", pf.svc.Name,
+				"max_age", m.maxConnectionAge,
+			)
+			fwCancel()
+			return fmt.Errorf("max connection age (%s) reached", m.maxConnectionAge)
 		case <-ticker.C:
+			// Check for SPDY stream creation failures. Each failure means a
+			// client connection was dropped after a 30-second timeout waiting
+			// for a SYN_REPLY that never came — the SPDY connection is degraded.
+			currentStreamErrors := pf.counter.streamErrors.Load()
+			if currentStreamErrors > lastStreamErrors {
+				newErrors := currentStreamErrors - lastStreamErrors
+				m.logger.Warn("SPDY stream errors detected, forcing reconnection",
+					"service", pf.svc.Name,
+					"new_errors", newErrors,
+					"total_errors", currentStreamErrors,
+				)
+				fwCancel()
+				return fmt.Errorf("SPDY connection degraded: %d stream creation failures", currentStreamErrors)
+			}
+
 			if !netutil.IsPortOpen(actualPort) {
 				failCount++
 				_ = m.hooks.Fire(ctx, hook.Event{
@@ -1202,6 +1241,8 @@ func (m *Manager) Status() []ForwardStatus {
 			Connected:  port > 0 && netutil.IsPortOpen(port),
 			ActualPort: port,
 			NextRetry:  pf.nextRetry,
+			BytesIn:    pf.counter.bytesIn.Load(),
+			BytesOut:   pf.counter.bytesOut.Load(),
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)

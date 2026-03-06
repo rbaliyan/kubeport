@@ -49,6 +49,8 @@ message ForwardStatusProto {
   bool connected = 6;
   int32 actual_port = 7;
   google.protobuf.Timestamp next_retry = 8;
+  int64 bytes_in = 9;   // Total bytes received from the remote side
+  int64 bytes_out = 10;  // Total bytes sent to the remote side
 }
 
 message StatusRequest {}
