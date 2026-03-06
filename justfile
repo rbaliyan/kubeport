@@ -76,10 +76,10 @@ snapshot:
 check-release:
     goreleaser check
 
-# Set up git hooks for local development
+# Set up pre-commit hooks for local development
 setup:
-    git config core.hooksPath .githooks
-    @echo "Git hooks configured to use .githooks/"
+    pre-commit install
+    @echo "Pre-commit hooks installed"
 
 # Create and push a new release tag (bumps patch version)
 release:
