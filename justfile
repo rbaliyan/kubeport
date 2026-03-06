@@ -32,9 +32,9 @@ test-cover:
 fmt:
     go fmt ./...
 
-# Run go vet
+# Run golangci-lint (matches CI)
 lint:
-    go vet ./...
+    golangci-lint run
 
 # Run vulnerability check
 vulncheck:
@@ -75,6 +75,11 @@ snapshot:
 # Check goreleaser config
 check-release:
     goreleaser check
+
+# Set up pre-commit hooks for local development
+setup:
+    pre-commit install
+    @echo "Pre-commit hooks installed"
 
 # Create and push a new release tag (bumps patch version)
 release:
