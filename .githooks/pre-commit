@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Run golangci-lint on staged Go files only.
+# Uses --new-from-rev to lint only changes relative to HEAD,
+# keeping the hook fast even on large codebases.
+
+if ! command -v golangci-lint &>/dev/null; then
+    echo "pre-commit: golangci-lint not found, skipping lint"
+    echo "  Install via: mise install"
+    exit 0
+fi
+
+# Only run if there are staged .go files
+STAGED_GO=$(git diff --cached --name-only --diff-filter=ACM -- '*.go' || true)
+if [ -z "$STAGED_GO" ]; then
+    exit 0
+fi
+
+echo "pre-commit: running golangci-lint..."
+golangci-lint run --new-from-rev=HEAD
