@@ -29,6 +29,9 @@ jobs:
       - name: Run tests
         run: go test -race ./...
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@3454372be43b8f01834910e8d3f0c3ca3c9d1b84 # v3
+
       - name: Install UPX
         run: |
           sudo apt-get update
