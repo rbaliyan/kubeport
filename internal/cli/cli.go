@@ -216,6 +216,12 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		return
 	}
 
+	// Update doesn't need config
+	if command == "update" {
+		a.cmdUpdate(ctx, remaining)
+		return
+	}
+
 	// Load config (not needed for help)
 	if command != "help" && command != "--help" && command != "-h" {
 		if err := a.loadConfig(); err != nil {
