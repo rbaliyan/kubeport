@@ -7,7 +7,7 @@ before:
     - go mod tidy
 
 builds:
-  - id: github
+  - id: kubeport
     main: .
     binary: kubeport
     env:
@@ -27,51 +27,10 @@ builds:
       - -X github.com/rbaliyan/kubeport/internal/cli.InstallMethod=github
     flags:
       - -trimpath
-  - id: homebrew
-    main: .
-    binary: kubeport
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
-      - -X github.com/rbaliyan/go-version.VersionInfo={{.Version}}
-      - -X github.com/rbaliyan/go-version.GitCommit={{.FullCommit}}
-      - -X github.com/rbaliyan/go-version.GitBranch={{.Branch}}
-      - -X github.com/rbaliyan/go-version.BuildTimestamp={{.Date}}
-      - -X github.com/rbaliyan/kubeport/internal/cli.InstallMethod=homebrew
-    flags:
-      - -trimpath
-  - id: package
-    main: .
-    binary: kubeport
-    env:
-      - CGO_ENABLED=0
-    goos:
-      - linux
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    ldflags:
-      - -s -w
-      - -X github.com/rbaliyan/go-version.VersionInfo={{.Version}}
-      - -X github.com/rbaliyan/go-version.GitCommit={{.FullCommit}}
-      - -X github.com/rbaliyan/go-version.GitBranch={{.Branch}}
-      - -X github.com/rbaliyan/go-version.BuildTimestamp={{.Date}}
-      - -X github.com/rbaliyan/kubeport/internal/cli.InstallMethod=package
-    flags:
-      - -trimpath
 
 # Compress binaries with UPX (significant size reduction)
 upx:
   - enabled: true
-    ids: [github, homebrew, package]
     goos: [linux, darwin]
     goarch: [amd64, arm64]
     compress: best
@@ -79,7 +38,6 @@ upx:
 
 archives:
   - id: default
-    ids: [github]
     formats:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -130,7 +88,6 @@ changelog:
 
 nfpms:
   - id: packages
-    ids: [package]
     package_name: kubeport
     vendor: Rajeev Baliyan
     homepage: https://github.com/rbaliyan/kubeport
@@ -150,8 +107,7 @@ nfpms:
         dst: /usr/share/fish/vendor_completions.d/kubeport.fish
 
 brews:
-  - ids: [homebrew]
-    repository:
+  - repository:
       owner: rbaliyan
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
