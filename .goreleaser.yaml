@@ -79,7 +79,7 @@ upx:
 
 archives:
   - id: default
-    builds: [github]
+    ids: [github]
     formats:
       - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -132,7 +132,7 @@ changelog:
 
 nfpms:
   - id: packages
-    builds: [package]
+    ids: [package]
     package_name: kubeport
     vendor: Rajeev Baliyan
     homepage: https://github.com/rbaliyan/kubeport
