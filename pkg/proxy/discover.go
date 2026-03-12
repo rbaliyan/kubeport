@@ -5,12 +5,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rbaliyan/kubeport/internal/config"
+	pkgconfig "github.com/rbaliyan/kubeport/pkg/config"
 )
 
 // discoveredTarget holds the connection details discovered from kubeport config.
 type discoveredTarget struct {
-	mode    config.ListenMode
+	mode    pkgconfig.ListenMode
 	address string
 	apiKey  string
 }
@@ -20,14 +20,14 @@ type discoveredTarget struct {
 // 2. Reading the listen address (Unix socket or TCP) and API key from config
 // 3. Falling back to checking standard socket locations if no config is found
 func discoverTarget() (*discoveredTarget, error) {
-	cfgPath, err := config.Discover()
+	cfgPath, err := pkgconfig.Discover()
 	if err == nil {
-		cfg, loadErr := config.Load(cfgPath)
+		cfg, loadErr := pkgconfig.Load(cfgPath)
 		if loadErr == nil {
 			lc := cfg.ListenAddress()
-			if lc.Mode == config.ListenTCP {
+			if lc.Mode == pkgconfig.ListenTCP {
 				return &discoveredTarget{
-					mode:    config.ListenTCP,
+					mode:    pkgconfig.ListenTCP,
 					address: lc.Address,
 					apiKey:  cfg.APIKey,
 				}, nil
@@ -35,7 +35,7 @@ func discoverTarget() (*discoveredTarget, error) {
 			// Unix socket — verify it exists
 			if _, err := os.Stat(lc.Address); err == nil {
 				return &discoveredTarget{
-					mode:    config.ListenUnix,
+					mode:    pkgconfig.ListenUnix,
 					address: lc.Address,
 				}, nil
 			}
@@ -44,7 +44,7 @@ func discoverTarget() (*discoveredTarget, error) {
 		// Config loaded but no custom listen — try default socket next to config
 		sock := filepath.Join(filepath.Dir(cfgPath), ".kubeport.sock")
 		if _, err := os.Stat(sock); err == nil {
-			return &discoveredTarget{mode: config.ListenUnix, address: sock}, nil
+			return &discoveredTarget{mode: pkgconfig.ListenUnix, address: sock}, nil
 		}
 	}
 
@@ -53,7 +53,7 @@ func discoverTarget() (*discoveredTarget, error) {
 	if cwd != "" {
 		sock := filepath.Join(cwd, ".kubeport.sock")
 		if _, err := os.Stat(sock); err == nil {
-			return &discoveredTarget{mode: config.ListenUnix, address: sock}, nil
+			return &discoveredTarget{mode: pkgconfig.ListenUnix, address: sock}, nil
 		}
 	}
 
@@ -65,7 +65,7 @@ func discoverTarget() (*discoveredTarget, error) {
 		} {
 			sock := filepath.Join(dir, ".kubeport.sock")
 			if _, err := os.Stat(sock); err == nil {
-				return &discoveredTarget{mode: config.ListenUnix, address: sock}, nil
+				return &discoveredTarget{mode: pkgconfig.ListenUnix, address: sock}, nil
 			}
 		}
 	}

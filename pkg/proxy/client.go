@@ -10,8 +10,8 @@ import (
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
-	"github.com/rbaliyan/kubeport/internal/config"
-	"github.com/rbaliyan/kubeport/internal/daemon"
+	pkgconfig "github.com/rbaliyan/kubeport/pkg/config"
+	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -125,7 +125,7 @@ func newClient(o *options) (Proxy, error) {
 		conn, err = grpc.NewClient(
 			o.host,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithUnaryInterceptor(daemon.APIKeyClientInterceptor(o.apiKey)),
+			grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(o.apiKey)),
 		)
 	case o.socketPath != "":
 		// Explicit socket path
@@ -139,11 +139,11 @@ func newClient(o *options) (Proxy, error) {
 		if discoverErr != nil {
 			return nil, discoverErr
 		}
-		if target.mode == config.ListenTCP {
+		if target.mode == pkgconfig.ListenTCP {
 			conn, err = grpc.NewClient(
 				target.address,
 				grpc.WithTransportCredentials(insecure.NewCredentials()),
-				grpc.WithUnaryInterceptor(daemon.APIKeyClientInterceptor(target.apiKey)),
+				grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(target.apiKey)),
 			)
 		} else {
 			conn, err = grpc.NewClient(
