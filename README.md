@@ -84,8 +84,8 @@ hooks:
   - name: notify
     type: shell
     shell:
-      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
-      forward_failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed: ${KUBEPORT_ERROR}"
+      forward:connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
+      forward:failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed: ${KUBEPORT_ERROR}"
 ```
 
 Both YAML and TOML formats are supported. See [example.yaml](example.yaml) and [example.toml](example.toml).
@@ -136,15 +136,15 @@ Kubeport isn't just a tunnel — it's a workflow engine. Use hooks to bridge the
 
 | Event | When It Fires |
 |-------|---------------|
-| `manager_starting` | Before any forwards begin (gate event — can block startup) |
-| `manager_stopped` | All forwards stopped, cleanup complete |
-| `forward_connected` | A tunnel is ready and healthy |
-| `forward_disconnected` | A tunnel dropped (will retry) |
-| `forward_failed` | Max restarts exceeded — permanently failed |
-| `forward_stopped` | A forward was intentionally stopped |
-| `health_check_failed` | A single health-check probe failed |
-| `service_added` | A service was dynamically added |
-| `service_removed` | A service was dynamically removed |
+| `manager:starting` | Before any forwards begin (gate event — can block startup) |
+| `manager:stopped` | All forwards stopped, cleanup complete |
+| `forward:connected` | A tunnel is ready and healthy |
+| `forward:disconnected` | A tunnel dropped (will retry) |
+| `forward:failed` | Max restarts exceeded — permanently failed |
+| `forward:stopped` | A forward was intentionally stopped |
+| `health:check_failed` | A single health-check probe failed |
+| `service:added` | A service was dynamically added |
+| `service:removed` | A service was dynamically removed |
 
 Three hook types: **shell** (`sh -c`), **exec** (direct binary), and **webhook** (HTTP POST).
 
@@ -154,10 +154,10 @@ Three hook types: **shell** (`sh -c`), **exec** (direct binary), and **webhook**
 hooks:
   - name: vpn-check
     type: shell
-    events: [manager_starting]
+    events: [manager:starting]
     fail_mode: closed              # block startup if VPN is down
     shell:
-      manager_starting: ./scripts/ensure-vpn.sh
+      manager:starting: ./scripts/ensure-vpn.sh
 ```
 
 **Slack alerts on failures:**
@@ -166,7 +166,7 @@ hooks:
 hooks:
   - name: slack
     type: webhook
-    events: [forward_failed]
+    events: [forward:failed]
     webhook:
       url: https://hooks.slack.com/services/T.../B.../xxx
       body_template: '{"text": ":warning: ${SERVICE} failed: ${ERROR}"}'

@@ -9,8 +9,8 @@ hooks:
   - name: notify
     type: shell
     shell:
-      forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
-      forward_disconnected: echo "${KUBEPORT_SERVICE} disconnected"
+      forward:connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
+      forward:disconnected: echo "${KUBEPORT_SERVICE} disconnected"
 ```
 
 ## Hook Types
@@ -23,8 +23,8 @@ Runs commands via `sh -c`. Each event maps to its own command string:
 - name: my-hook
   type: shell
   shell:
-    forward_connected: echo "connected"
-    forward_failed: echo "failed" >> /tmp/kubeport-failures.log
+    forward:connected: echo "connected"
+    forward:failed: echo "failed" >> /tmp/kubeport-failures.log
 ```
 
 ### Exec
@@ -45,7 +45,7 @@ Sends an HTTP POST with a JSON body to a URL:
 ```yaml
 - name: slack-alert
   type: webhook
-  events: [forward_failed]
+  events: [forward:failed]
   webhook:
     url: https://hooks.slack.com/services/T.../B.../xxx
     headers:
@@ -57,15 +57,15 @@ Sends an HTTP POST with a JSON body to a URL:
 
 | Event | When it fires |
 |-------|---------------|
-| `manager_starting` | Before any forwards begin. This is a **gate event** — a `closed` fail mode hook can block startup |
-| `manager_stopped` | All forwards stopped, cleanup complete |
-| `forward_connected` | A port-forward is ready and healthy |
-| `forward_disconnected` | A port-forward dropped (will retry automatically) |
-| `forward_failed` | A port-forward has permanently failed (max restarts exceeded) |
-| `forward_stopped` | A port-forward was intentionally stopped |
-| `health_check_failed` | A single health-check probe failed |
-| `service_added` | A service was dynamically added |
-| `service_removed` | A service was dynamically removed |
+| `manager:starting` | Before any forwards begin. This is a **gate event** — a `closed` fail mode hook can block startup |
+| `manager:stopped` | All forwards stopped, cleanup complete |
+| `forward:connected` | A port-forward is ready and healthy |
+| `forward:disconnected` | A port-forward dropped (will retry automatically) |
+| `forward:failed` | A port-forward has permanently failed (max restarts exceeded) |
+| `forward:stopped` | A port-forward was intentionally stopped |
+| `health:check_failed` | A single health-check probe failed |
+| `service:added` | A service was dynamically added |
+| `service:removed` | A service was dynamically removed |
 
 ## Hook Options
 
@@ -82,7 +82,7 @@ Shell and exec hooks receive context about the event via environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `KUBEPORT_EVENT` | Event name (e.g., `forward_connected`) |
+| `KUBEPORT_EVENT` | Event name (e.g., `forward:connected`) |
 | `KUBEPORT_SERVICE` | Service name from config (for multi-port forwards, this is `parent/portname`) |
 | `KUBEPORT_PARENT_NAME` | Parent service name (non-empty for multi-port expanded forwards) |
 | `KUBEPORT_PORT_NAME` | Kubernetes port name (non-empty for multi-port expanded forwards) |
@@ -107,11 +107,11 @@ Block kubeport from starting unless a VPN is active:
 ```yaml
 - name: vpn-check
   type: shell
-  events: [manager_starting]
+  events: [manager:starting]
   fail_mode: closed
   timeout: 30s
   shell:
-    manager_starting: ./scripts/ensure-vpn.sh
+    manager:starting: ./scripts/ensure-vpn.sh
 ```
 
 ### Desktop notifications
@@ -120,8 +120,8 @@ Block kubeport from starting unless a VPN is active:
 - name: notify
   type: shell
   shell:
-    forward_connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready"
-    forward_failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed: ${KUBEPORT_ERROR}"
+    forward:connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready"
+    forward:failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed: ${KUBEPORT_ERROR}"
 ```
 
 ### Slack alerts on failures
@@ -129,7 +129,7 @@ Block kubeport from starting unless a VPN is active:
 ```yaml
 - name: slack
   type: webhook
-  events: [forward_failed]
+  events: [forward:failed]
   webhook:
     url: https://hooks.slack.com/services/...
     headers:
@@ -142,7 +142,7 @@ Block kubeport from starting unless a VPN is active:
 ```yaml
 - name: syslog
   type: exec
-  events: [forward_connected, forward_disconnected, forward_failed]
+  events: [forward:connected, forward:disconnected, forward:failed]
   exec:
     command: ["logger", "-t", "kubeport", "${EVENT}: ${SERVICE} on port ${PORT}"]
 ```

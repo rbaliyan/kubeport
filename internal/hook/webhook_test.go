@@ -42,7 +42,7 @@ func TestWebhookHook_DefaultPayload(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if received["event"] != "forward_connected" {
+	if received["event"] != "forward:connected" {
 		t.Errorf("event = %v, want forward_connected", received["event"])
 	}
 	if received["service"] != "api" {

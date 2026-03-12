@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -546,8 +547,8 @@ hooks:
     fail_mode: closed
     timeout: "30s"
     shell:
-      manager_starting: "echo starting"
-      forward_connected: "echo connected"
+      manager:starting: "echo starting"
+      forward:connected: "echo connected"
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -576,6 +577,55 @@ hooks:
 	}
 	if len(h.Shell) != 2 {
 		t.Fatalf("expected 2 shell commands, got %d", len(h.Shell))
+	}
+}
+
+func TestLoadConfig_LegacyHookEventMigration(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.yaml")
+	content := `
+context: test-context
+namespace: default
+services:
+  - name: web
+    service: web-svc
+    local_port: 8080
+    remote_port: 80
+hooks:
+  - name: notify
+    type: shell
+    events: [forward_connected, manager_starting]
+    shell:
+      forward_connected: "echo connected"
+      manager_starting: "echo starting"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	h := cfg.Hooks[0]
+	// Events should be migrated to colon-based names
+	for _, e := range h.Events {
+		if strings.Contains(e, "_") && !strings.Contains(e, ":") {
+			t.Errorf("event %q was not migrated to colon-based name", e)
+		}
+	}
+	// Shell keys should be migrated
+	for key := range h.Shell {
+		if strings.Contains(key, "_") && !strings.Contains(key, ":") {
+			t.Errorf("shell key %q was not migrated to colon-based name", key)
+		}
+	}
+	if _, ok := h.Shell["forward:connected"]; !ok {
+		t.Error("expected shell key 'forward:connected' after migration")
+	}
+	if _, ok := h.Shell["manager:starting"]; !ok {
+		t.Error("expected shell key 'manager:starting' after migration")
 	}
 }
 
