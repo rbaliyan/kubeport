@@ -103,17 +103,17 @@ func TestFindChecksum(t *testing.T) {
 		}
 	})
 
-	t.Run("not found", func(t *testing.T) {
+	t.Run("not found returns sentinel", func(t *testing.T) {
 		_, err := findChecksum(content, "kubeport_0.7.0_windows_amd64.tar.gz")
-		if err == nil {
-			t.Fatal("expected error for missing asset")
+		if !errors.Is(err, ErrChecksumNotFound) {
+			t.Errorf("expected ErrChecksumNotFound, got: %v", err)
 		}
 	})
 
 	t.Run("empty content", func(t *testing.T) {
 		_, err := findChecksum("", "anything")
-		if err == nil {
-			t.Fatal("expected error for empty content")
+		if !errors.Is(err, ErrChecksumNotFound) {
+			t.Errorf("expected ErrChecksumNotFound, got: %v", err)
 		}
 	})
 
@@ -153,8 +153,8 @@ func TestFindChecksum(t *testing.T) {
 
 func TestHashAlgorithm(t *testing.T) {
 	t.Run("sha256", func(t *testing.T) {
-		h := HashAlgorithm(crypto.SHA256)
-		h.Write([]byte("test"))
+		h := hashAlgorithm(crypto.SHA256)
+		_, _ = h.Write([]byte("test"))
 		got := hex.EncodeToString(h.Sum(nil))
 		want := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 		if got != want {
@@ -163,8 +163,8 @@ func TestHashAlgorithm(t *testing.T) {
 	})
 
 	t.Run("sha512", func(t *testing.T) {
-		h := HashAlgorithm(crypto.SHA512)
-		h.Write([]byte("test"))
+		h := hashAlgorithm(crypto.SHA512)
+		_, _ = h.Write([]byte("test"))
 		got := hex.EncodeToString(h.Sum(nil))
 		expected := sha512.Sum512([]byte("test"))
 		want := hex.EncodeToString(expected[:])
@@ -174,8 +174,8 @@ func TestHashAlgorithm(t *testing.T) {
 	})
 
 	t.Run("unavailable falls back to sha256", func(t *testing.T) {
-		h := HashAlgorithm(crypto.Hash(0)) // invalid hash
-		h.Write([]byte("test"))
+		h := hashAlgorithm(crypto.Hash(0)) // invalid hash
+		_, _ = h.Write([]byte("test"))
 		got := hex.EncodeToString(h.Sum(nil))
 		expected := sha256.Sum256([]byte("test"))
 		want := hex.EncodeToString(expected[:])
@@ -195,14 +195,14 @@ func TestNewGitHubProviderDefaults(t *testing.T) {
 	if p.repo != "repo" {
 		t.Errorf("repo = %q, want %q", p.repo, "repo")
 	}
-	if p.client != http.DefaultClient {
+	if p.opts.client != http.DefaultClient {
 		t.Error("expected default http client")
 	}
-	if p.checksum != "checksums.txt" {
-		t.Errorf("checksum = %q, want %q", p.checksum, "checksums.txt")
+	if p.opts.checksum != "checksums.txt" {
+		t.Errorf("checksum = %q, want %q", p.opts.checksum, "checksums.txt")
 	}
-	if p.hash != crypto.SHA256 {
-		t.Errorf("hash = %v, want SHA256", p.hash)
+	if p.opts.hash != crypto.SHA256 {
+		t.Errorf("hash = %v, want SHA256", p.opts.hash)
 	}
 }
 
@@ -213,14 +213,14 @@ func TestNewGitHubProviderOptions(t *testing.T) {
 		WithChecksumFile("sha256sums.txt"),
 		WithHashAlgorithm(crypto.SHA512),
 	)
-	if p.client != custom {
+	if p.opts.client != custom {
 		t.Error("expected custom http client")
 	}
-	if p.checksum != "sha256sums.txt" {
-		t.Errorf("checksum = %q, want %q", p.checksum, "sha256sums.txt")
+	if p.opts.checksum != "sha256sums.txt" {
+		t.Errorf("checksum = %q, want %q", p.opts.checksum, "sha256sums.txt")
 	}
-	if p.hash != crypto.SHA512 {
-		t.Errorf("hash = %v, want SHA512", p.hash)
+	if p.opts.hash != crypto.SHA512 {
+		t.Errorf("hash = %v, want SHA512", p.opts.hash)
 	}
 }
 
@@ -295,14 +295,13 @@ func TestGitHubProviderLatestReleaseBadJSON(t *testing.T) {
 
 func TestGitHubProviderLatestReleaseCanceled(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		// Hang forever — context cancellation should cut it short.
 		select {}
 	}))
 	defer srv.Close()
 
 	p := NewGitHubProvider("rbaliyan", "kubeport", WithHTTPClient(testClient(srv)))
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
+	cancel()
 
 	_, err := p.LatestRelease(ctx)
 	if err == nil {
@@ -443,8 +442,8 @@ func TestGitHubProviderVerify(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for missing asset in checksum file")
 		}
-		if !strings.Contains(err.Error(), "not found") {
-			t.Errorf("unexpected error: %v", err)
+		if !errors.Is(err, ErrChecksumNotFound) {
+			t.Errorf("expected ErrChecksumNotFound, got: %v", err)
 		}
 	})
 }
@@ -522,15 +521,14 @@ func TestGitHubProviderVerifySHA512(t *testing.T) {
 // --- CheckUpdate ---
 
 func TestCheckUpdateAvailable(t *testing.T) {
-	version.SetVersion("0.6.1")
-
+	current := parseVersion("0.6.1")
 	checker := &mockChecker{release: &ReleaseInfo{
 		Version: "0.7.0",
 		Tag:     "v0.7.0",
 		URL:     "https://example.com",
 	}}
 
-	info, err := CheckUpdate(context.Background(), checker)
+	info, err := CheckUpdate(context.Background(), checker, current)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -543,14 +541,13 @@ func TestCheckUpdateAvailable(t *testing.T) {
 }
 
 func TestCheckUpdateNotAvailable(t *testing.T) {
-	version.SetVersion("0.7.0")
-
+	current := parseVersion("0.7.0")
 	checker := &mockChecker{release: &ReleaseInfo{
 		Version: "0.7.0",
 		Tag:     "v0.7.0",
 	}}
 
-	info, err := CheckUpdate(context.Background(), checker)
+	info, err := CheckUpdate(context.Background(), checker, current)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,14 +557,13 @@ func TestCheckUpdateNotAvailable(t *testing.T) {
 }
 
 func TestCheckUpdateOlderRemote(t *testing.T) {
-	version.SetVersion("1.0.0")
-
+	current := parseVersion("1.0.0")
 	checker := &mockChecker{release: &ReleaseInfo{
 		Version: "0.6.1",
 		Tag:     "v0.6.1",
 	}}
 
-	info, err := CheckUpdate(context.Background(), checker)
+	info, err := CheckUpdate(context.Background(), checker, current)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,9 +573,10 @@ func TestCheckUpdateOlderRemote(t *testing.T) {
 }
 
 func TestCheckUpdateCheckerError(t *testing.T) {
+	current := parseVersion("0.6.1")
 	checker := &mockChecker{err: errors.New("network error")}
 
-	_, err := CheckUpdate(context.Background(), checker)
+	_, err := CheckUpdate(context.Background(), checker, current)
 	if err == nil {
 		t.Fatal("expected error from checker")
 	}
@@ -626,7 +623,6 @@ func TestDownloadAndVerifyChecksumMismatch(t *testing.T) {
 	if !strings.Contains(err.Error(), "verify") {
 		t.Errorf("expected verify error, got: %v", err)
 	}
-	// Nothing should be written to dst on failure.
 	if buf.Len() != 0 {
 		t.Errorf("expected empty buffer on checksum failure, got %d bytes", buf.Len())
 	}
@@ -707,6 +703,8 @@ type mockProvider struct {
 	downloadErr     error
 	checksumContent string
 }
+
+var _ version.Version // ensure go-version is still imported for compile check
 
 func (m *mockProvider) LatestRelease(context.Context) (*ReleaseInfo, error) {
 	return &ReleaseInfo{Version: "1.0.0", Tag: "v1.0.0"}, nil

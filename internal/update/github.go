@@ -14,8 +14,12 @@ import (
 
 // GitHubProvider implements ReleaseProvider using the GitHub Releases API.
 type GitHubProvider struct {
-	owner    string
-	repo     string
+	owner string
+	repo  string
+	opts  githubOptions
+}
+
+type githubOptions struct {
 	client   *http.Client
 	checksum string
 	hash     crypto.Hash
@@ -25,38 +29,40 @@ type GitHubProvider struct {
 var _ ReleaseProvider = (*GitHubProvider)(nil)
 
 // GitHubOption configures a GitHubProvider.
-type GitHubOption func(*GitHubProvider)
+type GitHubOption func(*githubOptions)
 
 // WithHTTPClient sets a custom HTTP client.
 func WithHTTPClient(c *http.Client) GitHubOption {
-	return func(p *GitHubProvider) { p.client = c }
+	return func(o *githubOptions) { o.client = c }
 }
 
 // WithChecksumFile sets the checksum filename in the release assets.
 // Defaults to "checksums.txt".
 func WithChecksumFile(name string) GitHubOption {
-	return func(p *GitHubProvider) { p.checksum = name }
+	return func(o *githubOptions) { o.checksum = name }
 }
 
 // WithHashAlgorithm sets the hash algorithm for checksum verification.
 // Defaults to SHA-256.
 func WithHashAlgorithm(h crypto.Hash) GitHubOption {
-	return func(p *GitHubProvider) { p.hash = h }
+	return func(o *githubOptions) { o.hash = h }
 }
 
 // NewGitHubProvider creates a GitHubProvider for the given owner/repo.
 func NewGitHubProvider(owner, repo string, opts ...GitHubOption) *GitHubProvider {
-	p := &GitHubProvider{
-		owner:    owner,
-		repo:     repo,
+	o := githubOptions{
 		client:   http.DefaultClient,
 		checksum: "checksums.txt",
 		hash:     crypto.SHA256,
 	}
 	for _, opt := range opts {
-		opt(p)
+		opt(&o)
 	}
-	return p
+	return &GitHubProvider{
+		owner: owner,
+		repo:  repo,
+		opts:  o,
+	}
 }
 
 // githubRelease is the subset of the GitHub API response we need.
@@ -80,7 +86,7 @@ func (p *GitHubProvider) LatestRelease(ctx context.Context) (*ReleaseInfo, error
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 
-	resp, err := p.client.Do(req)
+	resp, err := p.opts.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +120,7 @@ func (p *GitHubProvider) Download(ctx context.Context, release *ReleaseInfo, ass
 func (p *GitHubProvider) Verify(ctx context.Context, release *ReleaseInfo, asset string, r io.Reader) error {
 	// Fetch checksum file.
 	checksumURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s/%s",
-		p.owner, p.repo, release.Tag, p.checksum)
+		p.owner, p.repo, release.Tag, p.opts.checksum)
 
 	var checksumBuf strings.Builder
 	if err := p.downloadURL(ctx, checksumURL, &checksumBuf); err != nil {
@@ -128,7 +134,7 @@ func (p *GitHubProvider) Verify(ctx context.Context, release *ReleaseInfo, asset
 	}
 
 	// Compute actual hash.
-	h := HashAlgorithm(p.hash)
+	h := hashAlgorithm(p.opts.hash)
 	if _, err := io.Copy(h, r); err != nil {
 		return fmt.Errorf("compute hash: %w", err)
 	}
@@ -147,7 +153,7 @@ func (p *GitHubProvider) downloadURL(ctx context.Context, url string, dst io.Wri
 		return err
 	}
 
-	resp, err := p.client.Do(req)
+	resp, err := p.opts.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -179,5 +185,5 @@ func findChecksum(content, asset string) (string, error) {
 			return fields[0], nil
 		}
 	}
-	return "", fmt.Errorf("checksum not found for %s", asset)
+	return "", fmt.Errorf("%w for %s", ErrChecksumNotFound, asset)
 }

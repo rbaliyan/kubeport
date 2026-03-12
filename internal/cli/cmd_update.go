@@ -44,7 +44,7 @@ func (a *app) cmdUpdateCheck(ctx context.Context) {
 	defer cancel()
 
 	provider := update.NewGitHubProvider("rbaliyan", "kubeport")
-	info, err := update.CheckUpdate(ctx, provider)
+	info, err := update.CheckUpdate(ctx, provider, version.Get())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error checking for updates: %v\n", err)
 		return
@@ -79,7 +79,7 @@ func (a *app) doUpdateApply(ctx context.Context) error {
 
 	// Check for update.
 	fmt.Print("Checking for updates... ")
-	info, err := update.CheckUpdate(ctx, provider)
+	info, err := update.CheckUpdate(ctx, provider, version.Get())
 	if err != nil {
 		return err
 	}
@@ -151,6 +151,9 @@ func printUpgradeHint() {
 	}
 }
 
+// maxBinarySize is the maximum allowed size for an extracted binary (256 MiB).
+const maxBinarySize = 256 << 20
+
 // extractBinary reads a tar.gz archive and returns the content of the named binary.
 func extractBinary(r io.Reader, name string) ([]byte, error) {
 	gz, err := gzip.NewReader(r)
@@ -170,9 +173,12 @@ func extractBinary(r io.Reader, name string) ([]byte, error) {
 		}
 		// Match basename — archives often have a top-level directory.
 		if filepath.Base(hdr.Name) == name && hdr.Typeflag == tar.TypeReg {
-			data, err := io.ReadAll(tr)
+			data, err := io.ReadAll(io.LimitReader(tr, maxBinarySize+1))
 			if err != nil {
 				return nil, fmt.Errorf("read %s: %w", name, err)
+			}
+			if len(data) > maxBinarySize {
+				return nil, fmt.Errorf("binary %s exceeds maximum size (%d bytes)", name, maxBinarySize)
 			}
 			return data, nil
 		}

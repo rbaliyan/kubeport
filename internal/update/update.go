@@ -3,9 +3,11 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -13,6 +15,10 @@ import (
 
 	version "github.com/rbaliyan/go-version"
 )
+
+// ErrChecksumNotFound is returned when the checksum file does not contain
+// an entry for the requested asset.
+var ErrChecksumNotFound = errors.New("checksum not found")
 
 // ReleaseInfo describes a published release.
 type ReleaseInfo struct {
@@ -59,9 +65,8 @@ type UpdateInfo struct {
 }
 
 // CheckUpdate queries the checker for the latest release and compares it
-// against the currently running version.
-func CheckUpdate(ctx context.Context, checker ReleaseChecker) (*UpdateInfo, error) {
-	current := version.Get()
+// against the given current version.
+func CheckUpdate(ctx context.Context, checker ReleaseChecker, current version.Version) (*UpdateInfo, error) {
 	release, err := checker.LatestRelease(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("check latest release: %w", err)
@@ -79,28 +84,27 @@ func CheckUpdate(ctx context.Context, checker ReleaseChecker) (*UpdateInfo, erro
 
 // DownloadAndVerify downloads the named asset, verifies its checksum, and
 // writes the verified content to dst. Nothing is written to dst until the
-// checksum passes.
+// checksum passes. The entire asset is buffered in memory.
 func DownloadAndVerify(ctx context.Context, provider ReleaseProvider, release *ReleaseInfo, asset string, dst io.Writer) error {
 	// Download to a buffer so we can verify before writing.
-	var buf strings.Builder
+	var buf bytes.Buffer
 	if err := provider.Download(ctx, release, asset, &buf); err != nil {
 		return fmt.Errorf("download %s: %w", asset, err)
 	}
 
-	content := buf.String()
-	if err := provider.Verify(ctx, release, asset, strings.NewReader(content)); err != nil {
+	if err := provider.Verify(ctx, release, asset, bytes.NewReader(buf.Bytes())); err != nil {
 		return fmt.Errorf("verify %s: %w", asset, err)
 	}
 
-	if _, err := io.Copy(dst, strings.NewReader(content)); err != nil {
+	if _, err := io.Copy(dst, bytes.NewReader(buf.Bytes())); err != nil {
 		return fmt.Errorf("write %s: %w", asset, err)
 	}
 	return nil
 }
 
-// HashAlgorithm returns a new hash.Hash for the given crypto.Hash.
+// hashAlgorithm returns a new hash.Hash for the given crypto.Hash.
 // Defaults to SHA-256 if the algorithm is not available.
-func HashAlgorithm(h crypto.Hash) hash.Hash {
+func hashAlgorithm(h crypto.Hash) hash.Hash {
 	if h.Available() {
 		return h.New()
 	}
