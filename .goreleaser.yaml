@@ -54,13 +54,15 @@ checksum:
 
 signs:
   - cmd: cosign
-    signature: "${artifact}.bundle"
+    signature: "${artifact}.sig"
+    certificate: "${artifact}.pem"
     args:
       - sign-blob
-      - "--bundle=${signature}"
+      - "--output-signature=${signature}"
+      - "--output-certificate=${certificate}"
       - "${artifact}"
       - "--yes"
-    artifacts: checksum
+    artifacts: all
 
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
