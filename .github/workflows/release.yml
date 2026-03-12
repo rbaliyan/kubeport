@@ -30,7 +30,7 @@ jobs:
         run: go test -race ./...
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@3454372be43b8f01834910e8d3f0c3ca3c9d1b84 # v3
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22 # v4.1.0
 
       - name: Install UPX
         run: |
