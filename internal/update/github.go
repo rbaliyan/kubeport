@@ -163,7 +163,9 @@ func (p *GitHubProvider) downloadURL(ctx context.Context, url string, dst io.Wri
 		return fmt.Errorf("download %s: %s", url, resp.Status)
 	}
 
-	_, err = io.Copy(dst, resp.Body)
+	// Limit response size to prevent OOM from compromised/redirected URLs.
+	const maxResponseSize = 512 << 20 // 512 MiB
+	_, err = io.Copy(dst, io.LimitReader(resp.Body, maxResponseSize))
 	return err
 }
 
