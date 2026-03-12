@@ -11,8 +11,8 @@ func TestBuildFromConfig_Shell(t *testing.T) {
 		Name: "vpn",
 		Type: "shell",
 		Shell: map[string]string{
-			"manager_starting":  "echo starting",
-			"forward_connected": "echo connected",
+			"manager:starting":  "echo starting",
+			"forward:connected": "echo connected",
 		},
 		FailMode: "closed",
 		Timeout:  "30s",
@@ -41,7 +41,7 @@ func TestBuildFromConfig_Shell_InferEvents(t *testing.T) {
 		Name: "notify",
 		Type: "shell",
 		Shell: map[string]string{
-			"forward_connected": "echo ok",
+			"forward:connected": "echo ok",
 		},
 		// No explicit events — should be inferred from shell keys
 	}
@@ -62,10 +62,10 @@ func TestBuildFromConfig_Shell_ExplicitEvents(t *testing.T) {
 	hc := config.HookConfig{
 		Name:   "notify",
 		Type:   "shell",
-		Events: []string{"forward_connected", "forward_disconnected"},
+		Events: []string{"forward:connected", "forward:disconnected"},
 		Shell: map[string]string{
-			"forward_connected":    "echo ok",
-			"forward_disconnected": "echo bye",
+			"forward:connected":    "echo ok",
+			"forward:disconnected": "echo bye",
 		},
 	}
 
@@ -82,7 +82,7 @@ func TestBuildFromConfig_Webhook(t *testing.T) {
 	hc := config.HookConfig{
 		Name:   "alert",
 		Type:   "webhook",
-		Events: []string{"forward_failed"},
+		Events: []string{"forward:failed"},
 		Webhook: &config.WebhookConfig{
 			URL:     "https://hooks.example.com/notify",
 			Headers: map[string]string{"X-Token": "secret"},
@@ -111,7 +111,7 @@ func TestBuildFromConfig_Exec(t *testing.T) {
 	hc := config.HookConfig{
 		Name:   "logger",
 		Type:   "exec",
-		Events: []string{"forward_connected"},
+		Events: []string{"forward:connected"},
 		Exec: &config.ExecConfig{
 			Command: []string{"echo", "${SERVICE}", "${PORT}"},
 		},
@@ -146,7 +146,7 @@ func TestBuildFromConfig_InvalidEvent(t *testing.T) {
 		Name:   "bad",
 		Type:   "shell",
 		Events: []string{"nonexistent"},
-		Shell:  map[string]string{"forward_connected": "echo ok"},
+		Shell:  map[string]string{"forward:connected": "echo ok"},
 	}
 
 	_, err := BuildFromConfig(hc)
@@ -160,7 +160,7 @@ func TestBuildFromConfig_InvalidTimeout(t *testing.T) {
 		Name:    "bad",
 		Type:    "shell",
 		Timeout: "not-a-duration",
-		Shell:   map[string]string{"forward_connected": "echo ok"},
+		Shell:   map[string]string{"forward:connected": "echo ok"},
 	}
 
 	_, err := BuildFromConfig(hc)
@@ -173,7 +173,7 @@ func TestBuildFromConfig_WebhookMissingURL(t *testing.T) {
 	hc := config.HookConfig{
 		Name:    "bad",
 		Type:    "webhook",
-		Events:  []string{"forward_connected"},
+		Events:  []string{"forward:connected"},
 		Webhook: &config.WebhookConfig{},
 	}
 
@@ -187,7 +187,7 @@ func TestBuildFromConfig_ExecMissingCommand(t *testing.T) {
 	hc := config.HookConfig{
 		Name:   "bad",
 		Type:   "exec",
-		Events: []string{"forward_connected"},
+		Events: []string{"forward:connected"},
 		Exec:   &config.ExecConfig{},
 	}
 

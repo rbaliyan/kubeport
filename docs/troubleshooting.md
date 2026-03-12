@@ -24,10 +24,10 @@ Common issues and their solutions when using kubeport.
    hooks:
      - name: vpn-check
        type: shell
-       events: [manager_starting]
+       events: [manager:starting]
        fail_mode: closed
        shell:
-         manager_starting: ping -c1 -W2 your-cluster-api-host
+         manager:starting: ping -c1 -W2 your-cluster-api-host
    ```
 
 ### "unable to create SPDY connection" or transport errors

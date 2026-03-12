@@ -388,7 +388,46 @@ func loadRaw(path string) (*Config, error) {
 	cfg.filePath = path
 	cfg.format = format
 
+	// Migrate legacy underscore event names to colon-based names.
+	for i := range cfg.Hooks {
+		migrateHookEventNames(&cfg.Hooks[i])
+	}
+
 	return cfg, nil
+}
+
+// legacyEventNames maps old underscore-based event names to colon-based names.
+var legacyEventNames = map[string]string{
+	"manager_starting":     "manager:starting",
+	"manager_stopped":      "manager:stopped",
+	"forward_connected":    "forward:connected",
+	"forward_disconnected": "forward:disconnected",
+	"forward_failed":       "forward:failed",
+	"forward_stopped":      "forward:stopped",
+	"health_check_failed":  "health:check_failed",
+	"service_added":        "service:added",
+	"service_removed":      "service:removed",
+}
+
+// migrateHookEventNames rewrites legacy underscore event names to colon-based
+// names in both the Events list and the Shell command map keys.
+func migrateHookEventNames(h *HookConfig) {
+	for i, name := range h.Events {
+		if newName, ok := legacyEventNames[name]; ok {
+			h.Events[i] = newName
+		}
+	}
+	if len(h.Shell) > 0 {
+		migrated := make(map[string]string, len(h.Shell))
+		for name, cmd := range h.Shell {
+			if newName, ok := legacyEventNames[name]; ok {
+				migrated[newName] = cmd
+			} else {
+				migrated[name] = cmd
+			}
+		}
+		h.Shell = migrated
+	}
 }
 
 // serviceConfigTOML is a TOML-specific intermediate struct where Ports is decoded

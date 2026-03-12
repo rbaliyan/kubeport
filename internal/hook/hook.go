@@ -31,23 +31,23 @@ const (
 func (e EventType) String() string {
 	switch e {
 	case EventManagerStarting:
-		return "manager_starting"
+		return "manager:starting"
 	case EventManagerStopped:
-		return "manager_stopped"
+		return "manager:stopped"
 	case EventForwardConnected:
-		return "forward_connected"
+		return "forward:connected"
 	case EventForwardDisconnected:
-		return "forward_disconnected"
+		return "forward:disconnected"
 	case EventForwardFailed:
-		return "forward_failed"
+		return "forward:failed"
 	case EventForwardStopped:
-		return "forward_stopped"
+		return "forward:stopped"
 	case EventHealthCheckFailed:
-		return "health_check_failed"
+		return "health:check_failed"
 	case EventServiceAdded:
-		return "service_added"
+		return "service:added"
 	case EventServiceRemoved:
-		return "service_removed"
+		return "service:removed"
 	default:
 		return "unknown"
 	}
@@ -60,6 +60,17 @@ func ParseEventType(s string) (EventType, bool) {
 }
 
 var eventNames = map[string]EventType{
+	"manager:starting":     EventManagerStarting,
+	"manager:stopped":      EventManagerStopped,
+	"forward:connected":    EventForwardConnected,
+	"forward:disconnected": EventForwardDisconnected,
+	"forward:failed":       EventForwardFailed,
+	"forward:stopped":      EventForwardStopped,
+	"health:check_failed":  EventHealthCheckFailed,
+	"service:added":        EventServiceAdded,
+	"service:removed":      EventServiceRemoved,
+
+	// Legacy underscore names for backwards compatibility.
 	"manager_starting":     EventManagerStarting,
 	"manager_stopped":      EventManagerStopped,
 	"forward_connected":    EventForwardConnected,

@@ -39,9 +39,9 @@ services:
     type: shell
     timeout: 30s
     fail_mode: closed
-    events: [manager_starting]
+    events: [manager:starting]
     shell:
-      manager_starting: echo starting
+      manager:starting: echo starting
 `))
 	f.Add([]byte(`supervisor:
   max_restarts: 5

@@ -100,9 +100,9 @@ Instead of `sleep`, use a hook to signal readiness:
 hooks:
   - name: ready-signal
     type: shell
-    events: [forward_connected]
+    events: [forward:connected]
     shell:
-      forward_connected: touch /tmp/kubeport-ready
+      forward:connected: touch /tmp/kubeport-ready
 ```
 
 Then in CI:

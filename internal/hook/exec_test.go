@@ -91,7 +91,7 @@ func TestExpandVars(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"${EVENT}", "forward_connected"},
+		{"${EVENT}", "forward:connected"},
 		{"${SERVICE}", "web"},
 		{"${PORT}", "8080"},
 		{"${REMOTE_PORT}", "80"},

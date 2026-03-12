@@ -12,8 +12,8 @@ import (
 
 func TestNewShellHook_ValidEvents(t *testing.T) {
 	cmds := map[string]string{
-		"forward_connected":    "echo connected",
-		"forward_disconnected": "echo disconnected",
+		"forward:connected":    "echo connected",
+		"forward:disconnected": "echo disconnected",
 	}
 
 	h, err := NewShellHook("test", cmds, nil)
@@ -41,7 +41,7 @@ func TestShellHook_OnEvent(t *testing.T) {
 	marker := filepath.Join(dir, "marker.txt")
 
 	cmds := map[string]string{
-		"forward_connected": "echo $KUBEPORT_SERVICE > " + marker,
+		"forward:connected": "echo $KUBEPORT_SERVICE > " + marker,
 	}
 
 	h, err := NewShellHook("test", cmds, nil)
@@ -76,7 +76,7 @@ func TestShellHook_ServiceFilter(t *testing.T) {
 	marker := filepath.Join(dir, "marker.txt")
 
 	cmds := map[string]string{
-		"forward_connected": "touch " + marker,
+		"forward:connected": "touch " + marker,
 	}
 
 	h, err := NewShellHook("filtered", cmds, []string{"allowed-svc"})
@@ -110,7 +110,7 @@ func TestShellHook_ServiceFilter(t *testing.T) {
 
 func TestShellHook_NoCommandForEvent(t *testing.T) {
 	cmds := map[string]string{
-		"forward_connected": "echo ok",
+		"forward:connected": "echo ok",
 	}
 
 	h, err := NewShellHook("test", cmds, nil)
@@ -130,7 +130,7 @@ func TestShellHook_Gate(t *testing.T) {
 	marker := filepath.Join(dir, "gate-marker.txt")
 
 	cmds := map[string]string{
-		"manager_starting": "touch " + marker,
+		"manager:starting": "touch " + marker,
 	}
 
 	h, err := NewShellHook("gate-test", cmds, nil)
@@ -149,7 +149,7 @@ func TestShellHook_Gate(t *testing.T) {
 
 func TestShellHook_ContextCancellation(t *testing.T) {
 	cmds := map[string]string{
-		"forward_connected": "sleep 10",
+		"forward:connected": "sleep 10",
 	}
 
 	h, err := NewShellHook("cancel-test", cmds, nil)
@@ -179,7 +179,7 @@ func TestEventEnv(t *testing.T) {
 
 	env := eventEnv(event)
 	expected := map[string]string{
-		"KUBEPORT_EVENT":       "forward_connected",
+		"KUBEPORT_EVENT":       "forward:connected",
 		"KUBEPORT_SERVICE":     "web",
 		"KUBEPORT_LOCAL_PORT":  "8080",
 		"KUBEPORT_REMOTE_PORT": "80",
