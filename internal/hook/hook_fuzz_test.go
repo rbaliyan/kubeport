@@ -37,15 +37,18 @@ func FuzzExpandVars(f *testing.F) {
 }
 
 func FuzzParseEventType(f *testing.F) {
+	f.Add("manager:starting")
+	f.Add("manager:stopped")
+	f.Add("forward:connected")
+	f.Add("forward:disconnected")
+	f.Add("forward:failed")
+	f.Add("forward:stopped")
+	f.Add("health:check_failed")
+	f.Add("service:added")
+	f.Add("service:removed")
+	// Legacy underscore names
 	f.Add("manager_starting")
-	f.Add("manager_stopped")
 	f.Add("forward_connected")
-	f.Add("forward_disconnected")
-	f.Add("forward_failed")
-	f.Add("forward_stopped")
-	f.Add("health_check_failed")
-	f.Add("service_added")
-	f.Add("service_removed")
 	f.Add("")
 	f.Add("unknown_event")
 	f.Add("MANAGER_STARTING")
@@ -56,9 +59,9 @@ func FuzzParseEventType(f *testing.F) {
 }
 
 func FuzzBuildFromConfig(f *testing.F) {
-	f.Add("hook1", "shell", "manager_starting", "30s", "open", "echo hi", "", "")
-	f.Add("hook2", "webhook", "forward_connected", "5s", "closed", "", "http://example.com", "")
-	f.Add("hook3", "exec", "forward_failed", "", "", "", "", "echo,hello")
+	f.Add("hook1", "shell", "manager:starting", "30s", "open", "echo hi", "", "")
+	f.Add("hook2", "webhook", "forward:connected", "5s", "closed", "", "http://example.com", "")
+	f.Add("hook3", "exec", "forward:failed", "", "", "", "", "echo,hello")
 	f.Add("", "", "", "", "", "", "", "")
 	f.Add("h", "unknown", "bad_event", "notaduration", "invalid", "", "", "")
 	f.Add("h", "shell", "", "1h", "closed", "ls -la", "", "")
@@ -78,7 +81,7 @@ func FuzzBuildFromConfig(f *testing.F) {
 			if event != "" {
 				hc.Shell[event] = shellCmd
 			} else {
-				hc.Shell["forward_connected"] = shellCmd
+				hc.Shell["forward:connected"] = shellCmd
 			}
 		}
 		if webhookURL != "" {

@@ -220,13 +220,13 @@ func TestEventType_String(t *testing.T) {
 		e    EventType
 		want string
 	}{
-		{EventManagerStarting, "manager_starting"},
-		{EventManagerStopped, "manager_stopped"},
-		{EventForwardConnected, "forward_connected"},
-		{EventForwardDisconnected, "forward_disconnected"},
-		{EventForwardFailed, "forward_failed"},
-		{EventForwardStopped, "forward_stopped"},
-		{EventHealthCheckFailed, "health_check_failed"},
+		{EventManagerStarting, "manager:starting"},
+		{EventManagerStopped, "manager:stopped"},
+		{EventForwardConnected, "forward:connected"},
+		{EventForwardDisconnected, "forward:disconnected"},
+		{EventForwardFailed, "forward:failed"},
+		{EventForwardStopped, "forward:stopped"},
+		{EventHealthCheckFailed, "health:check_failed"},
 		{EventType(99), "unknown"},
 	}
 
@@ -243,9 +243,12 @@ func TestParseEventType(t *testing.T) {
 		want  EventType
 		ok    bool
 	}{
+		{"manager:starting", EventManagerStarting, true},
+		{"forward:connected", EventForwardConnected, true},
+		{"health:check_failed", EventHealthCheckFailed, true},
+		// Legacy underscore names still work
 		{"manager_starting", EventManagerStarting, true},
 		{"forward_connected", EventForwardConnected, true},
-		{"health_check_failed", EventHealthCheckFailed, true},
 		{"nonexistent", 0, false},
 	}
 
