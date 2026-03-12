@@ -5,6 +5,21 @@ complete -c kubeport -f
 
 # Global options
 complete -c kubeport -s c -l config -d "Configuration file path" -r
+complete -c kubeport -l no-config -d "Ignore config file, use only CLI flags"
+complete -c kubeport -l context -d "Kubernetes context" -r
+complete -c kubeport -l kube-context -d "Kubernetes context" -r
+complete -c kubeport -s n -l namespace -d "Kubernetes namespace" -r
+complete -c kubeport -l svc -d "Service spec" -r
+complete -c kubeport -l disable-svc -d "Disable a service from config" -r
+complete -c kubeport -l host -d "Connect to a remote daemon" -r
+complete -c kubeport -l api-key -d "API key for remote daemon" -r
+complete -c kubeport -l time -d "Refresh interval for watch" -r
+complete -c kubeport -l json -d "Output status as JSON"
+complete -c kubeport -l sort -d "Sort status output"
+complete -c kubeport -l wait -d "Block until all forwards are connected"
+complete -c kubeport -l timeout -d "Max wait time for --wait" -r
+complete -c kubeport -s h -l help -d "Show help"
+complete -c kubeport -s v -l version -d "Show version"
 
 # Main commands
 complete -c kubeport -n "__fish_use_subcommand" -a "start" -d "Start the port-forward proxy in background"
@@ -12,19 +27,30 @@ complete -c kubeport -n "__fish_use_subcommand" -a "stop" -d "Stop the running p
 complete -c kubeport -n "__fish_use_subcommand" -a "status" -d "Show proxy status and port connectivity"
 complete -c kubeport -n "__fish_use_subcommand" -a "logs" -d "Follow proxy logs"
 complete -c kubeport -n "__fish_use_subcommand" -a "restart" -d "Restart the proxy"
+complete -c kubeport -n "__fish_use_subcommand" -a "add" -d "Add a service to running proxy"
+complete -c kubeport -n "__fish_use_subcommand" -a "remove" -d "Remove a service from running proxy"
+complete -c kubeport -n "__fish_use_subcommand" -a "reload" -d "Reload config file"
+complete -c kubeport -n "__fish_use_subcommand" -a "apply" -d "Apply services from a YAML/TOML file to running proxy"
+complete -c kubeport -n "__fish_use_subcommand" -a "mappings" -d "Show K8s DNS to localhost address mappings"
+complete -c kubeport -n "__fish_use_subcommand" -a "watch" -d "Watch proxy status"
 complete -c kubeport -n "__fish_use_subcommand" -a "fg" -d "Run proxy in foreground"
 complete -c kubeport -n "__fish_use_subcommand" -a "foreground" -d "Run proxy in foreground"
 complete -c kubeport -n "__fish_use_subcommand" -a "config" -d "Configuration management"
+complete -c kubeport -n "__fish_use_subcommand" -a "update" -d "Check for and apply updates"
 complete -c kubeport -n "__fish_use_subcommand" -a "version" -d "Show version information"
 complete -c kubeport -n "__fish_use_subcommand" -a "help" -d "Show help"
 
 # Config subcommands
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "init" -d "Create a new configuration file"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "show" -d "Display current configuration"
+complete -c kubeport -n "__fish_seen_subcommand_from config" -a "validate" -d "Validate configuration file"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "set" -d "Set context or namespace"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "add" -d "Add a service to forward"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "remove" -d "Remove a service"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "path" -d "Print configuration file path"
+
+# Update subcommands
+complete -c kubeport -n "__fish_seen_subcommand_from update" -a "check" -d "Check if a newer version is available"
 
 # Config init options
 complete -c kubeport -n "__fish_seen_subcommand_from init" -l format -d "Config format" -a "yaml toml"
