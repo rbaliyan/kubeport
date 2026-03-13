@@ -152,6 +152,7 @@ Block kubeport from starting unless a VPN is active:
 Hook commands come from your config file. Treat config files like scripts:
 
 - Only use configs you trust
-- Ensure config files are not world-writable
+- Ensure config files are not world-writable (kubeport writes config files with `0600` permissions)
 - Avoid interpolating untrusted input into hook commands
 - Environment variables passed to hooks are sanitized (newlines and null bytes stripped)
+- **Webhook `body_template`**: Template variables are substituted as-is without JSON escaping. If service names or error messages contain special characters, the resulting JSON may be malformed. Use the default JSON payload (omit `body_template`) for guaranteed well-formed output

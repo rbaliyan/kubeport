@@ -25,7 +25,7 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
-    defer p.Close()
+    defer p.Close(context.Background())
 
     client := &http.Client{
         Transport: &http.Transport{DialContext: p.DialContext},
@@ -46,8 +46,7 @@ When you call `proxy.New()`, the library:
 
 1. **Discovers** the running kubeport daemon (via config file or standard socket paths)
 2. **Fetches** the current address mapping table over gRPC (e.g., `redis-0.redis.default.svc.cluster.local` → `127.0.0.1:16379`)
-3. **Registers** a custom gRPC resolver (`kubeport:///` scheme)
-4. Returns a `Proxy` that translates addresses in `DialContext` calls
+3. Returns a `Proxy` that translates addresses in `DialContext` calls and provides a per-client gRPC resolver via `GRPCDialOption()`
 
 All Kubernetes DNS variants are mapped automatically:
 - `redis` → `127.0.0.1:16379`
@@ -64,6 +63,7 @@ All Kubernetes DNS variants are mapped automatically:
 | `WithSocketPath(path)` | Connect to a specific Unix socket |
 | `WithTCP(host, apiKey)` | Connect to a remote daemon over TCP |
 | `WithClusterDomain(domain)` | Override cluster domain (default: `cluster.local`) |
+| `WithRefreshInterval(d)` | Auto-refresh mapping interval (default: `10s`, `0` to disable) |
 | `WithLogger(logger)` | Set a `*slog.Logger` for structured logging |
 
 ### The `WithEnabled` Tri-State
@@ -105,7 +105,7 @@ Internal gRPC calls to the kubeport daemon (initial `Mappings` fetch and `Refres
 import "github.com/redis/go-redis/v9"
 
 p, _ := proxy.New(proxy.WithEnabled(true))
-defer p.Close()
+defer p.Close(context.Background())
 
 rdb := redis.NewClient(&redis.Options{
     Addr:    "redis.default.svc.cluster.local:6379",
@@ -133,15 +133,20 @@ For gRPC connections, use `GRPCTarget` to get a target string that routes throug
 import "google.golang.org/grpc"
 
 p, _ := proxy.New(proxy.WithEnabled(true))
-defer p.Close()
+defer p.Close(context.Background())
+
+opts := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+if dialOpt := p.GRPCDialOption(); dialOpt != nil {
+    opts = append(opts, dialOpt)
+}
 
 conn, err := grpc.NewClient(
     p.GRPCTarget("my-service.default.svc.cluster.local:9090"),
-    grpc.WithTransportCredentials(insecure.NewCredentials()),
+    opts...,
 )
 ```
 
-When kubeport is active, `GRPCTarget` returns `kubeport:///my-service.default.svc.cluster.local:9090`, which the registered resolver translates to the correct localhost address. When using a noop proxy, it returns the address unchanged.
+`GRPCTarget` returns a `kubeport:///` scheme address that the per-client resolver (from `GRPCDialOption()`) translates to the correct localhost address. For a noop proxy, `GRPCTarget` returns the address unchanged and `GRPCDialOption()` returns nil.
 
 ### net/http
 
@@ -161,7 +166,7 @@ resp, err := client.Get("http://my-api.default.svc.cluster.local:8080/v1/users")
 import "github.com/jackc/pgx/v5"
 
 p, _ := proxy.New(proxy.WithEnabled(true))
-defer p.Close()
+defer p.Close(context.Background())
 
 config, _ := pgx.ParseConfig("postgres://user:pass@postgres.default.svc.cluster.local:5432/mydb")
 config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -174,7 +179,7 @@ config.DialFunc = func(ctx context.Context, network, addr string) (net.Conn, err
 If kubeport services change while your application is running, call `Refresh()` to re-fetch the address table:
 
 ```go
-if err := p.Refresh(); err != nil {
+if err := p.Refresh(context.Background()); err != nil {
     log.Printf("failed to refresh mappings: %v", err)
 }
 ```

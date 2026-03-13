@@ -43,13 +43,18 @@ The core engine. Manages one goroutine per port-forward with:
 
 ### Daemon Server (`internal/daemon/`)
 
-A gRPC server listening on a Unix socket (permissions `0600`). Exposes RPCs for:
+A gRPC server listening on a Unix socket (permissions `0600`) or TCP with API key auth. Errors are returned as proper gRPC status codes (`InvalidArgument`, `NotFound`, `AlreadyExists`, etc.). Exposes RPCs for:
 
 - `Status` — current state of all forwards
 - `Stop` — graceful shutdown
 - `AddService` / `RemoveService` — dynamic management
 - `Reload` — diff config on disk and sync changes
 - `Apply` — merge in services from an overlay file
+- `Mappings` — address translation table for the client SDK
+
+### Client SDK (`pkg/proxy/`)
+
+A lightweight Go library that lets applications transparently resolve Kubernetes service DNS names to localhost ports. Connects to the daemon over gRPC, fetches address mappings, and provides `DialContext`, `DialFunc`, and `GRPCTarget`/`GRPCDialOption` for integration with HTTP clients, go-redis, gRPC, and database drivers. See the [SDK guide](sdk.md) for usage.
 
 ### Hook Dispatcher (`internal/hook/`)
 
@@ -61,9 +66,13 @@ Dispatches lifecycle events to configured hooks. Supports three execution models
 
 Hooks can operate as **gates** (using `fail_mode: closed`) to block operations like startup.
 
-### Configuration (`internal/config/`)
+### Configuration (`pkg/config/`)
 
-Loads and validates YAML/TOML config files. Manages file discovery, environment variable overrides, and path resolution for PID files, log files, and sockets. Supports two service modes: single-port (explicit `remote_port`/`local_port`) and multi-port (`ports: all` or a list of named ports), with custom YAML and TOML unmarshalers to handle the polymorphic `ports` field.
+Loads and validates YAML/TOML config files. Manages file discovery, environment variable overrides, and path resolution for PID files, log files, and sockets. Supports two service modes: single-port (explicit `remote_port`/`local_port`) and multi-port (`ports: all` or a list of named ports), with custom YAML and TOML unmarshalers to handle the polymorphic `ports` field. This is a public package so that `pkg/proxy` (the client SDK) can share config parsing and discovery without importing Kubernetes dependencies.
+
+### Auth (`pkg/grpcauth/`)
+
+Provides gRPC unary interceptors for API key authentication (Bearer token). Used by both the daemon server (server interceptor) and clients connecting over TCP (client interceptor).
 
 ## How a Port-Forward Works
 
