@@ -37,6 +37,8 @@ package proxy
 import (
 	"context"
 	"net"
+
+	"google.golang.org/grpc"
 )
 
 // Proxy provides address translation for Kubernetes service connections.
@@ -52,9 +54,14 @@ type Proxy interface {
 	DialFunc() func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	// GRPCTarget returns the gRPC dial target for the given address.
-	// For an active proxy, this returns "kubeport:///address" to use the
-	// registered resolver. For a noop proxy, it returns the address as-is.
+	// For an active proxy, this returns "kubeport:///address" which requires
+	// the dial option from GRPCDialOption. For a noop proxy, returns the address as-is.
 	GRPCTarget(addr string) string
+
+	// GRPCDialOption returns a grpc.DialOption that registers the proxy's
+	// address resolver for use with GRPCTarget. Pass this when creating
+	// gRPC client connections. Returns nil for a noop proxy.
+	GRPCDialOption() grpc.DialOption
 
 	// Addrs returns the current address mapping table.
 	// Returns nil for a noop proxy.
@@ -85,7 +92,8 @@ func (n noopProxy) DialFunc() func(ctx context.Context, network, addr string) (n
 	return n.DialContext
 }
 
-func (noopProxy) GRPCTarget(addr string) string   { return addr }
-func (noopProxy) Addrs() map[string]string        { return nil }
+func (noopProxy) GRPCTarget(addr string) string      { return addr }
+func (noopProxy) GRPCDialOption() grpc.DialOption    { return nil }
+func (noopProxy) Addrs() map[string]string           { return nil }
 func (noopProxy) Refresh(_ context.Context) error { return nil }
 func (noopProxy) Close(_ context.Context) error   { return nil }

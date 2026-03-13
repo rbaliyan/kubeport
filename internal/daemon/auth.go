@@ -10,9 +10,3 @@ import (
 func apiKeyInterceptor(key string) grpc.UnaryServerInterceptor {
 	return grpcauth.ServerInterceptor(key)
 }
-
-// APIKeyClientInterceptor returns a gRPC unary client interceptor that injects
-// a "Bearer <key>" authorization header into outgoing requests.
-func APIKeyClientInterceptor(key string) grpc.UnaryClientInterceptor {
-	return grpcauth.ClientInterceptor(key)
-}

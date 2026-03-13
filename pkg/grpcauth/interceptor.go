@@ -1,4 +1,5 @@
-// Package grpcauth provides gRPC interceptors for API key authentication.
+// Package grpcauth provides gRPC unary interceptors for API key authentication.
+// Streaming interceptors are not provided because kubeport uses unary RPCs only.
 package grpcauth
 
 import (

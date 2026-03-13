@@ -13,6 +13,7 @@ import (
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/proxy"
+	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -654,7 +655,7 @@ func TestServer_TCPIntegration(t *testing.T) {
 		conn, err = grpc.NewClient(
 			addr,
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
-			grpc.WithUnaryInterceptor(APIKeyClientInterceptor(apiKey)),
+			grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(apiKey)),
 		)
 		if err == nil {
 			break
@@ -683,7 +684,7 @@ func TestServer_TCPIntegration(t *testing.T) {
 	wrongConn, err := grpc.NewClient(
 		addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(APIKeyClientInterceptor("wrong-key")),
+		grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor("wrong-key")),
 	)
 	if err != nil {
 		t.Fatalf("dial error: %v", err)

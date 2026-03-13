@@ -3,6 +3,7 @@ package proxy
 import (
 	"strings"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/resolver"
 )
 
@@ -43,6 +44,6 @@ func (r *proxyResolver) updateState() {
 func (r *proxyResolver) ResolveNow(_ resolver.ResolveNowOptions) {}
 func (r *proxyResolver) Close()                                  {}
 
-func (c *client) registerResolver() {
-	resolver.Register(&resolverBuilder{client: c})
+func (c *client) resolverDialOption() grpc.DialOption {
+	return grpc.WithResolvers(&resolverBuilder{client: c})
 }
