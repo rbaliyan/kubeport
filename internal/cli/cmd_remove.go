@@ -46,7 +46,8 @@ func (a *app) cmdRemove(args []string) {
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	resp, err := dc.client.RemoveService(ctx, &kubeportv1.RemoveServiceRequest{
+	//nolint:staticcheck // dc is nil-guarded by os.Exit above
+	_, err = dc.client.RemoveService(ctx, &kubeportv1.RemoveServiceRequest{
 		Name:    name,
 		Persist: persist,
 	})
@@ -55,11 +56,6 @@ func (a *app) cmdRemove(args []string) {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if !resp.Success {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
 		os.Exit(1)
 	}
 

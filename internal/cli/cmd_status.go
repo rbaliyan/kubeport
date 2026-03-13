@@ -11,7 +11,7 @@ import (
 
 	version "github.com/rbaliyan/go-version"
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 

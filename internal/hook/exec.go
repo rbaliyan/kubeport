@@ -7,32 +7,32 @@ import (
 	"os/exec"
 )
 
-var _ Hook = (*ExecHook)(nil)
+var _ Hook = (*execHook)(nil)
 
-// ExecHook runs a command with template-expanded arguments on lifecycle events.
+// execHook runs a command with template-expanded arguments on lifecycle events.
 // Template variables: ${EVENT}, ${SERVICE}, ${PORT}, ${REMOTE_PORT}, ${POD},
 // ${RESTARTS}, ${ERROR}, ${TIME}.
-type ExecHook struct {
+type execHook struct {
 	name    string
 	command []string // template args, expanded per event
 	filter  map[string]bool
 }
 
-// NewExecHook creates an exec hook.
-func NewExecHook(name string, command, filterServices []string) (*ExecHook, error) {
+// newExecHook creates an exec hook.
+func newExecHook(name string, command, filterServices []string) (*execHook, error) {
 	if len(command) == 0 {
 		return nil, fmt.Errorf("exec hook %q: command is required", name)
 	}
-	return &ExecHook{
+	return &execHook{
 		name:    name,
 		command: command,
 		filter:  buildFilter(filterServices),
 	}, nil
 }
 
-func (h *ExecHook) Name() string { return h.name }
+func (h *execHook) Name() string { return h.name }
 
-func (h *ExecHook) OnEvent(ctx context.Context, event Event) error {
+func (h *execHook) OnEvent(ctx context.Context, event Event) error {
 	if !matchesFilter(h.filter, event) {
 		return nil
 	}

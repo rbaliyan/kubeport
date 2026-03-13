@@ -29,10 +29,5 @@ func (a *app) cmdReload() {
 		os.Exit(1)
 	}
 
-	if !resp.Success {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
-		os.Exit(1)
-	}
-
 	fmt.Printf("Config reloaded: %d added, %d removed\n", resp.Added, resp.Removed)
 }

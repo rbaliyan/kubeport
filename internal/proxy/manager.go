@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/netutil"
 )
@@ -118,19 +118,24 @@ type Manager struct {
 }
 
 // Option configures optional Manager behavior.
-type Option func(*Manager)
+type Option func(*managerOptions)
+
+type managerOptions struct {
+	hooks  *hook.Dispatcher
+	logger *slog.Logger
+}
 
 // WithHooks sets the hook dispatcher for lifecycle events.
 func WithHooks(d *hook.Dispatcher) Option {
-	return func(m *Manager) {
-		m.hooks = d
+	return func(o *managerOptions) {
+		o.hooks = d
 	}
 }
 
 // WithLogger sets a structured logger for internal diagnostics.
 func WithLogger(l *slog.Logger) Option {
-	return func(m *Manager) {
-		m.logger = l
+	return func(o *managerOptions) {
+		o.logger = l
 	}
 }
 
@@ -155,6 +160,13 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 
 	sup := cfg.Supervisor.ParsedSupervisor()
 
+	o := &managerOptions{
+		logger: slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
+	}
+	for _, opt := range opts {
+		opt(o)
+	}
+
 	m := &Manager{
 		cfg:                  cfg,
 		restConfig:           restConfig,
@@ -162,7 +174,8 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		forwards:             make(map[string]*portForward),
 		children:             make(map[string][]string),
 		output:               output,
-		logger:               slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		hooks:                o.hooks,
+		logger:               o.logger,
 		maxRestarts:          sup.MaxRestarts,
 		healthCheckInterval:  sup.HealthCheckInterval,
 		healthCheckThreshold: sup.HealthCheckThreshold,
@@ -170,9 +183,6 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		backoffInitial:       sup.BackoffInitial,
 		backoffMax:           sup.BackoffMax,
 		maxConnectionAge:     sup.MaxConnectionAge,
-	}
-	for _, opt := range opts {
-		opt(m)
 	}
 	return m, nil
 }
@@ -578,19 +588,7 @@ func (m *Manager) resolveServicePorts(ctx context.Context, namespace string, svc
 		}
 	}
 
-	// Build exclude set
-	excludeSet := make(map[string]bool, len(svc.ExcludePorts))
-	for _, name := range svc.ExcludePorts {
-		excludeSet[name] = true
-	}
-
-	// Build selector override map (by name)
-	selectorOverrides := make(map[string]config.PortSelector, len(svc.Ports.Selectors))
-	for _, sel := range svc.Ports.Selectors {
-		if sel.Name != "" {
-			selectorOverrides[sel.Name] = sel
-		}
-	}
+	excludeSet, selectorOverrides := buildPortMaps(svc)
 
 	var resolved []resolvedPort
 	for _, sp := range ports {
@@ -598,26 +596,17 @@ func (m *Manager) resolveServicePorts(ctx context.Context, namespace string, svc
 			continue
 		}
 
-		rp := resolvedPort{
+		localPort := computeLocalPort(selectorOverrides, sp.Name, int(sp.Port), svc.LocalPortOffset)
+		if localPort < 1 || localPort > 65535 {
+			return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
+				sp.Name, localPort, sp.Port, svc.LocalPortOffset)
+		}
+
+		resolved = append(resolved, resolvedPort{
 			Name:       sp.Name,
 			RemotePort: int(sp.Port),
-		}
-
-		// Compute local port
-		if sel, ok := selectorOverrides[sp.Name]; ok && sel.LocalPort != 0 {
-			rp.LocalPort = sel.LocalPort
-		} else if svc.LocalPortOffset > 0 {
-			rp.LocalPort = int(sp.Port) + svc.LocalPortOffset
-		} else {
-			rp.LocalPort = int(sp.Port) // default: same as remote
-		}
-
-		if rp.LocalPort < 1 || rp.LocalPort > 65535 {
-			return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
-				sp.Name, rp.LocalPort, sp.Port, svc.LocalPortOffset)
-		}
-
-		resolved = append(resolved, rp)
+			LocalPort:  localPort,
+		})
 	}
 
 	if len(resolved) == 0 {
@@ -634,17 +623,7 @@ func (m *Manager) resolvePodPorts(ctx context.Context, namespace string, svc con
 		return nil, fmt.Errorf("get pod %s/%s: %w", namespace, svc.Target(), err)
 	}
 
-	excludeSet := make(map[string]bool, len(svc.ExcludePorts))
-	for _, name := range svc.ExcludePorts {
-		excludeSet[name] = true
-	}
-
-	selectorOverrides := make(map[string]config.PortSelector, len(svc.Ports.Selectors))
-	for _, sel := range svc.Ports.Selectors {
-		if sel.Name != "" {
-			selectorOverrides[sel.Name] = sel
-		}
-	}
+	excludeSet, selectorOverrides := buildPortMaps(svc)
 
 	var resolved []resolvedPort
 	for _, c := range pod.Spec.Containers {
@@ -667,25 +646,17 @@ func (m *Manager) resolvePodPorts(ctx context.Context, namespace string, svc con
 				}
 			}
 
-			rp := resolvedPort{
+			localPort := computeLocalPort(selectorOverrides, cp.Name, int(cp.ContainerPort), svc.LocalPortOffset)
+			if localPort < 1 || localPort > 65535 {
+				return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
+					cp.Name, localPort, cp.ContainerPort, svc.LocalPortOffset)
+			}
+
+			resolved = append(resolved, resolvedPort{
 				Name:       cp.Name,
 				RemotePort: int(cp.ContainerPort),
-			}
-
-			if sel, ok := selectorOverrides[cp.Name]; ok && sel.LocalPort != 0 {
-				rp.LocalPort = sel.LocalPort
-			} else if svc.LocalPortOffset > 0 {
-				rp.LocalPort = int(cp.ContainerPort) + svc.LocalPortOffset
-			} else {
-				rp.LocalPort = int(cp.ContainerPort)
-			}
-
-			if rp.LocalPort < 1 || rp.LocalPort > 65535 {
-				return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
-					cp.Name, rp.LocalPort, cp.ContainerPort, svc.LocalPortOffset)
-			}
-
-			resolved = append(resolved, rp)
+				LocalPort:  localPort,
+			})
 		}
 	}
 
@@ -694,6 +665,32 @@ func (m *Manager) resolvePodPorts(ctx context.Context, namespace string, svc con
 	}
 
 	return resolved, nil
+}
+
+// buildPortMaps constructs the exclude set and selector override map from a ServiceConfig.
+func buildPortMaps(svc config.ServiceConfig) (excludeSet map[string]bool, selectorOverrides map[string]config.PortSelector) {
+	excludeSet = make(map[string]bool, len(svc.ExcludePorts))
+	for _, name := range svc.ExcludePorts {
+		excludeSet[name] = true
+	}
+	selectorOverrides = make(map[string]config.PortSelector, len(svc.Ports.Selectors))
+	for _, sel := range svc.Ports.Selectors {
+		if sel.Name != "" {
+			selectorOverrides[sel.Name] = sel
+		}
+	}
+	return
+}
+
+// computeLocalPort determines the local port for a given remote port.
+func computeLocalPort(overrides map[string]config.PortSelector, portName string, remotePort, offset int) int {
+	if sel, ok := overrides[portName]; ok && sel.LocalPort != 0 {
+		return sel.LocalPort
+	}
+	if offset > 0 {
+		return remotePort + offset
+	}
+	return remotePort
 }
 
 func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig) {

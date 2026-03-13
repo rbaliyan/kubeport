@@ -177,13 +177,11 @@ func newClient(o *options) (Proxy, error) {
 		logger:       o.logger.With(slog.String("component", "kubeport-proxy")),
 	}
 
-	// Register gRPC resolver
-	c.registerResolver()
-
 	// auto refresh entries
 	if o.refreshInterval > 0 {
 		go func() {
 			t := time.NewTicker(o.refreshInterval)
+			defer t.Stop()
 			for {
 				select {
 				case <-c.shutdownChan:
@@ -234,21 +232,34 @@ func (c *client) DialFunc() func(ctx context.Context, network, addr string) (net
 	return c.DialContext
 }
 
+func (c *client) GRPCDialOption() grpc.DialOption {
+	return c.resolverDialOption()
+}
+
 func (c *client) GRPCTarget(addr string) string {
-	if len(c.addrs) == 0 {
+	c.mu.Lock()
+	empty := len(c.addrs) == 0
+	c.mu.Unlock()
+	if empty {
 		return addr
 	}
 	return resolverScheme + ":///" + addr
 }
 
 func (c *client) translateAddr(addr string) string {
-	if translated, ok := c.addrs[addr]; ok {
+	// Safe: Refresh replaces c.addrs with a new map (never mutates in place).
+	// Clone for defense in depth against future in-place mutations.
+	c.mu.Lock()
+	addrs := maps.Clone(c.addrs)
+	c.mu.Unlock()
+
+	if translated, ok := addrs[addr]; ok {
 		return translated
 	}
 
 	host, port, err := net.SplitHostPort(addr)
 	if err == nil {
-		if translated, ok := c.addrs[host]; ok {
+		if translated, ok := addrs[host]; ok {
 			return net.JoinHostPort(translated, port)
 		}
 	}

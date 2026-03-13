@@ -2,7 +2,7 @@ package daemon
 
 import (
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/proxy"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

@@ -186,11 +186,6 @@ func (a *app) cmdAdd(args []string) {
 		os.Exit(1)
 	}
 
-	if !resp.Success {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
-		os.Exit(1)
-	}
-
 	if isMultiPort {
 		fmt.Printf("Service %q added (ports resolving, check 'kubeport status')\n", name)
 	} else {

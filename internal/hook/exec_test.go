@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewExecHook_EmptyCommand(t *testing.T) {
-	_, err := NewExecHook("bad", []string{}, nil)
+	_, err := newExecHook("bad", []string{}, nil)
 	if err == nil {
 		t.Fatal("expected error for empty command")
 	}
@@ -20,7 +20,7 @@ func TestExecHook_OnEvent(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "exec-marker.txt")
 
-	h, err := NewExecHook("test", []string{"sh", "-c", "echo ${SERVICE}:${PORT} > " + marker}, nil)
+	h, err := newExecHook("test", []string{"sh", "-c", "echo ${SERVICE}:${PORT} > " + marker}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestExecHook_ServiceFilter(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "exec-filter.txt")
 
-	h, err := NewExecHook("filtered", []string{"touch", marker}, []string{"allowed"})
+	h, err := newExecHook("filtered", []string{"touch", marker}, []string{"allowed"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -3,7 +3,7 @@ package hook
 import (
 	"testing"
 
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 func TestBuildFromConfig_Shell(t *testing.T) {

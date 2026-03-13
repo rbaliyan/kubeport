@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 func FuzzExpandVars(f *testing.F) {

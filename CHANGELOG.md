@@ -7,6 +7,21 @@ All notable changes to kubeport are documented here. This project uses [semantic
 ### Added
 - Fuzz tests and ClusterFuzzLite CI workflows
 - Build provenance attestation to release workflow
+- `pkg/proxy.GRPCDialOption()` method for per-client gRPC resolver registration
+- `pkg/proxy.WithRefreshInterval()` option to control auto-refresh interval
+
+### Changed
+- Daemon server RPCs now return proper gRPC status codes instead of response `Error` fields
+- Promoted `internal/config` to `pkg/config` — config parsing is now a public API
+- Extracted `pkg/grpcauth` for reusable gRPC auth interceptors
+- Hook event names use colon-based namespacing (e.g., `forward:connected`); legacy underscore names auto-migrate
+- Config files written with `0600` permissions (was `0644`)
+- Hook concrete types (`ShellHook`, `WebhookHook`, `ExecHook`) are now unexported
+
+### Fixed
+- Race condition in `pkg/proxy` address translation (mutex snapshot)
+- Ticker leak in proxy refresh goroutine
+- Global gRPC resolver registration replaced with per-client `grpc.WithResolvers()`
 
 ## [v0.6.1] - 2026-03-05
 

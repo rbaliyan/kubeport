@@ -3,9 +3,8 @@ package cli
 import (
 	"os"
 
-	"github.com/rbaliyan/kubeport/internal/daemon"
-
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
+	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -43,7 +42,7 @@ func dialDaemonTCP(host, apiKey string) (*daemonClient, error) {
 	conn, err := grpc.NewClient(
 		host,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithUnaryInterceptor(daemon.APIKeyClientInterceptor(apiKey)),
+		grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(apiKey)),
 	)
 	if err != nil {
 		return nil, err
