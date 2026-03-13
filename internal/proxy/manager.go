@@ -1205,12 +1205,22 @@ func (m *Manager) Mappings(clusterDomain string) []AddressMapping {
 				})
 			}
 		} else {
-			// Pod target: just use the pod name
-			mappings = append(mappings, AddressMapping{
-				InternalAddr: target + ":" + remotePort,
-				LocalAddr:    localAddr,
-				ServiceName:  name,
-			})
+			// Pod DNS variants. StatefulSet pods are accessed via
+			// <pod>.<headless-svc>.<ns>.svc.<domain>. We generate a
+			// short entry plus a namespace-qualified entry so the proxy
+			// can disambiguate pods with the same name across namespaces.
+			mappings = append(mappings,
+				AddressMapping{
+					InternalAddr: target + ":" + remotePort,
+					LocalAddr:    localAddr,
+					ServiceName:  name,
+				},
+				AddressMapping{
+					InternalAddr: target + "." + ns + ":" + remotePort,
+					LocalAddr:    localAddr,
+					ServiceName:  name,
+				},
+			)
 		}
 	}
 	return mappings

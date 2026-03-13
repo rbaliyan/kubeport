@@ -220,6 +220,79 @@ func TestTranslateAddr_HeadlessServiceFQDN(t *testing.T) {
 	}
 }
 
+func TestTranslateAddr_NamespaceDisambiguation(t *testing.T) {
+	// Same pod name in two namespaces — namespace-qualified entries disambiguate.
+	c := &client{
+		addrs: map[string]string{
+			"redis-node-0:6379":     "localhost:6380", // short name (last write wins)
+			"redis-node-0.dev:6379": "localhost:6380", // dev namespace
+			"redis-node-0.staging:6379": "localhost:7380", // staging namespace
+		},
+	}
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "dev namespace FQDN",
+			input: "redis-node-0.redis-headless.dev.svc.cluster.local:6379",
+			want:  "localhost:6380",
+		},
+		{
+			name:  "staging namespace FQDN",
+			input: "redis-node-0.redis-headless.staging.svc.cluster.local:6379",
+			want:  "localhost:7380",
+		},
+		{
+			name:  "short form falls back to short key",
+			input: "redis-node-0:6379",
+			want:  "localhost:6380",
+		},
+		{
+			name:  "dev short FQDN",
+			input: "redis-node-0.redis-headless.dev:6379",
+			want:  "localhost:6380",
+		},
+		{
+			name:  "staging short FQDN",
+			input: "redis-node-0.redis-headless.staging:6379",
+			want:  "localhost:7380",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := c.translateAddr(tt.input)
+			if got != tt.want {
+				t.Errorf("translateAddr(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestExtractNamespace(t *testing.T) {
+	tests := []struct {
+		rest string
+		want string
+	}{
+		{"redis-headless.dev.svc.cluster.local", "dev"},
+		{"redis-headless.staging.svc.cluster.local", "staging"},
+		{"redis-headless.dev", "dev"},
+		{"redis-headless", ""},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.rest, func(t *testing.T) {
+			if got := extractNamespace(tt.rest); got != tt.want {
+				t.Errorf("extractNamespace(%q) = %q, want %q", tt.rest, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateAddr_EmptyAddrs(t *testing.T) {
 	c := &client{addrs: nil}
 	if got := c.translateAddr("svc:9090"); got != "svc:9090" {

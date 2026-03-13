@@ -268,7 +268,17 @@ func (c *client) translateAddr(addr string) string {
 	c.mu.Lock()
 	addrs := maps.Clone(c.addrs)
 	c.mu.Unlock()
+	return resolveAddr(addrs, addr)
+}
 
+// resolveAddr translates an address using the given mapping table.
+// Lookup order:
+//  1. Exact match on full addr (host:port)
+//  2. Host-only match (addr has port, map key is host without port)
+//  3. Namespace-qualified pod match: extract pod name + namespace from
+//     headless FQDN, try "pod.ns:port"
+//  4. Short pod name match: extract first DNS label, try "pod:port"
+func resolveAddr(addrs map[string]string, addr string) string {
 	if translated, ok := addrs[addr]; ok {
 		return translated
 	}
@@ -280,12 +290,20 @@ func (c *client) translateAddr(addr string) string {
 		}
 	}
 
-	// Fuzzy match: for headless-service FQDNs like
-	// "pod-name.svc-name.ns.svc.cluster.local:port", extract the first DNS
-	// label (the pod name) and try matching "pod-name:port". This handles
-	// StatefulSet pod addresses returned by services like Redis Sentinel.
+	// Fuzzy match for headless-service FQDNs like
+	// "pod-name.svc-name.ns.svc.cluster.local:port".
 	if err == nil {
-		if short, _, ok := strings.Cut(host, "."); ok {
+		if short, rest, ok := strings.Cut(host, "."); ok {
+			// Try namespace-qualified match first (pod.ns:port) to
+			// disambiguate pods with the same name across namespaces.
+			if ns := extractNamespace(rest); ns != "" {
+				nsAddr := net.JoinHostPort(short+"."+ns, port)
+				if translated, ok := addrs[nsAddr]; ok {
+					return translated
+				}
+			}
+
+			// Fall back to short pod name match.
 			shortAddr := net.JoinHostPort(short, port)
 			if translated, ok := addrs[shortAddr]; ok {
 				return translated
@@ -294,4 +312,21 @@ func (c *client) translateAddr(addr string) string {
 	}
 
 	return addr
+}
+
+// extractNamespace extracts the namespace from the remainder of a headless
+// service FQDN after the pod name has been removed.
+// Input: "redis-headless.dev.svc.cluster.local" → "dev"
+// Input: "redis-headless.dev" → "dev"
+// Input: "redis-headless" → "" (no namespace)
+func extractNamespace(rest string) string {
+	// rest is everything after "<pod>." — e.g., "svc-name.ns.svc.cluster.local"
+	// Skip the headless service name (first label).
+	_, afterSvc, ok := strings.Cut(rest, ".")
+	if !ok {
+		return ""
+	}
+	// afterSvc is "ns.svc.cluster.local" or "ns" — the namespace is the first label.
+	ns, _, _ := strings.Cut(afterSvc, ".")
+	return ns
 }

@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"maps"
-	"net"
 	"strings"
 	"sync"
 
@@ -79,34 +78,12 @@ func (r *registry) remove(addrs map[string]string) {
 }
 
 // translate looks up an address in the global registry using the same
-// fallback logic as client.translateAddr (exact → host-only → first-label).
+// fallback logic as client.translateAddr.
 func (r *registry) translate(addr string) string {
 	r.mu.RLock()
 	addrs := maps.Clone(r.addrs)
 	r.mu.RUnlock()
-
-	if translated, ok := addrs[addr]; ok {
-		return translated
-	}
-
-	host, port, err := net.SplitHostPort(addr)
-	if err == nil {
-		if translated, ok := addrs[host]; ok {
-			return net.JoinHostPort(translated, port)
-		}
-	}
-
-	// Fuzzy match: extract first DNS label for headless service FQDNs.
-	if err == nil {
-		if short, _, ok := strings.Cut(host, "."); ok {
-			shortAddr := net.JoinHostPort(short, port)
-			if translated, ok := addrs[shortAddr]; ok {
-				return translated
-			}
-		}
-	}
-
-	return addr
+	return resolveAddr(addrs, addr)
 }
 
 // globalResolverBuilder implements resolver.Builder for the global registry.
