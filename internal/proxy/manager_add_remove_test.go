@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 // newTestManager creates a minimal manager suitable for add/remove tests.

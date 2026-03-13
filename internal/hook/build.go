@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 // Registration holds a built hook with its metadata.
@@ -52,7 +52,7 @@ func BuildFromConfig(hc config.HookConfig) (Registration, error) {
 		if len(hc.Shell) == 0 {
 			return Registration{}, fmt.Errorf("hook %q: shell config with commands is required", hc.Name)
 		}
-		h, err = NewShellHook(hc.Name, hc.Shell, hc.FilterServices)
+		h, err = newShellHook(hc.Name, hc.Shell, hc.FilterServices)
 		if err != nil {
 			return Registration{}, err
 		}
@@ -70,12 +70,12 @@ func BuildFromConfig(hc config.HookConfig) (Registration, error) {
 		if hc.Webhook == nil || hc.Webhook.URL == "" {
 			return Registration{}, fmt.Errorf("hook %q: webhook.url is required", hc.Name)
 		}
-		h = NewWebhookHook(hc.Name, hc.Webhook.URL, hc.Webhook.Headers, hc.Webhook.BodyTemplate, hc.FilterServices)
+		h = newWebhookHook(hc.Name, hc.Webhook.URL, hc.Webhook.Headers, hc.Webhook.BodyTemplate, hc.FilterServices)
 	case "exec":
 		if hc.Exec == nil || len(hc.Exec.Command) == 0 {
 			return Registration{}, fmt.Errorf("hook %q: exec.command is required", hc.Name)
 		}
-		h, err = NewExecHook(hc.Name, hc.Exec.Command, hc.FilterServices)
+		h, err = newExecHook(hc.Name, hc.Exec.Command, hc.FilterServices)
 		if err != nil {
 			return Registration{}, err
 		}

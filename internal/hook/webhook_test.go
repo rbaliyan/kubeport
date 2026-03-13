@@ -27,7 +27,7 @@ func TestWebhookHook_DefaultPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	h := NewWebhookHook("test-wh", srv.URL, nil, "", nil)
+	h := newWebhookHook("test-wh", srv.URL, nil, "", nil)
 	event := Event{
 		Type:       EventForwardConnected,
 		Time:       time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC),
@@ -75,7 +75,7 @@ func TestWebhookHook_ErrorInPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	h := NewWebhookHook("test-wh", srv.URL, nil, "", nil)
+	h := newWebhookHook("test-wh", srv.URL, nil, "", nil)
 	event := Event{
 		Type:  EventForwardFailed,
 		Time:  time.Now(),
@@ -102,7 +102,7 @@ func TestWebhookHook_BodyTemplate(t *testing.T) {
 	defer srv.Close()
 
 	tmpl := `{"svc":"${SERVICE}","port":${PORT}}`
-	h := NewWebhookHook("tmpl-wh", srv.URL, nil, tmpl, nil)
+	h := newWebhookHook("tmpl-wh", srv.URL, nil, tmpl, nil)
 
 	event := Event{
 		Type:      EventForwardConnected,
@@ -131,7 +131,7 @@ func TestWebhookHook_CustomHeaders(t *testing.T) {
 	defer srv.Close()
 
 	headers := map[string]string{"Authorization": "Bearer test-token"}
-	h := NewWebhookHook("auth-wh", srv.URL, headers, "", nil)
+	h := newWebhookHook("auth-wh", srv.URL, headers, "", nil)
 
 	if err := h.OnEvent(context.Background(), Event{Type: EventManagerStopped, Time: time.Now()}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -150,7 +150,7 @@ func TestWebhookHook_ServiceFilter(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	h := NewWebhookHook("filtered-wh", srv.URL, nil, "", []string{"allowed"})
+	h := newWebhookHook("filtered-wh", srv.URL, nil, "", []string{"allowed"})
 
 	// Non-matching service — should not call webhook
 	if err := h.OnEvent(context.Background(), Event{Type: EventForwardConnected, Service: "other"}); err != nil {
@@ -175,7 +175,7 @@ func TestWebhookHook_HTTPError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	h := NewWebhookHook("err-wh", srv.URL, nil, "", nil)
+	h := newWebhookHook("err-wh", srv.URL, nil, "", nil)
 	err := h.OnEvent(context.Background(), Event{Type: EventManagerStopped, Time: time.Now()})
 	if err == nil {
 		t.Fatal("expected error for HTTP 500")

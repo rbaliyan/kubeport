@@ -9,6 +9,11 @@ import (
 // ExpandVars replaces ${VAR} template variables in a string with event data.
 // Supported variables: ${EVENT}, ${SERVICE}, ${PARENT_NAME}, ${PORT_NAME},
 // ${PORT}, ${REMOTE_PORT}, ${POD}, ${RESTARTS}, ${ERROR}, ${TIME}.
+//
+// Values are substituted as-is without escaping. When used inside a JSON
+// body template (e.g., webhook body_template), values containing quotes or
+// special characters may produce invalid JSON. Use the default JSON payload
+// (no body_template) for guaranteed well-formed output.
 func ExpandVars(s string, e Event) string {
 	var errStr string
 	if e.Error != nil {

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/proxy"
 	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
@@ -456,15 +456,9 @@ func TestServer_AddService_NilService(t *testing.T) {
 	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
 	srv := &Server{mgr: mgr, cfg: cfg}
 
-	resp, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Success {
-		t.Fatal("expected failure for nil service")
-	}
-	if resp.Error != "service is required" {
-		t.Fatalf("unexpected error: %s", resp.Error)
+	_, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{})
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
 	}
 }
 
@@ -473,21 +467,15 @@ func TestServer_AddService_Error(t *testing.T) {
 	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
 	srv := &Server{mgr: mgr, cfg: cfg}
 
-	resp, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{
+	_, err := srv.AddService(context.Background(), &kubeportv1.AddServiceRequest{
 		Service: &kubeportv1.ServiceInfo{
 			Name:       "web",
 			Service:    "nginx",
 			RemotePort: 80,
 		},
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Success {
-		t.Fatal("expected failure")
-	}
-	if resp.Error == "" {
-		t.Fatal("expected error string")
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.AlreadyExists {
+		t.Fatalf("expected AlreadyExists, got %v", err)
 	}
 }
 
@@ -515,12 +503,9 @@ func TestServer_RemoveService_EmptyName(t *testing.T) {
 	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
 	srv := &Server{mgr: mgr, cfg: cfg}
 
-	resp, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Success {
-		t.Fatal("expected failure for empty name")
+	_, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{})
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
 	}
 }
 
@@ -529,14 +514,11 @@ func TestServer_RemoveService_Error(t *testing.T) {
 	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
 	srv := &Server{mgr: mgr, cfg: cfg}
 
-	resp, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{
+	_, err := srv.RemoveService(context.Background(), &kubeportv1.RemoveServiceRequest{
 		Name: "web",
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Success {
-		t.Fatal("expected failure")
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.NotFound {
+		t.Fatalf("expected NotFound, got %v", err)
 	}
 }
 
@@ -546,15 +528,9 @@ func TestServer_Reload(t *testing.T) {
 	srv := &Server{mgr: mgr, cfg: cfg}
 
 	// No config file path => error
-	resp, err := srv.Reload(context.Background(), &kubeportv1.ReloadRequest{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Success {
-		t.Fatal("expected failure for CLI-only mode")
-	}
-	if resp.Error == "" {
-		t.Fatal("expected error message")
+	_, err := srv.Reload(context.Background(), &kubeportv1.ReloadRequest{})
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.FailedPrecondition {
+		t.Fatalf("expected FailedPrecondition, got %v", err)
 	}
 }
 
@@ -592,15 +568,9 @@ func TestServer_Apply_EmptyServices(t *testing.T) {
 	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
 	srv := &Server{mgr: mgr, cfg: cfg}
 
-	resp, err := srv.Apply(context.Background(), &kubeportv1.ApplyRequest{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.Success {
-		t.Fatal("expected failure for empty services")
-	}
-	if resp.Error == "" {
-		t.Fatal("expected error message")
+	_, err := srv.Apply(context.Background(), &kubeportv1.ApplyRequest{})
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
 	}
 }
 

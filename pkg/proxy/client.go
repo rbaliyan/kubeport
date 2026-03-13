@@ -247,8 +247,10 @@ func (c *client) GRPCTarget(addr string) string {
 }
 
 func (c *client) translateAddr(addr string) string {
+	// Safe: Refresh replaces c.addrs with a new map (never mutates in place).
+	// Clone for defense in depth against future in-place mutations.
 	c.mu.Lock()
-	addrs := c.addrs
+	addrs := maps.Clone(c.addrs)
 	c.mu.Unlock()
 
 	if translated, ok := addrs[addr]; ok {

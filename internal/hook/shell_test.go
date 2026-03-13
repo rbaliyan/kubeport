@@ -16,7 +16,7 @@ func TestNewShellHook_ValidEvents(t *testing.T) {
 		"forward:disconnected": "echo disconnected",
 	}
 
-	h, err := NewShellHook("test", cmds, nil)
+	h, err := newShellHook("test", cmds, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestNewShellHook_InvalidEvent(t *testing.T) {
 		"nonexistent_event": "echo oops",
 	}
 
-	_, err := NewShellHook("bad", cmds, nil)
+	_, err := newShellHook("bad", cmds, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown event")
 	}
@@ -44,7 +44,7 @@ func TestShellHook_OnEvent(t *testing.T) {
 		"forward:connected": "echo $KUBEPORT_SERVICE > " + marker,
 	}
 
-	h, err := NewShellHook("test", cmds, nil)
+	h, err := newShellHook("test", cmds, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestShellHook_ServiceFilter(t *testing.T) {
 		"forward:connected": "touch " + marker,
 	}
 
-	h, err := NewShellHook("filtered", cmds, []string{"allowed-svc"})
+	h, err := newShellHook("filtered", cmds, []string{"allowed-svc"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +113,7 @@ func TestShellHook_NoCommandForEvent(t *testing.T) {
 		"forward:connected": "echo ok",
 	}
 
-	h, err := NewShellHook("test", cmds, nil)
+	h, err := newShellHook("test", cmds, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestShellHook_Gate(t *testing.T) {
 		"manager:starting": "touch " + marker,
 	}
 
-	h, err := NewShellHook("gate-test", cmds, nil)
+	h, err := newShellHook("gate-test", cmds, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +152,7 @@ func TestShellHook_ContextCancellation(t *testing.T) {
 		"forward:connected": "sleep 10",
 	}
 
-	h, err := NewShellHook("cancel-test", cmds, nil)
+	h, err := newShellHook("cancel-test", cmds, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

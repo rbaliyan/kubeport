@@ -9,9 +9,12 @@ import (
 
 	version "github.com/rbaliyan/go-version"
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
-	"github.com/rbaliyan/kubeport/internal/config"
 	"github.com/rbaliyan/kubeport/internal/proxy"
+	"github.com/rbaliyan/kubeport/pkg/config"
+	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var _ Supervisor = (*proxy.Manager)(nil)
@@ -89,7 +92,7 @@ func (s *Server) startTCP() error {
 		return fmt.Errorf("listen on tcp %s: %w", s.listenCfg.Address, err)
 	}
 
-	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(apiKeyInterceptor(s.apiKey)))
+	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(grpcauth.ServerInterceptor(s.apiKey)))
 	kubeportv1.RegisterDaemonServiceServer(s.grpcServer, s)
 
 	return s.grpcServer.Serve(lis)
@@ -149,7 +152,7 @@ func (s *Server) Stop(_ context.Context, _ *kubeportv1.StopRequest) (*kubeportv1
 // AddService implements DaemonService.AddService.
 func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest) (*kubeportv1.AddServiceResponse, error) {
 	if req.Service == nil {
-		return &kubeportv1.AddServiceResponse{Error: "service is required"}, nil
+		return nil, status.Error(codes.InvalidArgument, "service is required")
 	}
 
 	svc := serviceInfoToConfig(req.Service)
@@ -165,7 +168,7 @@ func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest
 	}
 
 	if err := s.mgr.AddService(svc); err != nil {
-		return &kubeportv1.AddServiceResponse{Error: err.Error()}, nil
+		return nil, status.Errorf(codes.AlreadyExists, "add service: %v", err)
 	}
 
 	if req.Persist && s.cfg.FilePath() != "" {
@@ -186,11 +189,11 @@ func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest
 // RemoveService implements DaemonService.RemoveService.
 func (s *Server) RemoveService(_ context.Context, req *kubeportv1.RemoveServiceRequest) (*kubeportv1.RemoveServiceResponse, error) {
 	if req.Name == "" {
-		return &kubeportv1.RemoveServiceResponse{Error: "name is required"}, nil
+		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
 	if err := s.mgr.RemoveService(req.Name); err != nil {
-		return &kubeportv1.RemoveServiceResponse{Error: err.Error()}, nil
+		return nil, status.Errorf(codes.NotFound, "remove service: %v", err)
 	}
 
 	if req.Persist && s.cfg.FilePath() != "" {
@@ -208,21 +211,21 @@ func (s *Server) RemoveService(_ context.Context, req *kubeportv1.RemoveServiceR
 // Reload implements DaemonService.Reload.
 func (s *Server) Reload(_ context.Context, _ *kubeportv1.ReloadRequest) (*kubeportv1.ReloadResponse, error) {
 	if s.cfg.FilePath() == "" {
-		return &kubeportv1.ReloadResponse{Error: "no config file to reload (CLI-only mode)"}, nil
+		return nil, status.Error(codes.FailedPrecondition, "no config file to reload (CLI-only mode)")
 	}
 
 	newCfg, err := config.Load(s.cfg.FilePath())
 	if err != nil {
-		return &kubeportv1.ReloadResponse{Error: fmt.Sprintf("reload config: %v", err)}, nil
+		return nil, status.Errorf(codes.Internal, "reload config: %v", err)
 	}
 
 	if err := newCfg.Validate(); err != nil {
-		return &kubeportv1.ReloadResponse{Error: fmt.Sprintf("validate config: %v", err)}, nil
+		return nil, status.Errorf(codes.InvalidArgument, "validate config: %v", err)
 	}
 
 	added, removed, err := s.mgr.Reload(newCfg)
 	if err != nil {
-		return &kubeportv1.ReloadResponse{Error: err.Error()}, nil
+		return nil, status.Errorf(codes.Internal, "reload: %v", err)
 	}
 
 	return &kubeportv1.ReloadResponse{
@@ -258,7 +261,7 @@ func (s *Server) Mappings(_ context.Context, req *kubeportv1.MappingsRequest) (*
 // Apply implements DaemonService.Apply.
 func (s *Server) Apply(_ context.Context, req *kubeportv1.ApplyRequest) (*kubeportv1.ApplyResponse, error) {
 	if len(req.Services) == 0 {
-		return &kubeportv1.ApplyResponse{Error: "no services provided"}, nil
+		return nil, status.Error(codes.InvalidArgument, "no services provided")
 	}
 
 	services := make([]config.ServiceConfig, 0, len(req.Services))

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 func (a *app) cmdApply(args []string) {
@@ -91,11 +91,6 @@ func (a *app) cmdApply(args []string) {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
-	}
-
-	if !resp.Success {
-		fmt.Fprintf(os.Stderr, "Error: %s\n", resp.Error)
 		os.Exit(1)
 	}
 

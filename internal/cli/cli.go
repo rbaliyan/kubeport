@@ -11,7 +11,7 @@ import (
 	"time"
 
 	version "github.com/rbaliyan/go-version"
-	"github.com/rbaliyan/kubeport/internal/config"
+	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/netutil"
 )
 

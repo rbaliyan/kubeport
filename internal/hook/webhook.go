@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-var _ Hook = (*WebhookHook)(nil)
+var _ Hook = (*webhookHook)(nil)
 
-// WebhookHook POSTs a JSON payload to an HTTP endpoint on lifecycle events.
-type WebhookHook struct {
+// webhookHook POSTs a JSON payload to an HTTP endpoint on lifecycle events.
+type webhookHook struct {
 	name         string
 	url          string
 	headers      map[string]string
@@ -22,9 +22,9 @@ type WebhookHook struct {
 	filter       map[string]bool
 }
 
-// NewWebhookHook creates a webhook hook.
-func NewWebhookHook(name, url string, headers map[string]string, bodyTemplate string, filterServices []string) *WebhookHook {
-	return &WebhookHook{
+// newWebhookHook creates a webhook hook.
+func newWebhookHook(name, url string, headers map[string]string, bodyTemplate string, filterServices []string) *webhookHook {
+	return &webhookHook{
 		name:         name,
 		url:          url,
 		headers:      headers,
@@ -34,9 +34,9 @@ func NewWebhookHook(name, url string, headers map[string]string, bodyTemplate st
 	}
 }
 
-func (h *WebhookHook) Name() string { return h.name }
+func (h *webhookHook) Name() string { return h.name }
 
-func (h *WebhookHook) OnEvent(ctx context.Context, event Event) error {
+func (h *webhookHook) OnEvent(ctx context.Context, event Event) error {
 	if !matchesFilter(h.filter, event) {
 		return nil
 	}

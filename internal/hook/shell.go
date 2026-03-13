@@ -10,21 +10,21 @@ import (
 )
 
 var (
-	_ Hook     = (*ShellHook)(nil)
-	_ GateHook = (*ShellHook)(nil)
+	_ Hook     = (*shellHook)(nil)
+	_ GateHook = (*shellHook)(nil)
 )
 
-// ShellHook runs shell commands in response to lifecycle events.
+// shellHook runs shell commands in response to lifecycle events.
 // Commands are mapped per event type and receive event context via
 // environment variables prefixed with KUBEPORT_.
-type ShellHook struct {
+type shellHook struct {
 	name     string
 	commands map[EventType]string // event -> shell command
 	filter   map[string]bool      // nil = all services
 }
 
-// NewShellHook creates a shell hook from a map of event names to commands.
-func NewShellHook(name string, commands map[string]string, filterServices []string) (*ShellHook, error) {
+// newShellHook creates a shell hook from a map of event names to commands.
+func newShellHook(name string, commands map[string]string, filterServices []string) (*shellHook, error) {
 	cmds := make(map[EventType]string, len(commands))
 	for eventName, cmd := range commands {
 		et, ok := ParseEventType(eventName)
@@ -34,25 +34,25 @@ func NewShellHook(name string, commands map[string]string, filterServices []stri
 		cmds[et] = cmd
 	}
 
-	return &ShellHook{
+	return &shellHook{
 		name:     name,
 		commands: cmds,
 		filter:   buildFilter(filterServices),
 	}, nil
 }
 
-func (h *ShellHook) Name() string { return h.name }
+func (h *shellHook) Name() string { return h.name }
 
-func (h *ShellHook) OnEvent(ctx context.Context, event Event) error {
+func (h *shellHook) OnEvent(ctx context.Context, event Event) error {
 	return h.run(ctx, event)
 }
 
 // Gate implements GateHook for synchronous pre-start hooks (e.g., VPN startup).
-func (h *ShellHook) Gate(ctx context.Context, event Event) error {
+func (h *shellHook) Gate(ctx context.Context, event Event) error {
 	return h.run(ctx, event)
 }
 
-func (h *ShellHook) run(ctx context.Context, event Event) error {
+func (h *shellHook) run(ctx context.Context, event Event) error {
 	if !matchesFilter(h.filter, event) {
 		return nil
 	}
