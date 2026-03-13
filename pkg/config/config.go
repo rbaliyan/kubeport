@@ -248,6 +248,15 @@ type SupervisorConfig struct {
 	MaxConnectionAge     string `yaml:"max_connection_age,omitempty" toml:"max_connection_age,omitempty"`         // e.g., "30m"; 0 = disabled
 }
 
+// ProxyServerConfig holds optional proxy server configuration shared by SOCKS5
+// and HTTP proxy modes.
+type ProxyServerConfig struct {
+	Listen     string `yaml:"listen,omitempty" toml:"listen,omitempty"`           // listen address
+	Username   string `yaml:"username,omitempty" toml:"username,omitempty"`       // auth username
+	Password   string `yaml:"password,omitempty" toml:"password,omitempty"`       // auth password
+	FuzzyMatch *bool  `yaml:"fuzzy_match,omitempty" toml:"fuzzy_match,omitempty"` // nil=true; headless FQDN resolution
+}
+
 // Config holds the full proxy configuration.
 type Config struct {
 	Context     string           `yaml:"context" toml:"context"`
@@ -259,6 +268,8 @@ type Config struct {
 	Services    []ServiceConfig  `yaml:"services" toml:"services"`
 	Hooks       []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
+	SOCKS       ProxyServerConfig `yaml:"socks,omitempty" toml:"socks,omitempty"`
+	HTTPProxy   ProxyServerConfig `yaml:"http_proxy,omitempty" toml:"http_proxy,omitempty"`
 
 	// Runtime fields (not serialized)
 	filePath string
@@ -456,6 +467,8 @@ type configTOML struct {
 	Services    []serviceConfigTOML `toml:"services"`
 	Hooks       []HookConfig        `toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig    `toml:"supervisor,omitempty"`
+	SOCKS       ProxyServerConfig   `toml:"socks,omitempty"`
+	HTTPProxy   ProxyServerConfig   `toml:"http_proxy,omitempty"`
 }
 
 // unmarshalTOML decodes TOML data into a Config, handling the polymorphic ports field.
@@ -473,6 +486,8 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 	cfg.Host = raw.Host
 	cfg.Hooks = raw.Hooks
 	cfg.Supervisor = raw.Supervisor
+	cfg.SOCKS = raw.SOCKS
+	cfg.HTTPProxy = raw.HTTPProxy
 
 	cfg.Services = make([]ServiceConfig, len(raw.Services))
 	for i, rs := range raw.Services {
@@ -508,6 +523,8 @@ func marshalTOML(c *Config) ([]byte, error) {
 		Host:        c.Host,
 		Hooks:       c.Hooks,
 		Supervisor:  c.Supervisor,
+		SOCKS:       c.SOCKS,
+		HTTPProxy:   c.HTTPProxy,
 		Services:    make([]serviceConfigTOML, len(c.Services)),
 	}
 	for i, svc := range c.Services {
