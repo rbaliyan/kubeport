@@ -228,7 +228,7 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 			// Allow stop/status/logs/add/remove/reload without valid config
 			if command != "stop" && command != "status" && command != "logs" &&
 				command != "add" && command != "remove" && command != "reload" && command != "apply" &&
-				command != "mappings" && command != "watch" {
+				command != "mappings" && command != "watch" && command != "socks" {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
@@ -262,6 +262,8 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		a.cmdMappings(remaining)
 	case "watch":
 		a.cmdWatch()
+	case "socks":
+		a.cmdSocks(remaining)
 	case "_daemon":
 		a.cmdDaemon(ctx, remaining)
 	default:

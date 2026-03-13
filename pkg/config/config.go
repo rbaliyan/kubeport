@@ -248,6 +248,13 @@ type SupervisorConfig struct {
 	MaxConnectionAge     string `yaml:"max_connection_age,omitempty" toml:"max_connection_age,omitempty"`         // e.g., "30m"; 0 = disabled
 }
 
+// SOCKSConfig holds optional SOCKS5 proxy configuration.
+type SOCKSConfig struct {
+	Listen   string `yaml:"listen,omitempty" toml:"listen,omitempty"`     // e.g., "127.0.0.1:1080"
+	Username string `yaml:"username,omitempty" toml:"username,omitempty"` // SOCKS5 username/password auth
+	Password string `yaml:"password,omitempty" toml:"password,omitempty"`
+}
+
 // Config holds the full proxy configuration.
 type Config struct {
 	Context     string           `yaml:"context" toml:"context"`
@@ -259,6 +266,7 @@ type Config struct {
 	Services    []ServiceConfig  `yaml:"services" toml:"services"`
 	Hooks       []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
+	SOCKS       SOCKSConfig      `yaml:"socks,omitempty" toml:"socks,omitempty"`
 
 	// Runtime fields (not serialized)
 	filePath string
