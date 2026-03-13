@@ -164,6 +164,62 @@ func TestTranslateAddr(t *testing.T) {
 	}
 }
 
+func TestTranslateAddr_HeadlessServiceFQDN(t *testing.T) {
+	c := &client{
+		addrs: map[string]string{
+			// Pod mapping as returned by the daemon
+			"ai-redis-dev-node-0:6379": "localhost:6380",
+			"ai-redis-dev-node-1:6379": "localhost:6381",
+		},
+	}
+
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "full headless FQDN",
+			input: "ai-redis-dev-node-0.ai-redis-dev-headless.dev.svc.cluster.local:6379",
+			want:  "localhost:6380",
+		},
+		{
+			name:  "headless with namespace",
+			input: "ai-redis-dev-node-1.ai-redis-dev-headless.dev:6379",
+			want:  "localhost:6381",
+		},
+		{
+			name:  "headless short form",
+			input: "ai-redis-dev-node-0.ai-redis-dev-headless:6379",
+			want:  "localhost:6380",
+		},
+		{
+			name:  "exact pod match still works",
+			input: "ai-redis-dev-node-0:6379",
+			want:  "localhost:6380",
+		},
+		{
+			name:  "no match with different port",
+			input: "ai-redis-dev-node-0.ai-redis-dev-headless.dev.svc.cluster.local:9999",
+			want:  "ai-redis-dev-node-0.ai-redis-dev-headless.dev.svc.cluster.local:9999",
+		},
+		{
+			name:  "no match unknown pod",
+			input: "unknown-pod.svc-headless.ns.svc.cluster.local:6379",
+			want:  "unknown-pod.svc-headless.ns.svc.cluster.local:6379",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := c.translateAddr(tt.input)
+			if got != tt.want {
+				t.Errorf("translateAddr(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTranslateAddr_EmptyAddrs(t *testing.T) {
 	c := &client{addrs: nil}
 	if got := c.translateAddr("svc:9090"); got != "svc:9090" {
