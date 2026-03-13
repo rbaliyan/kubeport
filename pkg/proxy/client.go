@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"maps"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -177,6 +178,9 @@ func newClient(o *options) (Proxy, error) {
 		logger:       o.logger.With(slog.String("component", "kubeport-proxy")),
 	}
 
+	// Contribute mappings to the global resolver (if registered).
+	globalRegistry.merge(resp.Addrs)
+
 	// auto refresh entries
 	if o.refreshInterval > 0 {
 		go func() {
@@ -201,6 +205,13 @@ func (c *client) Close(_ context.Context) error {
 	var err error
 	c.closeOnce.Do(func() {
 		close(c.shutdownChan)
+
+		// Remove this client's mappings from the global resolver.
+		c.mu.Lock()
+		addrs := c.addrs
+		c.mu.Unlock()
+		globalRegistry.remove(addrs)
+
 		err = c.conn.Close()
 	})
 	return err
@@ -212,8 +223,13 @@ func (c *client) Refresh(ctx context.Context) error {
 		return fmt.Errorf("refresh mappings: %w", err)
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	old := c.addrs
 	c.addrs = resp.Addrs
+	c.mu.Unlock()
+
+	// Update global resolver: remove stale entries, add new ones.
+	globalRegistry.remove(old)
+	globalRegistry.merge(resp.Addrs)
 	return nil
 }
 
@@ -261,6 +277,19 @@ func (c *client) translateAddr(addr string) string {
 	if err == nil {
 		if translated, ok := addrs[host]; ok {
 			return net.JoinHostPort(translated, port)
+		}
+	}
+
+	// Fuzzy match: for headless-service FQDNs like
+	// "pod-name.svc-name.ns.svc.cluster.local:port", extract the first DNS
+	// label (the pod name) and try matching "pod-name:port". This handles
+	// StatefulSet pod addresses returned by services like Redis Sentinel.
+	if err == nil {
+		if short, _, ok := strings.Cut(host, "."); ok {
+			shortAddr := net.JoinHostPort(short, port)
+			if translated, ok := addrs[shortAddr]; ok {
+				return translated
+			}
 		}
 	}
 
