@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"time"
 )
 
 // SOCKSServer is a SOCKS5 proxy that translates addresses using a Proxy.
@@ -124,6 +126,9 @@ const (
 func (s *SOCKSServer) handleConn(ctx context.Context, conn net.Conn) {
 	defer conn.Close() //nolint:errcheck // best-effort close on connection teardown
 
+	// Set a deadline for the handshake phase to prevent slow-client goroutine leaks.
+	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+
 	// 1. Greeting: client sends version + auth methods
 	if err := s.negotiate(conn); err != nil {
 		s.logger.Debug("socks negotiate failed", slog.String("error", err.Error()))
@@ -150,6 +155,9 @@ func (s *SOCKSServer) handleConn(ctx context.Context, conn net.Conn) {
 
 	// 4. Send success reply
 	s.sendReply(conn, replySuccess)
+
+	// Clear the handshake deadline before relaying data.
+	_ = conn.SetDeadline(time.Time{})
 
 	// 5. Bidirectional copy
 	relay(conn, target)
@@ -236,7 +244,8 @@ func (s *SOCKSServer) negotiateUserPass(conn net.Conn, methods []byte) error {
 		return err
 	}
 
-	if string(uname) != s.username || string(passwd) != s.password {
+	if subtle.ConstantTimeCompare(uname, []byte(s.username)) != 1 ||
+		subtle.ConstantTimeCompare(passwd, []byte(s.password)) != 1 {
 		_, _ = conn.Write([]byte{authUserPassVersion, authFailure})
 		return fmt.Errorf("authentication failed")
 	}
@@ -310,18 +319,3 @@ func (s *SOCKSServer) sendReply(conn net.Conn, reply byte) {
 	})
 }
 
-func relay(a, b net.Conn) {
-	done := make(chan struct{}, 2)
-	cp := func(dst, src net.Conn) {
-		_, _ = io.Copy(dst, src)
-		// Signal half-close so the other direction finishes.
-		if tc, ok := dst.(*net.TCPConn); ok {
-			_ = tc.CloseWrite()
-		}
-		done <- struct{}{}
-	}
-	go cp(a, b)
-	go cp(b, a)
-	<-done
-	<-done
-}

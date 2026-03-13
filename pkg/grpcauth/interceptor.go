@@ -4,6 +4,7 @@ package grpcauth
 
 import (
 	"context"
+	"crypto/subtle"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -33,7 +34,7 @@ func ServerInterceptor(key string) grpc.UnaryServerInterceptor {
 		}
 
 		token, found := strings.CutPrefix(vals[0], "Bearer ")
-		if !found || token != key {
+		if !found || subtle.ConstantTimeCompare([]byte(token), []byte(key)) != 1 {
 			return nil, status.Error(codes.Unauthenticated, "invalid API key")
 		}
 

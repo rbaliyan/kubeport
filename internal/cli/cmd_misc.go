@@ -29,6 +29,7 @@ func (a *app) cmdHelp() {
 	fmt.Println("  apply       Apply services from a YAML/TOML file to running proxy")
 	fmt.Println("  mappings    Show K8s DNS to localhost address mappings")
 	fmt.Println("  socks       Start a SOCKS5 proxy for address translation")
+	fmt.Println("  http-proxy  Start an HTTP/HTTPS proxy for address translation")
 	fmt.Println("  watch       Watch proxy status (refreshes periodically)")
 	fmt.Println("  fg          Run in foreground (blocks terminal)")
 	fmt.Println("  config      Manage configuration (init, show, validate, set, add, remove, path)")
