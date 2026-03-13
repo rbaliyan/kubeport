@@ -22,13 +22,14 @@ var _ Proxy = (*client)(nil)
 
 // client is the real Proxy implementation backed by a kubeport daemon connection.
 type client struct {
-	conn         *grpc.ClientConn
-	grpcClient   kubeportv1.DaemonServiceClient
-	addrs        map[string]string
-	mu           sync.Mutex
-	closeOnce    sync.Once
-	shutdownChan chan struct{}
-	logger       *slog.Logger
+	conn           *grpc.ClientConn
+	grpcClient     kubeportv1.DaemonServiceClient
+	addrs          map[string]string
+	disableFuzzy   bool // when true, skip headless FQDN fuzzy matching
+	mu             sync.Mutex
+	closeOnce      sync.Once
+	shutdownChan   chan struct{}
+	logger         *slog.Logger
 }
 
 // Option configures the Proxy.
@@ -40,6 +41,7 @@ type options struct {
 	host            string
 	apiKey          string
 	clusterDomain   string
+	fuzzyMatch      *bool // nil = default (true); explicit true/false overrides
 	refreshInterval time.Duration
 	logger          *slog.Logger
 }
@@ -75,6 +77,14 @@ func WithClusterDomain(domain string) Option {
 // When not set (default), New() returns an error if it cannot connect.
 func WithEnabled(enabled bool) Option {
 	return func(o *options) { o.enabled = &enabled }
+}
+
+// WithFuzzyMatch controls whether the proxy uses fuzzy address matching for
+// headless service FQDNs. When enabled (default), addresses like
+// "pod-0.headless-svc.ns.svc.cluster.local:port" are resolved by extracting
+// the pod name and namespace. Disable for strict exact-match-only resolution.
+func WithFuzzyMatch(enabled bool) Option {
+	return func(o *options) { o.fuzzyMatch = &enabled }
 }
 
 // WithLogger sets a structured logger.
@@ -174,6 +184,7 @@ func newClient(o *options) (Proxy, error) {
 		conn:         conn,
 		grpcClient:   grpcClient,
 		addrs:        resp.Addrs,
+		disableFuzzy: o.fuzzyMatch != nil && !*o.fuzzyMatch,
 		shutdownChan: make(chan struct{}),
 		logger:       o.logger.With(slog.String("component", "kubeport-proxy")),
 	}
@@ -268,17 +279,17 @@ func (c *client) translateAddr(addr string) string {
 	c.mu.Lock()
 	addrs := maps.Clone(c.addrs)
 	c.mu.Unlock()
-	return resolveAddr(addrs, addr)
+	return resolveAddr(addrs, addr, !c.disableFuzzy)
 }
 
 // resolveAddr translates an address using the given mapping table.
 // Lookup order:
 //  1. Exact match on full addr (host:port)
 //  2. Host-only match (addr has port, map key is host without port)
-//  3. Namespace-qualified pod match: extract pod name + namespace from
-//     headless FQDN, try "pod.ns:port"
-//  4. Short pod name match: extract first DNS label, try "pod:port"
-func resolveAddr(addrs map[string]string, addr string) string {
+//  3. (fuzzy only) Namespace-qualified pod match: extract pod name + namespace
+//     from headless FQDN, try "pod.ns:port"
+//  4. (fuzzy only) Short pod name match: extract first DNS label, try "pod:port"
+func resolveAddr(addrs map[string]string, addr string, fuzzy bool) string {
 	if translated, ok := addrs[addr]; ok {
 		return translated
 	}
@@ -292,7 +303,7 @@ func resolveAddr(addrs map[string]string, addr string) string {
 
 	// Fuzzy match for headless-service FQDNs like
 	// "pod-name.svc-name.ns.svc.cluster.local:port".
-	if err == nil {
+	if fuzzy && err == nil {
 		if short, rest, ok := strings.Cut(host, "."); ok {
 			// Try namespace-qualified match first (pod.ns:port) to
 			// disambiguate pods with the same name across namespaces.

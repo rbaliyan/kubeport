@@ -83,7 +83,7 @@ func (r *registry) translate(addr string) string {
 	r.mu.RLock()
 	addrs := maps.Clone(r.addrs)
 	r.mu.RUnlock()
-	return resolveAddr(addrs, addr)
+	return resolveAddr(addrs, addr, true)
 }
 
 // globalResolverBuilder implements resolver.Builder for the global registry.

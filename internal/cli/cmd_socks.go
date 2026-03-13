@@ -71,6 +71,11 @@ func (a *app) cmdSocks(args []string) {
 	var proxyOpts []proxy.Option
 	proxyOpts = append(proxyOpts, proxy.WithLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))))
 
+	// Apply fuzzy_match from config (default: enabled).
+	if a.cfg != nil && a.cfg.SOCKS.FuzzyMatch != nil {
+		proxyOpts = append(proxyOpts, proxy.WithFuzzyMatch(*a.cfg.SOCKS.FuzzyMatch))
+	}
+
 	if clusterDomain != "" {
 		proxyOpts = append(proxyOpts, proxy.WithClusterDomain(clusterDomain))
 	}

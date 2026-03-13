@@ -293,6 +293,26 @@ func TestExtractNamespace(t *testing.T) {
 	}
 }
 
+func TestTranslateAddr_FuzzyDisabled(t *testing.T) {
+	c := &client{
+		addrs: map[string]string{
+			"redis-node-0:6379": "localhost:6380",
+		},
+		disableFuzzy: true,
+	}
+
+	// Exact match still works.
+	if got := c.translateAddr("redis-node-0:6379"); got != "localhost:6380" {
+		t.Errorf("exact match = %q, want localhost:6380", got)
+	}
+
+	// Fuzzy FQDN should NOT match when disabled.
+	input := "redis-node-0.redis-headless.dev.svc.cluster.local:6379"
+	if got := c.translateAddr(input); got != input {
+		t.Errorf("fuzzy disabled: got %q, want passthrough", got)
+	}
+}
+
 func TestTranslateAddr_EmptyAddrs(t *testing.T) {
 	c := &client{addrs: nil}
 	if got := c.translateAddr("svc:9090"); got != "svc:9090" {

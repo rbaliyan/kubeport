@@ -250,9 +250,10 @@ type SupervisorConfig struct {
 
 // SOCKSConfig holds optional SOCKS5 proxy configuration.
 type SOCKSConfig struct {
-	Listen   string `yaml:"listen,omitempty" toml:"listen,omitempty"`     // e.g., "127.0.0.1:1080"
-	Username string `yaml:"username,omitempty" toml:"username,omitempty"` // SOCKS5 username/password auth
-	Password string `yaml:"password,omitempty" toml:"password,omitempty"`
+	Listen     string `yaml:"listen,omitempty" toml:"listen,omitempty"`         // e.g., "127.0.0.1:1080"
+	Username   string `yaml:"username,omitempty" toml:"username,omitempty"`     // SOCKS5 username/password auth
+	Password   string `yaml:"password,omitempty" toml:"password,omitempty"`
+	FuzzyMatch *bool  `yaml:"fuzzy_match,omitempty" toml:"fuzzy_match,omitempty"` // nil=true; controls headless FQDN resolution
 }
 
 // Config holds the full proxy configuration.
