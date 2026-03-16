@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"math/big"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -84,9 +85,10 @@ func generateTestTLSCert(t *testing.T) tls.Certificate {
 	return cert
 }
 
-// startFakeDaemon starts a TLS gRPC server on a random TCP port and returns its address.
-// TLS is used because the production client now requires TLS for TCP connections.
-func startFakeDaemon(t *testing.T, srv *fakeDaemon) string {
+// startFakeDaemon starts a TLS gRPC server on a random TCP port.
+// Returns the server address and the path to a temp file containing the
+// server's self-signed certificate PEM (for use with WithTLSCertFile).
+func startFakeDaemon(t *testing.T, srv *fakeDaemon) (addr, certFile string) {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -98,7 +100,19 @@ func startFakeDaemon(t *testing.T, srv *fakeDaemon) string {
 	kubeportv1.RegisterDaemonServiceServer(gs, srv)
 	go gs.Serve(lis)
 	t.Cleanup(gs.Stop)
-	return lis.Addr().String()
+
+	// Write the cert PEM to a temp file so callers can pin it via WithTLSCertFile.
+	certDER := cert.Certificate[0]
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	f, ferr := os.CreateTemp(t.TempDir(), "kubeport-test-cert-*.pem")
+	if ferr != nil {
+		t.Fatalf("create temp cert file: %v", ferr)
+	}
+	if _, werr := f.Write(certPEM); werr != nil {
+		t.Fatalf("write temp cert: %v", werr)
+	}
+	f.Close()
+	return lis.Addr().String(), f.Name()
 }
 
 // makeClient creates a *client connected to addr with the given initial addrs.
@@ -424,7 +438,7 @@ func TestClientGRPCTarget_WithAddrs(t *testing.T) {
 
 func TestClientRefresh_UpdatesAddrs(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{"new": "127.0.0.1:2"}}
-	addr := startFakeDaemon(t, srv)
+	addr, _ := startFakeDaemon(t, srv)
 	c := makeClient(t, addr, map[string]string{"old": "127.0.0.1:1"})
 
 	if err := c.Refresh(context.Background()); err != nil {
@@ -442,7 +456,7 @@ func TestClientRefresh_UpdatesAddrs(t *testing.T) {
 
 func TestClientRefresh_ErrorPreservesAddrs(t *testing.T) {
 	srv := &fakeDaemon{fail: true}
-	addr := startFakeDaemon(t, srv)
+	addr, _ := startFakeDaemon(t, srv)
 	c := makeClient(t, addr, map[string]string{"preserved": "127.0.0.1:1"})
 
 	err := c.Refresh(context.Background())
@@ -459,7 +473,7 @@ func TestClientRefresh_ErrorPreservesAddrs(t *testing.T) {
 
 func TestClientRefresh_CancelledContext(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{}}
-	addr := startFakeDaemon(t, srv)
+	addr, _ := startFakeDaemon(t, srv)
 	c := makeClient(t, addr, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -474,7 +488,7 @@ func TestClientRefresh_CancelledContext(t *testing.T) {
 
 func TestClientClose_ClosesShutdownChan(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{}}
-	addr := startFakeDaemon(t, srv)
+	addr, _ := startFakeDaemon(t, srv)
 	c := makeClient(t, addr, nil)
 
 	if err := c.Close(context.Background()); err != nil {
@@ -491,7 +505,7 @@ func TestClientClose_ClosesShutdownChan(t *testing.T) {
 
 func TestClientClose_IdempotentNoPanic(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{}}
-	addr := startFakeDaemon(t, srv)
+	addr, _ := startFakeDaemon(t, srv)
 	c := makeClient(t, addr, nil)
 
 	// Calling Close multiple times must not panic.
@@ -607,10 +621,11 @@ func TestNew_WithServer(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{
 		"svc.ns.svc.cluster.local": "localhost",
 	}}
-	addr := startFakeDaemon(t, srv)
+	addr, certFile := startFakeDaemon(t, srv)
 
 	p, err := New(
 		WithTCP(addr, ""),
+		WithTLSCertFile(certFile),
 		WithRefreshInterval(0), // disable background refresh
 		WithLogger(discardLogger()),
 	)
@@ -636,10 +651,11 @@ func TestNew_WithServer(t *testing.T) {
 
 func TestAutoRefresh_UpdatesAddrs(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{"initial": "127.0.0.1:1"}}
-	addr := startFakeDaemon(t, srv)
+	addr, certFile := startFakeDaemon(t, srv)
 
 	p, err := New(
 		WithTCP(addr, ""),
+		WithTLSCertFile(certFile),
 		WithRefreshInterval(30*time.Millisecond),
 		WithLogger(discardLogger()),
 	)
@@ -664,10 +680,11 @@ func TestAutoRefresh_UpdatesAddrs(t *testing.T) {
 
 func TestAutoRefresh_StopsOnClose(t *testing.T) {
 	srv := &fakeDaemon{addrs: map[string]string{}}
-	addr := startFakeDaemon(t, srv)
+	addr, certFile := startFakeDaemon(t, srv)
 
 	p, err := New(
 		WithTCP(addr, ""),
+		WithTLSCertFile(certFile),
 		WithRefreshInterval(20*time.Millisecond),
 		WithLogger(discardLogger()),
 	)

@@ -128,12 +128,18 @@ func (s *Server) startTCP() error {
 	return s.grpcServer.Serve(lis)
 }
 
+// TLSCertFilePath returns the path of the daemon's TLS certificate for a given
+// certDir. Callers (CLI, SDK) use this to load the cert for pinning.
+func TLSCertFilePath(certDir string) string {
+	return filepath.Join(certDir, ".kubeport-tls.crt")
+}
+
 // loadOrGenerateCert loads an existing self-signed TLS cert from certDir, or
 // generates a new ECDSA P-256 cert valid for 10 years and saves it there.
 // The cert and key are stored in .kubeport-tls.crt and .kubeport-tls.key
 // respectively, both with mode 0600.
 func loadOrGenerateCert(certDir string) (tls.Certificate, error) {
-	certFile := filepath.Join(certDir, ".kubeport-tls.crt")
+	certFile := TLSCertFilePath(certDir)
 	keyFile := filepath.Join(certDir, ".kubeport-tls.key")
 
 	// Try loading existing cert.

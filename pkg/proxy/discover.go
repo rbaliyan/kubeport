@@ -10,9 +10,10 @@ import (
 
 // discoveredTarget holds the connection details discovered from kubeport config.
 type discoveredTarget struct {
-	mode    pkgconfig.ListenMode
-	address string
-	apiKey  string
+	mode     pkgconfig.ListenMode
+	address  string
+	apiKey   string
+	certPath string // path to TLS cert file for TCP connections (empty = system CA)
 }
 
 // discoverTarget finds the kubeport daemon by:
@@ -27,9 +28,10 @@ func discoverTarget() (*discoveredTarget, error) {
 			lc := cfg.ListenAddress()
 			if lc.Mode == pkgconfig.ListenTCP {
 				return &discoveredTarget{
-					mode:    pkgconfig.ListenTCP,
-					address: lc.Address,
-					apiKey:  cfg.APIKey,
+					mode:     pkgconfig.ListenTCP,
+					address:  lc.Address,
+					apiKey:   cfg.APIKey,
+					certPath: filepath.Join(filepath.Dir(cfgPath), ".kubeport-tls.crt"),
 				}, nil
 			}
 			// Unix socket — verify it exists

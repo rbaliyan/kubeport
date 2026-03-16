@@ -2,6 +2,7 @@ package cli
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"os"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
@@ -40,13 +41,10 @@ func dialDaemon(socketPath string) (*daemonClient, error) {
 }
 
 // dialDaemonTCP connects to a remote daemon over TCP with API key auth.
-// TLS is used with InsecureSkipVerify because the daemon uses a self-signed
-// certificate; the API key provides application-level authentication.
-func dialDaemonTCP(host, apiKey string) (*daemonClient, error) {
-	tlsCreds := credentials.NewTLS(&tls.Config{
-		InsecureSkipVerify: true, //nolint:gosec // self-signed cert; auth via API key
-		MinVersion:         tls.VersionTLS12,
-	})
+// If certFile is provided the server certificate is pinned (self-signed cert
+// support without InsecureSkipVerify). Otherwise the system CA pool is used.
+func dialDaemonTCP(host, apiKey, certFile string) (*daemonClient, error) {
+	tlsCreds := tlsCredsFromCertFile(certFile)
 	conn, err := grpc.NewClient(
 		host,
 		grpc.WithTransportCredentials(tlsCreds),
@@ -60,6 +58,21 @@ func dialDaemonTCP(host, apiKey string) (*daemonClient, error) {
 		conn:   conn,
 		client: kubeportv1.NewDaemonServiceClient(conn),
 	}, nil
+}
+
+// tlsCredsFromCertFile builds TLS credentials that trust only the given cert
+// (cert pinning). Falls back to system CA pool if certFile is empty or unreadable.
+func tlsCredsFromCertFile(certFile string) credentials.TransportCredentials {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if certFile != "" {
+		if pem, err := os.ReadFile(certFile); err == nil {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(pem) {
+				cfg.RootCAs = pool
+			}
+		}
+	}
+	return credentials.NewTLS(cfg)
 }
 
 func (d *daemonClient) Close() {
