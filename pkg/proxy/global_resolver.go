@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"maps"
 	"strings"
 	"sync"
 
@@ -49,10 +50,34 @@ func RegisterGlobalResolver() {
 // merge adds or replaces address mappings from a client and notifies active resolvers.
 func (r *registry) merge(addrs map[string]string) {
 	r.mu.Lock()
-	for k, v := range addrs {
-		r.addrs[k] = v
-	}
+	maps.Copy(r.addrs, addrs)
 	// Snapshot resolvers under lock, notify outside to avoid deadlock.
+	resolvers := make([]*globalResolver, 0, len(r.resolvers))
+	for gr := range r.resolvers {
+		resolvers = append(resolvers, gr)
+	}
+	r.mu.Unlock()
+
+	for _, gr := range resolvers {
+		gr.resolve()
+	}
+}
+
+// swap atomically replaces a client's old address mappings with new ones.
+// For each key in old absent from new: removes the entry if its value still matches.
+// For each key in new: adds or replaces the entry.
+// Both operations happen under a single write lock, eliminating the race window
+// between separate merge and remove calls.
+func (r *registry) swap(old, new map[string]string) {
+	r.mu.Lock()
+	maps.Copy(r.addrs, new)
+	for k, v := range old {
+		if _, ok := new[k]; !ok {
+			if r.addrs[k] == v {
+				delete(r.addrs, k)
+			}
+		}
+	}
 	resolvers := make([]*globalResolver, 0, len(r.resolvers))
 	for gr := range r.resolvers {
 		resolvers = append(resolvers, gr)

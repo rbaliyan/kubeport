@@ -250,5 +250,25 @@ func (s *HTTPProxyServer) handleHTTP(ctx context.Context, conn net.Conn, br *buf
 			}
 			return
 		}
+
+		// Reject requests that target a different host on the same connection.
+		// Keep-alive connections are bound to the original backend; routing a
+		// different host to it would silently misdeliver the request.
+		nextAddr := req.Host
+		if !strings.Contains(nextAddr, ":") {
+			nextAddr += ":80"
+		}
+		if nextAddr != addr {
+			resp := &http.Response{
+				StatusCode: http.StatusBadRequest,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Body:       http.NoBody,
+			}
+			_ = resp.Write(conn)
+			s.logger.Debug("http proxy host changed mid-connection, closing",
+				slog.String("original", addr), slog.String("new", nextAddr))
+			return
+		}
 	}
 }

@@ -867,20 +867,34 @@ type ParsedSupervisorConfig struct {
 }
 
 // ParsedSupervisor returns supervisor config with defaults applied.
-func (s SupervisorConfig) ParsedSupervisor() ParsedSupervisorConfig {
+// Returns an error if any duration field is set to an invalid value.
+// Call Validate() before ParsedSupervisor() to catch errors early.
+func (s SupervisorConfig) ParsedSupervisor() (ParsedSupervisorConfig, error) {
 	threshold := s.HealthCheckThreshold
 	if threshold <= 0 {
 		threshold = 3
 	}
-	return ParsedSupervisorConfig{
+	p := ParsedSupervisorConfig{
 		MaxRestarts:          s.MaxRestarts,
 		HealthCheckThreshold: threshold,
-		HealthCheckInterval:  parseDurationOr(s.HealthCheckInterval, 10*time.Second),
-		ReadyTimeout:         parseDurationOr(s.ReadyTimeout, 15*time.Second),
-		BackoffInitial:       parseDurationOr(s.BackoffInitial, 1*time.Second),
-		BackoffMax:           parseDurationOr(s.BackoffMax, 30*time.Second),
-		MaxConnectionAge:     parseDurationOr(s.MaxConnectionAge, 30*time.Minute),
 	}
+	var err error
+	if p.HealthCheckInterval, err = parseDuration(s.HealthCheckInterval, 10*time.Second); err != nil {
+		return p, fmt.Errorf("health_check_interval: %w", err)
+	}
+	if p.ReadyTimeout, err = parseDuration(s.ReadyTimeout, 15*time.Second); err != nil {
+		return p, fmt.Errorf("ready_timeout: %w", err)
+	}
+	if p.BackoffInitial, err = parseDuration(s.BackoffInitial, 1*time.Second); err != nil {
+		return p, fmt.Errorf("backoff_initial: %w", err)
+	}
+	if p.BackoffMax, err = parseDuration(s.BackoffMax, 30*time.Second); err != nil {
+		return p, fmt.Errorf("backoff_max: %w", err)
+	}
+	if p.MaxConnectionAge, err = parseDuration(s.MaxConnectionAge, 30*time.Minute); err != nil {
+		return p, fmt.Errorf("max_connection_age: %w", err)
+	}
+	return p, nil
 }
 
 // LoadServices reads a YAML/TOML file and returns only the services list.
@@ -901,13 +915,9 @@ func LoadServices(path string) ([]ServiceConfig, error) {
 	return cfg.Services, nil
 }
 
-func parseDurationOr(s string, def time.Duration) time.Duration {
+func parseDuration(s string, def time.Duration) (time.Duration, error) {
 	if s == "" {
-		return def
+		return def, nil
 	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return def
-	}
-	return d
+	return time.ParseDuration(s)
 }

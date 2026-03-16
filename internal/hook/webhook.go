@@ -45,7 +45,7 @@ func (h *webhookHook) OnEvent(ctx context.Context, event Event) error {
 	var err error
 
 	if h.bodyTemplate != "" {
-		body = []byte(ExpandVars(h.bodyTemplate, event))
+		body = []byte(ExpandVarsJSON(h.bodyTemplate, event))
 	} else {
 		payload := map[string]any{
 			"event":       event.Type.String(),

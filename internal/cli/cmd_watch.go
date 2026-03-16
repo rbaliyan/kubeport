@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"regexp"
@@ -216,7 +217,7 @@ func (a *app) renderWatch(interval time.Duration, rawMode bool) {
 }
 
 // writeForwardStatus writes a single forward's status line to w.
-func writeForwardStatus(w *bytes.Buffer, fw *kubeportv1.ForwardStatusProto) {
+func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 	var stateColor, stateText, indicator string
 
 	switch fw.State {
