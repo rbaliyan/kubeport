@@ -32,7 +32,7 @@ func TestResolveServicePorts_All(t *testing.T) {
 		corev1.ServicePort{Name: "grpc", Port: 9090},
 		corev1.ServicePort{Name: "metrics", Port: 9100},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -49,10 +49,10 @@ func TestResolveServicePorts_All(t *testing.T) {
 		t.Fatalf("expected 3 resolved ports, got %d", len(resolved))
 	}
 
-	// Verify local == remote by default
+	// Verify local == 0 (dynamic) by default
 	for _, rp := range resolved {
-		if rp.LocalPort != rp.RemotePort {
-			t.Errorf("port %s: expected local=%d == remote=%d", rp.Name, rp.LocalPort, rp.RemotePort)
+		if rp.LocalPort != 0 {
+			t.Errorf("port %s: expected local=0 (dynamic), got %d", rp.Name, rp.LocalPort)
 		}
 	}
 }
@@ -63,7 +63,7 @@ func TestResolveServicePorts_ByName(t *testing.T) {
 		corev1.ServicePort{Name: "grpc", Port: 9090},
 		corev1.ServicePort{Name: "metrics", Port: 9100},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -94,7 +94,7 @@ func TestResolveServicePorts_ByPort(t *testing.T) {
 		corev1.ServicePort{Name: "http", Port: 80},
 		corev1.ServicePort{Name: "grpc", Port: 9090},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -123,7 +123,7 @@ func TestResolveServicePorts_SelectorNotFound(t *testing.T) {
 	svc := fakeServiceWithPorts("my-api", "default",
 		corev1.ServicePort{Name: "http", Port: 80},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -147,7 +147,7 @@ func TestResolveServicePorts_ExcludePorts(t *testing.T) {
 		corev1.ServicePort{Name: "http", Port: 80},
 		corev1.ServicePort{Name: "metrics", Port: 9100},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -173,7 +173,7 @@ func TestResolveServicePorts_AllExcluded(t *testing.T) {
 	svc := fakeServiceWithPorts("my-api", "default",
 		corev1.ServicePort{Name: "http", Port: 80},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -194,7 +194,7 @@ func TestResolveServicePorts_WithOffset(t *testing.T) {
 		corev1.ServicePort{Name: "http", Port: 80},
 		corev1.ServicePort{Name: "grpc", Port: 9090},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -220,7 +220,7 @@ func TestResolveServicePorts_OffsetOverflow(t *testing.T) {
 	svc := fakeServiceWithPorts("my-api", "default",
 		corev1.ServicePort{Name: "http", Port: 60000},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -241,7 +241,7 @@ func TestResolveServicePorts_SelectorLocalPortOverride(t *testing.T) {
 		corev1.ServicePort{Name: "http", Port: 80},
 		corev1.ServicePort{Name: "grpc", Port: 9090},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -250,7 +250,7 @@ func TestResolveServicePorts_SelectorLocalPortOverride(t *testing.T) {
 		Ports: config.PortsConfig{
 			Selectors: []config.PortSelector{
 				{Name: "http", LocalPort: 8080},
-				{Name: "grpc"}, // defaults to remote
+				{Name: "grpc"}, // no override → dynamic (0)
 			},
 		},
 	}
@@ -262,13 +262,13 @@ func TestResolveServicePorts_SelectorLocalPortOverride(t *testing.T) {
 	if resolved[0].LocalPort != 8080 {
 		t.Errorf("http: expected local 8080, got %d", resolved[0].LocalPort)
 	}
-	if resolved[1].LocalPort != 9090 {
-		t.Errorf("grpc: expected local 9090 (default), got %d", resolved[1].LocalPort)
+	if resolved[1].LocalPort != 0 {
+		t.Errorf("grpc: expected local 0 (dynamic), got %d", resolved[1].LocalPort)
 	}
 }
 
 func TestResolveServicePorts_ServiceNotFound(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -315,7 +315,7 @@ func TestResolvePodPorts_All(t *testing.T) {
 			},
 		},
 	}
-	client := fake.NewSimpleClientset(pod)
+	client := fake.NewClientset(pod)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -348,7 +348,7 @@ func TestResolvePodPorts_ByName(t *testing.T) {
 			},
 		},
 	}
-	client := fake.NewSimpleClientset(pod)
+	client := fake.NewClientset(pod)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -386,7 +386,7 @@ func TestResolvePodPorts_Exclude(t *testing.T) {
 			},
 		},
 	}
-	client := fake.NewSimpleClientset(pod)
+	client := fake.NewClientset(pod)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -419,7 +419,7 @@ func TestResolvePodPorts_WithOffset(t *testing.T) {
 			},
 		},
 	}
-	client := fake.NewSimpleClientset(pod)
+	client := fake.NewClientset(pod)
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -439,7 +439,7 @@ func TestResolvePodPorts_WithOffset(t *testing.T) {
 }
 
 func TestResolvePodPorts_PodNotFound(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	m := &Manager{clientset: client}
 
 	cfg := config.ServiceConfig{
@@ -461,7 +461,7 @@ func TestSuperviseMulti_ExpandsToChildren(t *testing.T) {
 		corev1.ServicePort{Name: "http", Port: 80},
 		corev1.ServicePort{Name: "grpc", Port: 9090},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 
 	m := &Manager{
 		cfg: &config.Config{
@@ -514,7 +514,7 @@ func TestSuperviseMulti_ExpandsToChildren(t *testing.T) {
 
 func TestSuperviseMulti_FailedResolution(t *testing.T) {
 	// No service exists — resolution should fail and register parent as failed
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	m := &Manager{
 		cfg: &config.Config{
@@ -574,7 +574,7 @@ func TestSuperviseMulti_ChildNaming(t *testing.T) {
 		corev1.ServicePort{Name: "http", Port: 80},
 		corev1.ServicePort{Name: "", Port: 443}, // unnamed port
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 
 	m := &Manager{
 		cfg: &config.Config{
@@ -718,7 +718,7 @@ func TestSupervise_RoutesMultiPort(t *testing.T) {
 	svc := fakeServiceWithPorts("my-api", "default",
 		corev1.ServicePort{Name: "http", Port: 80},
 	)
-	client := fake.NewSimpleClientset(svc)
+	client := fake.NewClientset(svc)
 
 	m := &Manager{
 		cfg: &config.Config{
