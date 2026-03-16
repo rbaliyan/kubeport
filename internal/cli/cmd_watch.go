@@ -248,42 +248,42 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 	remotePort := fw.Service.GetRemotePort()
 
 	if port > 0 {
-		fmt.Fprintf(w, "  %s%s%s %s: localhost:%d -> :%d [%s%s%s]",
+		_, _ = fmt.Fprintf(w, "  %s%s%s %s: localhost:%d -> :%d [%s%s%s]",
 			stateColor, indicator, colorReset,
 			name, port, remotePort,
 			stateColor, stateText, colorReset)
 	} else {
-		fmt.Fprintf(w, "  %s%s%s %s: :%d [%s%s%s]",
+		_, _ = fmt.Fprintf(w, "  %s%s%s %s: :%d [%s%s%s]",
 			stateColor, indicator, colorReset,
 			name, remotePort,
 			stateColor, stateText, colorReset)
 	}
 
 	if fw.Restarts > 0 {
-		fmt.Fprintf(w, " (restarts: %d)", fw.Restarts)
+		_, _ = fmt.Fprintf(w, " (restarts: %d)", fw.Restarts)
 	}
 	if fw.BytesIn > 0 || fw.BytesOut > 0 {
-		fmt.Fprintf(w, " (in: %s, out: %s", formatBytes(fw.BytesIn), formatBytes(fw.BytesOut))
+		_, _ = fmt.Fprintf(w, " (in: %s, out: %s", formatBytes(fw.BytesIn), formatBytes(fw.BytesOut))
 		if fw.State == kubeportv1.ForwardState_FORWARD_STATE_RUNNING && fw.LastStart != nil && fw.LastStart.IsValid() {
 			elapsed := time.Since(fw.LastStart.AsTime()).Seconds()
 			if elapsed > 0 {
 				totalBytes := fw.BytesIn + fw.BytesOut
-				fmt.Fprintf(w, ", %s/s", formatBytes(int64(float64(totalBytes)/elapsed)))
+				_, _ = fmt.Fprintf(w, ", %s/s", formatBytes(int64(float64(totalBytes)/elapsed)))
 			}
 		}
-		fmt.Fprint(w, ")")
+		_, _ = fmt.Fprint(w, ")")
 	}
 
 	if fw.Error != "" {
-		fmt.Fprintf(w, "\n         %sERROR: %s%s", colorRed, fw.Error, colorReset)
+		_, _ = fmt.Fprintf(w, "\n         %sERROR: %s%s", colorRed, fw.Error, colorReset)
 	}
 
 	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
 		remaining := time.Until(fw.NextRetry.AsTime())
 		if remaining > 0 {
-			fmt.Fprintf(w, "\n         Reconnecting in %s", remaining.Round(time.Second))
+			_, _ = fmt.Fprintf(w, "\n         Reconnecting in %s", remaining.Round(time.Second))
 		} else {
-			fmt.Fprintf(w, "\n         Reconnecting now")
+			_, _ = fmt.Fprintf(w, "\n         Reconnecting now")
 		}
 	}
 }
