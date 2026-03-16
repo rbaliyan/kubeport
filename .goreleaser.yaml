@@ -62,6 +62,65 @@ signs:
       - "--yes"
     artifacts: all
 
+dockers:
+  - id: kubeport-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/rbaliyan/kubeport:{{ .Version }}-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=GIT_COMMIT={{ .FullCommit }}"
+      - "--build-arg=BUILD_TIMESTAMP={{ .Date }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/rbaliyan/kubeport"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+  - id: kubeport-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/rbaliyan/kubeport:{{ .Version }}-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--build-arg=VERSION={{ .Version }}"
+      - "--build-arg=GIT_COMMIT={{ .FullCommit }}"
+      - "--build-arg=BUILD_TIMESTAMP={{ .Date }}"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.source=https://github.com/rbaliyan/kubeport"
+      - "--label=org.opencontainers.image.licenses=MIT"
+
+docker_manifests:
+  - name_template: "ghcr.io/rbaliyan/kubeport:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/rbaliyan/kubeport:{{ .Version }}-amd64"
+      - "ghcr.io/rbaliyan/kubeport:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/rbaliyan/kubeport:latest"
+    image_templates:
+      - "ghcr.io/rbaliyan/kubeport:{{ .Version }}-amd64"
+      - "ghcr.io/rbaliyan/kubeport:{{ .Version }}-arm64"
+    skip_push: "auto"
+
+docker_signs:
+  - cmd: cosign
+    artifacts: manifests
+    args:
+      - sign
+      - "${artifact}"
+      - "--yes"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
 
