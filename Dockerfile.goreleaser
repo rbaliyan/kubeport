@@ -1,0 +1,22 @@
+FROM busybox:1 AS dirs
+RUN mkdir -p /data
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+# Copy the pre-built binary from the goreleaser build context.
+COPY kubeport /usr/local/bin/kubeport
+
+# /data is owned by nonroot (65532) — no host-side chown needed when mounting a volume.
+# Mount your kubeport.yaml here. PID and log files are written alongside the config.
+# When running inside a cluster, a service account with port-forward permissions is used automatically.
+COPY --from=dirs --chown=65532:65532 /data /data
+VOLUME ["/data"]
+
+# gRPC API port — set listen: tcp://0.0.0.0:19191 and api_key in your config.
+EXPOSE 19191
+
+# Runs as uid 65532 (nonroot) — inherited from the base image.
+USER nonroot:nonroot
+
+ENTRYPOINT ["kubeport", "foreground"]
+CMD ["--config", "/data/kubeport.yaml"]
