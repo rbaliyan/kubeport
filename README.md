@@ -189,7 +189,7 @@ kubeport remove "Postgres"
 kubeport reload
 
 # Merge services from another file
-kubeport apply overlay.yaml
+kubeport apply --file overlay.yaml
 ```
 
 ### No Config File? No Problem
@@ -215,6 +215,9 @@ kubeport stop               # Graceful shutdown
 kubeport restart            # Stop + start
 kubeport logs               # Follow daemon logs
 kubeport reload             # Sync config changes to running daemon
+kubeport mappings           # Show K8s DNS → localhost address mappings
+kubeport socks              # Start SOCKS5 proxy for address translation
+kubeport http-proxy         # Start HTTP/HTTPS proxy for address translation
 ```
 
 ### Config Management
@@ -233,14 +236,14 @@ kubeport config path        # Print resolved config file path
 
 | Capability | kubectl | Telepresence | Kubeport |
 |---|---|---|---|
-| Auto-reconnect | | x | x |
-| Health checks | | | x |
-| Config file | | | x |
-| Multi-port discovery | | | x |
-| Lifecycle hooks | | x | x |
-| Dynamic add/remove | | | x |
-| Background daemon | | x | x |
-| Zero cluster footprint | x | | x |
+| Auto-reconnect | | ✓ | ✓ |
+| Health checks | | | ✓ |
+| Config file | | | ✓ |
+| Multi-port discovery | | | ✓ |
+| Lifecycle hooks | | ✓ | ✓ |
+| Dynamic add/remove | | | ✓ |
+| Background daemon | | ✓ | ✓ |
+| Zero cluster footprint | ✓ | | ✓ |
 
 ## Install
 
