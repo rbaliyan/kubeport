@@ -777,6 +777,10 @@ func (c *Config) Validate() error {
 			if path == "" {
 				return fmt.Errorf("listen: empty path after sock://")
 			}
+			cleaned := filepath.Clean(path)
+			if strings.Contains(cleaned, "..") {
+				return fmt.Errorf("listen: sock:// path must not contain '..'")
+			}
 		case strings.HasPrefix(c.Listen, "tcp://"):
 			addr, _ := strings.CutPrefix(c.Listen, "tcp://")
 			if _, _, err := net.SplitHostPort(addr); err != nil {

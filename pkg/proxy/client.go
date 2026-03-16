@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -14,6 +15,7 @@ import (
 	pkgconfig "github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -130,12 +132,19 @@ func newClient(o *options) (Proxy, error) {
 		err  error
 	)
 
+	// TLS credentials for TCP connections: skip certificate verification since
+	// the daemon uses a self-signed cert, but the API key provides authentication.
+	tcpCreds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // self-signed cert; auth via API key
+		MinVersion:         tls.VersionTLS12,
+	})
+
 	switch {
 	case o.host != "":
 		// Explicit TCP target
 		conn, err = grpc.NewClient(
 			o.host,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(tcpCreds),
 			grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(o.apiKey)),
 		)
 	case o.socketPath != "":
@@ -153,7 +162,7 @@ func newClient(o *options) (Proxy, error) {
 		if target.mode == pkgconfig.ListenTCP {
 			conn, err = grpc.NewClient(
 				target.address,
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithTransportCredentials(tcpCreds),
 				grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(target.apiKey)),
 			)
 		} else {

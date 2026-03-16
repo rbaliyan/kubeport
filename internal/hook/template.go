@@ -11,11 +11,18 @@ import (
 // Supported variables: ${EVENT}, ${SERVICE}, ${PARENT_NAME}, ${PORT_NAME},
 // ${PORT}, ${REMOTE_PORT}, ${POD}, ${RESTARTS}, ${ERROR}, ${TIME}.
 //
-// Values are substituted as-is without escaping. When used inside a JSON
-// body template (e.g., webhook body_template), values containing quotes or
-// special characters may produce invalid JSON. Use ExpandVarsJSON for
-// templates that embed variables inside JSON string literals, or use the
-// default JSON payload (no body_template) for guaranteed well-formed output.
+// String values are sanitized before substitution: shell metacharacters
+// (backtick, $, (, ), {, }, [, ], |, &, ;, <, >, newline, carriage return)
+// are removed to prevent command injection when the result is used in a
+// shell command or exec argument. Numeric values (PORT, REMOTE_PORT,
+// RESTARTS) are safe by construction. EVENT and TIME are generated
+// internally and contain only safe characters.
+//
+// When used inside a JSON body template (e.g., webhook body_template), values
+// containing quotes or special characters may produce invalid JSON. Use
+// ExpandVarsJSON for templates that embed variables inside JSON string literals,
+// or use the default JSON payload (no body_template) for guaranteed
+// well-formed output.
 func ExpandVars(s string, e Event) string {
 	var errStr string
 	if e.Error != nil {
@@ -23,20 +30,39 @@ func ExpandVars(s string, e Event) string {
 	}
 	replacements := []struct{ old, new string }{
 		{"${EVENT}", e.Type.String()},
-		{"${SERVICE}", e.Service},
-		{"${PARENT_NAME}", e.ParentName},
-		{"${PORT_NAME}", e.PortName},
+		{"${SERVICE}", sanitizeShellValue(e.Service)},
+		{"${PARENT_NAME}", sanitizeShellValue(e.ParentName)},
+		{"${PORT_NAME}", sanitizeShellValue(e.PortName)},
 		{"${PORT}", strconv.Itoa(e.LocalPort)},
 		{"${REMOTE_PORT}", strconv.Itoa(e.RemotePort)},
-		{"${POD}", e.PodName},
+		{"${POD}", sanitizeShellValue(e.PodName)},
 		{"${RESTARTS}", strconv.Itoa(e.Restarts)},
-		{"${ERROR}", errStr},
+		{"${ERROR}", sanitizeShellValue(errStr)},
 		{"${TIME}", e.Time.Format(time.RFC3339)},
 	}
 	for _, r := range replacements {
 		s = strings.ReplaceAll(s, r.old, r.new)
 	}
 	return s
+}
+
+// sanitizeShellValue removes characters that could enable shell command
+// injection when the value is substituted into a shell command string or
+// passed as an exec argument. The stripped characters are: backtick, dollar
+// sign, parentheses, braces, brackets, pipe, ampersand, semicolon, angle
+// brackets, newline, carriage return, and null byte.
+func sanitizeShellValue(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch r {
+		case '`', '$', '(', ')', '{', '}', '[', ']', '|', '&', ';', '<', '>', '\n', '\r', '\x00':
+			// drop shell metacharacter
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 // ExpandVarsJSON is like ExpandVars but JSON-encodes each value before

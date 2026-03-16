@@ -1,11 +1,13 @@
 package cli
 
 import (
+	"crypto/tls"
 	"os"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -38,10 +40,16 @@ func dialDaemon(socketPath string) (*daemonClient, error) {
 }
 
 // dialDaemonTCP connects to a remote daemon over TCP with API key auth.
+// TLS is used with InsecureSkipVerify because the daemon uses a self-signed
+// certificate; the API key provides application-level authentication.
 func dialDaemonTCP(host, apiKey string) (*daemonClient, error) {
+	tlsCreds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // self-signed cert; auth via API key
+		MinVersion:         tls.VersionTLS12,
+	})
 	conn, err := grpc.NewClient(
 		host,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(tlsCreds),
 		grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(apiKey)),
 	)
 	if err != nil {

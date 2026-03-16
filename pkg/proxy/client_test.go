@@ -2,8 +2,16 @@ package proxy
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"io"
 	"log/slog"
+	"math/big"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -13,7 +21,7 @@ import (
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
@@ -44,14 +52,49 @@ func (s *fakeDaemon) Mappings(_ context.Context, _ *kubeportv1.MappingsRequest) 
 	return &kubeportv1.MappingsResponse{Addrs: s.addrs}, nil
 }
 
-// startFakeDaemon starts a gRPC server on a random TCP port and returns its address.
+// generateTestTLSCert creates a self-signed TLS certificate for testing.
+func generateTestTLSCert(t *testing.T) tls.Certificate {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	serial, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "test"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+	keyDER, _ := x509.MarshalECPrivateKey(key)
+	cert, err := tls.X509KeyPair(
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER}),
+		pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}),
+	)
+	if err != nil {
+		t.Fatalf("load cert: %v", err)
+	}
+	return cert
+}
+
+// startFakeDaemon starts a TLS gRPC server on a random TCP port and returns its address.
+// TLS is used because the production client now requires TLS for TCP connections.
 func startFakeDaemon(t *testing.T, srv *fakeDaemon) string {
 	t.Helper()
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	gs := grpc.NewServer()
+	cert := generateTestTLSCert(t)
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
+	gs := grpc.NewServer(grpc.Creds(credentials.NewTLS(tlsCfg)))
 	kubeportv1.RegisterDaemonServiceServer(gs, srv)
 	go gs.Serve(lis)
 	t.Cleanup(gs.Stop)
@@ -59,10 +102,15 @@ func startFakeDaemon(t *testing.T, srv *fakeDaemon) string {
 }
 
 // makeClient creates a *client connected to addr with the given initial addrs.
+// Uses TLS with InsecureSkipVerify to match the test server's self-signed cert.
 // The underlying gRPC connection is closed via t.Cleanup.
 func makeClient(t *testing.T, addr string, initAddrs map[string]string) *client {
 	t.Helper()
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	tlsCreds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // test-only self-signed cert
+		MinVersion:         tls.VersionTLS12,
+	})
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(tlsCreds))
 	if err != nil {
 		t.Fatalf("grpc.NewClient: %v", err)
 	}

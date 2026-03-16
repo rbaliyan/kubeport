@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"context"
 	"crypto"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // GitHubProvider implements ReleaseProvider using the GitHub Releases API.
@@ -48,10 +50,30 @@ func WithHashAlgorithm(h crypto.Hash) GitHubOption {
 	return func(o *githubOptions) { o.hash = h }
 }
 
+// allowedHosts is the set of hostnames permitted for GitHub release downloads.
+// This prevents SSRF by restricting requests to GitHub infrastructure only.
+var allowedHosts = map[string]bool{
+	"api.github.com":             true,
+	"github.com":                 true,
+	"objects.githubusercontent.com": true,
+}
+
+// secureHTTPClient returns an http.Client with TLS 1.2 minimum and a 60s timeout.
+func secureHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+}
+
 // NewGitHubProvider creates a GitHubProvider for the given owner/repo.
 func NewGitHubProvider(owner, repo string, opts ...GitHubOption) *GitHubProvider {
 	o := githubOptions{
-		client:   http.DefaultClient,
+		client:   secureHTTPClient(),
 		checksum: "checksums.txt",
 		hash:     crypto.SHA256,
 	}
@@ -79,8 +101,12 @@ type githubAsset struct {
 
 // LatestRelease fetches the latest release from GitHub.
 func (p *GitHubProvider) LatestRelease(ctx context.Context) (*ReleaseInfo, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", p.owner, p.repo)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	rawURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/releases/latest", p.owner, p.repo)
+	if err := validateGitHubURL(rawURL); err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -146,9 +172,33 @@ func (p *GitHubProvider) Verify(ctx context.Context, release *ReleaseInfo, asset
 	return nil
 }
 
+// validateGitHubURL checks that the URL scheme is https and the host is in
+// the GitHub allowlist, preventing SSRF to internal or unexpected hosts.
+func validateGitHubURL(rawURL string) error {
+	// Parse manually to avoid importing net/url at the top level when not needed.
+	// Use a simple prefix-and-split approach that is sufficient for our URLs.
+	if !strings.HasPrefix(rawURL, "https://") {
+		return fmt.Errorf("update URL must use https: %s", rawURL)
+	}
+	rest := strings.TrimPrefix(rawURL, "https://")
+	host, _, _ := strings.Cut(rest, "/")
+	// Strip port if present.
+	if idx := strings.LastIndex(host, ":"); idx >= 0 {
+		host = host[:idx]
+	}
+	if !allowedHosts[host] {
+		return fmt.Errorf("update URL host %q is not in the allowed GitHub hosts list", host)
+	}
+	return nil
+}
+
 // downloadURL fetches a URL and writes the body to dst.
-func (p *GitHubProvider) downloadURL(ctx context.Context, url string, dst io.Writer) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (p *GitHubProvider) downloadURL(ctx context.Context, rawURL string, dst io.Writer) error {
+	if err := validateGitHubURL(rawURL); err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return err
 	}
@@ -160,7 +210,7 @@ func (p *GitHubProvider) downloadURL(ctx context.Context, url string, dst io.Wri
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download %s: %s", url, resp.Status)
+		return fmt.Errorf("download %s: %s", rawURL, resp.Status)
 	}
 
 	// Limit response size to prevent OOM from compromised/redirected URLs.

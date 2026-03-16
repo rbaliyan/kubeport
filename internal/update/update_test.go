@@ -195,8 +195,10 @@ func TestNewGitHubProviderDefaults(t *testing.T) {
 	if p.repo != "repo" {
 		t.Errorf("repo = %q, want %q", p.repo, "repo")
 	}
-	if p.opts.client != http.DefaultClient {
-		t.Error("expected default http client")
+	// The default client is a secure client (not http.DefaultClient), with TLS
+	// minimum version and a timeout set.
+	if p.opts.client == nil {
+		t.Error("expected non-nil http client")
 	}
 	if p.opts.checksum != "checksums.txt" {
 		t.Errorf("checksum = %q, want %q", p.opts.checksum, "checksums.txt")
