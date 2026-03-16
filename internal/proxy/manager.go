@@ -602,7 +602,7 @@ func (m *Manager) resolveServicePorts(ctx context.Context, namespace string, svc
 		}
 
 		localPort := computeLocalPort(selectorOverrides, sp.Name, int(sp.Port), svc.LocalPortOffset)
-		if localPort < 1 || localPort > 65535 {
+		if localPort < 0 || localPort > 65535 {
 			return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
 				sp.Name, localPort, sp.Port, svc.LocalPortOffset)
 		}
@@ -652,7 +652,7 @@ func (m *Manager) resolvePodPorts(ctx context.Context, namespace string, svc con
 			}
 
 			localPort := computeLocalPort(selectorOverrides, cp.Name, int(cp.ContainerPort), svc.LocalPortOffset)
-			if localPort < 1 || localPort > 65535 {
+			if localPort < 0 || localPort > 65535 {
 				return nil, fmt.Errorf("port %s: computed local port %d out of range (remote %d + offset %d)",
 					cp.Name, localPort, cp.ContainerPort, svc.LocalPortOffset)
 			}
@@ -688,6 +688,10 @@ func buildPortMaps(svc config.ServiceConfig) (excludeSet map[string]bool, select
 }
 
 // computeLocalPort determines the local port for a given remote port.
+// Returns 0 (dynamic OS-assigned) when no explicit override or offset is set,
+// allowing the OS to pick a free port. Clients connecting via SOCKS5/HTTP proxy
+// do not need predictable local port numbers; use local_port_offset or a
+// per-port local_port selector when a fixed local port is required.
 func computeLocalPort(overrides map[string]config.PortSelector, portName string, remotePort, offset int) int {
 	if sel, ok := overrides[portName]; ok && sel.LocalPort != 0 {
 		return sel.LocalPort
@@ -695,7 +699,7 @@ func computeLocalPort(overrides map[string]config.PortSelector, portName string,
 	if offset > 0 {
 		return remotePort + offset
 	}
-	return remotePort
+	return 0
 }
 
 func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig) {

@@ -61,7 +61,7 @@ func TestAddJitter_Zero(t *testing.T) {
 }
 
 func TestResolvePod_DirectPod(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	m := &Manager{clientset: client}
 
 	svc := config.ServiceConfig{
@@ -83,7 +83,7 @@ func TestResolvePod_DirectPod(t *testing.T) {
 }
 
 func TestResolvePod_ServiceWithRunningPod(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -128,7 +128,7 @@ func TestResolvePod_ServiceWithRunningPod(t *testing.T) {
 
 func TestResolvePod_ServicePortMatchesTargetPort(t *testing.T) {
 	// When service port == targetPort, resolvePod should return the same port.
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -169,7 +169,7 @@ func TestResolvePod_ServicePortMatchesTargetPort(t *testing.T) {
 
 func TestResolvePod_NoPortSpec(t *testing.T) {
 	// When the service has no port spec matching remote_port, fall back to remote_port.
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -209,7 +209,7 @@ func TestResolvePod_NoPortSpec(t *testing.T) {
 func TestResolvePod_NamedTargetPort(t *testing.T) {
 	// When targetPort is a named port (e.g., "http"), resolvePod should
 	// look up the name in the pod's container ports to find the numeric value.
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "atlas-app-dev",
@@ -264,7 +264,7 @@ func TestResolvePod_NamedTargetPort(t *testing.T) {
 }
 
 func TestResolvePod_ServiceNoRunningPod(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -298,7 +298,7 @@ func TestResolvePod_ServiceNoRunningPod(t *testing.T) {
 }
 
 func TestResolvePod_ServiceNoSelector(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -324,7 +324,7 @@ func TestResolvePod_ServiceNoSelector(t *testing.T) {
 }
 
 func TestResolvePod_ServiceNotFound(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	m := &Manager{clientset: client}
 
 	svc := config.ServiceConfig{
@@ -339,7 +339,7 @@ func TestResolvePod_ServiceNotFound(t *testing.T) {
 }
 
 func TestResolvePod_PicksRunningPod(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -383,7 +383,7 @@ func TestResolvePod_PicksRunningPod(t *testing.T) {
 }
 
 func TestCheckNamespace(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Namespace{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-ns"},
 		},
@@ -400,7 +400,7 @@ func TestCheckNamespace(t *testing.T) {
 }
 
 func TestCheckNamespace_Missing(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 	m := &Manager{
 		clientset: client,
 		cfg:       &config.Config{Namespace: "nonexistent"},
@@ -569,7 +569,7 @@ func TestStatus_ConcurrentAccess(t *testing.T) {
 }
 
 func TestSupervise_ContextCancellation(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	m := &Manager{
 		cfg: &config.Config{
@@ -612,7 +612,7 @@ func TestSupervise_ContextCancellation(t *testing.T) {
 func TestSupervise_MaxRestarts(t *testing.T) {
 	// Create a fake client with the service but no running pods,
 	// which makes resolvePod fail every time — triggering restarts.
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -670,7 +670,7 @@ func TestSupervise_MaxRestarts(t *testing.T) {
 
 func TestSupervise_UnlimitedRestarts(t *testing.T) {
 	// maxRestarts=0 means unlimited. Verify it retries more than a few times.
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -723,7 +723,7 @@ func TestSupervise_UnlimitedRestarts(t *testing.T) {
 }
 
 func TestStart_MultipleServices(t *testing.T) {
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	m := &Manager{
 		cfg: &config.Config{
@@ -762,7 +762,7 @@ func TestStart_MultipleServices(t *testing.T) {
 }
 
 func TestSupervise_NamespaceOverride(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -800,7 +800,7 @@ func TestSupervise_NamespaceOverride(t *testing.T) {
 }
 
 func TestResolvePod_PrefersReadyPod(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -853,7 +853,7 @@ func TestResolvePod_PrefersReadyPod(t *testing.T) {
 }
 
 func TestResolvePod_FallsBackToRunningIfNoneReady(t *testing.T) {
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -896,7 +896,7 @@ func TestResolvePod_FallsBackToRunningIfNoneReady(t *testing.T) {
 
 func TestResolvePod_SkipsDeletingPods(t *testing.T) {
 	now := metav1.Now()
-	client := fake.NewSimpleClientset(
+	client := fake.NewClientset(
 		&corev1.Service{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      "my-svc",
@@ -1000,7 +1000,7 @@ func TestIsPodReady(t *testing.T) {
 func TestStart_ConcurrentFailures(t *testing.T) {
 	// All services will fail (no pods exist) — verify concurrent failures
 	// don't cause panics, data races, or leave stale state.
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	services := make([]config.ServiceConfig, 5)
 	for i := range services {
@@ -1067,7 +1067,7 @@ func TestStart_ConcurrentFailures(t *testing.T) {
 
 func TestStart_ContextCancellation_Cleanup(t *testing.T) {
 	// Cancel context while services are running — verify all stop cleanly.
-	client := fake.NewSimpleClientset()
+	client := fake.NewClientset()
 
 	m := &Manager{
 		cfg: &config.Config{
