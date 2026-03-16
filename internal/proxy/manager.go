@@ -159,7 +159,10 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		return nil, fmt.Errorf("create kubernetes client: %w", err)
 	}
 
-	sup := cfg.Supervisor.ParsedSupervisor()
+	sup, err := cfg.Supervisor.ParsedSupervisor()
+	if err != nil {
+		return nil, fmt.Errorf("supervisor config: %w", err)
+	}
 
 	o := &managerOptions{
 		logger: slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo})),
@@ -317,34 +320,10 @@ func (m *Manager) RemoveService(name string) error {
 	return <-result
 }
 
-// doRemove cancels and removes a service (called from event loop).
-// If the name is a multi-port parent, all its children are also removed.
-func (m *Manager) doRemove(ctx context.Context, name string) error {
+// removeSingle cancels and removes a single leaf port-forward entry.
+// Must not be called while holding m.mu.
+func (m *Manager) removeSingle(ctx context.Context, name string) error {
 	m.mu.Lock()
-
-	// Check if this is a multi-port parent
-	childNames, isParent := m.children[name]
-	if isParent {
-		delete(m.children, name)
-		// Also remove the parent's own forward entry (present when resolution failed)
-		if _, hasFwd := m.forwards[name]; hasFwd {
-			delete(m.forwards, name)
-			for i, n := range m.order {
-				if n == name {
-					m.order = append(m.order[:i], m.order[i+1:]...)
-					break
-				}
-			}
-		}
-		m.mu.Unlock()
-
-		// Remove all children
-		for _, childName := range childNames {
-			_ = m.doRemove(ctx, childName)
-		}
-		return nil
-	}
-
 	pf, exists := m.forwards[name]
 	if !exists {
 		m.mu.Unlock()
@@ -375,6 +354,42 @@ func (m *Manager) doRemove(ctx context.Context, name string) error {
 		RemotePort: pf.svc.RemotePort,
 	})
 	return nil
+}
+
+// doRemove cancels and removes a service (called from event loop).
+// If the name is a multi-port parent, all its children are also removed.
+// Returns the first child removal error encountered, if any.
+func (m *Manager) doRemove(ctx context.Context, name string) error {
+	m.mu.Lock()
+
+	// Check if this is a multi-port parent
+	childNames, isParent := m.children[name]
+	if isParent {
+		delete(m.children, name)
+		// Also remove the parent's own forward entry (present when resolution failed)
+		if _, hasFwd := m.forwards[name]; hasFwd {
+			delete(m.forwards, name)
+			for i, n := range m.order {
+				if n == name {
+					m.order = append(m.order[:i], m.order[i+1:]...)
+					break
+				}
+			}
+		}
+		m.mu.Unlock()
+
+		// Remove all children; collect first error.
+		var firstErr error
+		for _, childName := range childNames {
+			if err := m.removeSingle(ctx, childName); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		return firstErr
+	}
+
+	m.mu.Unlock()
+	return m.removeSingle(ctx, name)
 }
 
 // Reload diffs current config vs running services. Adds new, removes deleted.

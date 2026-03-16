@@ -41,10 +41,17 @@ func discoverTarget() (*discoveredTarget, error) {
 			}
 		}
 
-		// Config loaded but no custom listen — try default socket next to config
+		// Try the default socket next to the config file regardless of whether
+		// the config loaded successfully (socket may exist from a prior run).
 		sock := filepath.Join(filepath.Dir(cfgPath), ".kubeport.sock")
 		if _, err := os.Stat(sock); err == nil {
 			return &discoveredTarget{mode: pkgconfig.ListenUnix, address: sock}, nil
+		}
+
+		// Config file exists but failed to load and no socket found — surface the
+		// load error so the caller can diagnose a corrupted or invalid config.
+		if loadErr != nil {
+			return nil, fmt.Errorf("load kubeport config %s: %w", cfgPath, loadErr)
 		}
 	}
 

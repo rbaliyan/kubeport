@@ -238,16 +238,8 @@ func (c *client) Refresh(ctx context.Context) error {
 	c.addrs = resp.Addrs
 	c.mu.Unlock()
 
-	// Update global resolver: merge new entries first to avoid a zero-entry gap,
-	// then remove only keys that no longer exist in the new mapping.
-	globalRegistry.merge(resp.Addrs)
-	stale := make(map[string]string)
-	for k, v := range old {
-		if _, ok := resp.Addrs[k]; !ok {
-			stale[k] = v
-		}
-	}
-	globalRegistry.remove(stale)
+	// Atomically replace old entries with new ones in the global resolver.
+	globalRegistry.swap(old, resp.Addrs)
 	return nil
 }
 

@@ -235,75 +235,8 @@ func (a *app) legacyServices() []config.ServiceConfig {
 }
 
 func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
-	var stateColor, stateText, indicator string
-
-	switch fw.State {
-	case kubeportv1.ForwardState_FORWARD_STATE_RUNNING:
-		stateColor = colorGreen
-		stateText = "running"
-		indicator = "●"
-	case kubeportv1.ForwardState_FORWARD_STATE_STARTING:
-		stateColor = colorYellow
-		stateText = "starting"
-		indicator = "◌"
-	case kubeportv1.ForwardState_FORWARD_STATE_FAILED:
-		stateColor = colorRed
-		stateText = "failed"
-		indicator = "✗"
-	case kubeportv1.ForwardState_FORWARD_STATE_STOPPED:
-		stateColor = colorRed
-		stateText = "stopped"
-		indicator = "○"
-	default:
-		stateColor = colorYellow
-		stateText = "unknown"
-		indicator = "?"
-	}
-
-	name := fw.Service.GetName()
-	port := fw.ActualPort
-	remotePort := fw.Service.GetRemotePort()
-
-	if port > 0 {
-		fmt.Printf("  %s%s%s %s: localhost:%d -> :%d [%s%s%s]",
-			stateColor, indicator, colorReset,
-			name, port, remotePort,
-			stateColor, stateText, colorReset)
-	} else {
-		fmt.Printf("  %s%s%s %s: :%d [%s%s%s]",
-			stateColor, indicator, colorReset,
-			name, remotePort,
-			stateColor, stateText, colorReset)
-	}
-
-	if fw.Restarts > 0 {
-		fmt.Printf(" (restarts: %d)", fw.Restarts)
-	}
-	if fw.BytesIn > 0 || fw.BytesOut > 0 {
-		fmt.Printf(" (in: %s, out: %s", formatBytes(fw.BytesIn), formatBytes(fw.BytesOut))
-		if fw.State == kubeportv1.ForwardState_FORWARD_STATE_RUNNING && fw.LastStart != nil && fw.LastStart.IsValid() {
-			elapsed := time.Since(fw.LastStart.AsTime()).Seconds()
-			if elapsed > 0 {
-				totalBytes := fw.BytesIn + fw.BytesOut
-				fmt.Printf(", %s/s", formatBytes(int64(float64(totalBytes)/elapsed)))
-			}
-		}
-		fmt.Print(")")
-	}
-	fmt.Println()
-
-	if fw.Error != "" {
-		fmt.Printf("         %sERROR: %s%s\n", colorRed, fw.Error, colorReset)
-	}
-
-	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
-		remaining := time.Until(fw.NextRetry.AsTime())
-		if remaining > 0 {
-			fmt.Printf("         Reconnecting in %s\n", remaining.Round(time.Second))
-		} else {
-			fmt.Printf("         Reconnecting now\n")
-		}
-	}
+	writeForwardStatus(os.Stdout, fw)
+	_, _ = fmt.Fprintln(os.Stdout)
 }
 
 // formatBytes formats a byte count into a human-readable string.

@@ -179,10 +179,32 @@ func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest
 		}
 	}
 
+	actualPort := int32(svc.LocalPort)
+	// For dynamic ports the OS-assigned port is not known until the port-forward
+	// goroutine becomes ready. Wait briefly so the response is useful to callers.
+	if svc.LocalPort == 0 && !svc.IsMultiPort() {
+		actualPort = s.waitForActualPort(svc.Name, 5*time.Second)
+	}
+
 	return &kubeportv1.AddServiceResponse{
 		Success:    true,
-		ActualPort: int32(svc.LocalPort),
+		ActualPort: actualPort,
 	}, nil
+}
+
+// waitForActualPort polls Status until the named service reports a non-zero
+// ActualPort or the timeout expires. Returns 0 if the port is not yet known.
+func (s *Server) waitForActualPort(name string, timeout time.Duration) int32 {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, fs := range s.mgr.Status() {
+			if fs.Service.Name == name && fs.ActualPort > 0 {
+				return int32(fs.ActualPort)
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return 0
 }
 
 // RemoveService implements DaemonService.RemoveService.
