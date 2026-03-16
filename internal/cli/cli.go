@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -497,9 +498,21 @@ func (a *app) dialTarget() (*daemonClient, error) {
 		if key == "" {
 			return nil, fmt.Errorf("--api-key (or KUBEPORT_API_KEY) is required when using --host")
 		}
-		return dialDaemonTCP(host, key)
+		// Derive the cert path from the config file directory so the self-signed
+		// cert is pinned when connecting to a local daemon over TCP.
+		certFile := a.resolveCertFile()
+		return dialDaemonTCP(host, key, certFile)
 	}
 	return dialDaemon(a.socketPath())
+}
+
+// resolveCertFile returns the path to the daemon's TLS cert derived from the
+// config file location. Returns empty string if no config is loaded.
+func (a *app) resolveCertFile() string {
+	if a.cfg != nil && a.cfg.FilePath() != "" {
+		return filepath.Dir(a.cfg.FilePath()) + "/.kubeport-tls.crt"
+	}
+	return ""
 }
 
 func (a *app) isRunning() (int, bool) {

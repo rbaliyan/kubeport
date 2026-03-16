@@ -2,10 +2,13 @@ package proxy
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"maps"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +17,7 @@ import (
 	pkgconfig "github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -40,6 +44,7 @@ type options struct {
 	socketPath      string
 	host            string
 	apiKey          string
+	tlsCertFile     string // path to server's TLS cert for pinning (TCP mode only)
 	clusterDomain   string
 	fuzzyMatch      *bool // nil = default (true); explicit true/false overrides
 	refreshInterval time.Duration
@@ -77,6 +82,13 @@ func WithClusterDomain(domain string) Option {
 // When not set (default), New() returns an error if it cannot connect.
 func WithEnabled(enabled bool) Option {
 	return func(o *options) { o.enabled = &enabled }
+}
+
+// WithTLSCertFile sets the path to the daemon's TLS certificate for TCP
+// connections. The certificate is pinned in a custom root CA pool, avoiding
+// the need for InsecureSkipVerify. When not set, the system CA pool is used.
+func WithTLSCertFile(path string) Option {
+	return func(o *options) { o.tlsCertFile = path }
 }
 
 // WithFuzzyMatch controls whether the proxy uses fuzzy address matching for
@@ -132,10 +144,14 @@ func newClient(o *options) (Proxy, error) {
 
 	switch {
 	case o.host != "":
-		// Explicit TCP target
+		// Explicit TCP target — use pinned cert if provided, system CA otherwise.
+		tcpCreds, cerr := tlsCredsFromCertFile(o.tlsCertFile)
+		if cerr != nil {
+			return nil, cerr
+		}
 		conn, err = grpc.NewClient(
 			o.host,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(tcpCreds),
 			grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(o.apiKey)),
 		)
 	case o.socketPath != "":
@@ -151,9 +167,13 @@ func newClient(o *options) (Proxy, error) {
 			return nil, discoverErr
 		}
 		if target.mode == pkgconfig.ListenTCP {
+			tcpCreds, cerr := tlsCredsFromCertFile(target.certPath)
+			if cerr != nil {
+				return nil, cerr
+			}
 			conn, err = grpc.NewClient(
 				target.address,
-				grpc.WithTransportCredentials(insecure.NewCredentials()),
+				grpc.WithTransportCredentials(tcpCreds),
 				grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(target.apiKey)),
 			)
 		} else {
@@ -322,6 +342,25 @@ func resolveAddr(addrs map[string]string, addr string, fuzzy bool) string {
 	}
 
 	return addr
+}
+
+// tlsCredsFromCertFile builds gRPC TLS credentials that trust only the
+// certificate at certFile (cert pinning). If certFile is empty or cannot be
+// read, the system CA pool is used instead. InsecureSkipVerify is never set.
+func tlsCredsFromCertFile(certFile string) (credentials.TransportCredentials, error) {
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if certFile != "" {
+		pem, err := os.ReadFile(certFile)
+		if err == nil {
+			pool := x509.NewCertPool()
+			if pool.AppendCertsFromPEM(pem) {
+				cfg.RootCAs = pool
+			}
+		}
+		// If the cert file can't be read (daemon not yet started, wrong path),
+		// fall through to system CA pool rather than failing the connection.
+	}
+	return credentials.NewTLS(cfg), nil
 }
 
 // extractNamespace extracts the namespace from the remainder of a headless

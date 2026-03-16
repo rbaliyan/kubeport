@@ -2,9 +2,18 @@ package daemon
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 
 	version "github.com/rbaliyan/go-version"
@@ -14,6 +23,7 @@ import (
 	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
@@ -92,10 +102,94 @@ func (s *Server) startTCP() error {
 		return fmt.Errorf("listen on tcp %s: %w", s.listenCfg.Address, err)
 	}
 
-	s.grpcServer = grpc.NewServer(grpc.UnaryInterceptor(grpcauth.ServerInterceptor(s.apiKey)))
+	// Determine cert path next to config file (or CWD if no config file).
+	certDir := "."
+	if s.cfg.FilePath() != "" {
+		certDir = filepath.Dir(s.cfg.FilePath())
+	}
+	tlsCert, err := loadOrGenerateCert(certDir)
+	if err != nil {
+		_ = lis.Close()
+		return fmt.Errorf("TLS certificate: %w", err)
+	}
+
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{tlsCert},
+		MinVersion:   tls.VersionTLS12,
+	}
+	creds := credentials.NewTLS(tlsCfg)
+
+	s.grpcServer = grpc.NewServer(
+		grpc.Creds(creds),
+		grpc.UnaryInterceptor(grpcauth.ServerInterceptor(s.apiKey)),
+	)
 	kubeportv1.RegisterDaemonServiceServer(s.grpcServer, s)
 
 	return s.grpcServer.Serve(lis)
+}
+
+// TLSCertFilePath returns the path of the daemon's TLS certificate for a given
+// certDir. Callers (CLI, SDK) use this to load the cert for pinning.
+func TLSCertFilePath(certDir string) string {
+	return filepath.Join(certDir, ".kubeport-tls.crt")
+}
+
+// loadOrGenerateCert loads an existing self-signed TLS cert from certDir, or
+// generates a new ECDSA P-256 cert valid for 10 years and saves it there.
+// The cert and key are stored in .kubeport-tls.crt and .kubeport-tls.key
+// respectively, both with mode 0600.
+func loadOrGenerateCert(certDir string) (tls.Certificate, error) {
+	certFile := TLSCertFilePath(certDir)
+	keyFile := filepath.Join(certDir, ".kubeport-tls.key")
+
+	// Try loading existing cert.
+	if cert, err := tls.LoadX509KeyPair(certFile, keyFile); err == nil {
+		return cert, nil
+	}
+
+	// Generate a new self-signed ECDSA P-256 certificate.
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("generate key: %w", err)
+	}
+
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("generate serial: %w", err)
+	}
+
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		Subject:      pkix.Name{CommonName: "kubeport-daemon"},
+		NotBefore:    time.Now().Add(-time.Minute),
+		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1"), net.IPv6loopback},
+		DNSNames:     []string{"localhost"},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("create certificate: %w", err)
+	}
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("marshal key: %w", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+
+	if err := os.WriteFile(certFile, certPEM, 0600); err != nil {
+		return tls.Certificate{}, fmt.Errorf("write cert file: %w", err)
+	}
+	if err := os.WriteFile(keyFile, keyPEM, 0600); err != nil {
+		return tls.Certificate{}, fmt.Errorf("write key file: %w", err)
+	}
+
+	return tls.X509KeyPair(certPEM, keyPEM)
 }
 
 // Shutdown gracefully stops the gRPC server with a 5-second hard deadline,

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/rbaliyan/kubeport/pkg/grpcauth"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -577,6 +579,17 @@ func TestServer_Apply_EmptyServices(t *testing.T) {
 func TestServer_TCPIntegration(t *testing.T) {
 	const apiKey = "test-secret-key"
 
+	// Use a temp dir as the config directory so the self-signed TLS cert is
+	// written there and cleaned up automatically.
+	tmpDir := t.TempDir()
+	// We need a file path within tmpDir so cfg.FilePath() returns a non-empty
+	// string, which causes loadOrGenerateCert to store the cert in tmpDir.
+	cfgFilePath := filepath.Join(tmpDir, "kubeport.yaml")
+	t.Cleanup(func() {
+		os.Remove(filepath.Join(tmpDir, ".kubeport-tls.crt"))
+		os.Remove(filepath.Join(tmpDir, ".kubeport-tls.key"))
+	})
+
 	mgr := &mockSupervisor{
 		statuses: []proxy.ForwardStatus{
 			{
@@ -593,17 +606,14 @@ func TestServer_TCPIntegration(t *testing.T) {
 		},
 	}
 
-	cfg := &config.Config{
-		Context:   "tcp-ctx",
-		Namespace: "tcp-ns",
-		Listen:    "tcp://127.0.0.1:0",
-		APIKey:    apiKey,
-	}
+	cfg := config.NewInMemory("tcp-ctx", "tcp-ns", nil)
+	cfg.APIKey = apiKey
+	// Set the file path so cert is stored in tmpDir.
+	_ = cfg.SaveTo(cfgFilePath, config.FormatYAML)
 
 	srv := NewServer(mgr, cfg)
 
-	// Use an ephemeral port: start a listener ourselves, get the port, close it,
-	// then let the server bind to that port.
+	// Use an ephemeral port.
 	tmpLis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -618,13 +628,19 @@ func TestServer_TCPIntegration(t *testing.T) {
 		errCh <- srv.Start()
 	}()
 
+	// TLS client credentials: skip cert verification since server uses self-signed cert.
+	tlsCreds := credentials.NewTLS(&tls.Config{
+		InsecureSkipVerify: true, //nolint:gosec // test; self-signed cert
+		MinVersion:         tls.VersionTLS12,
+	})
+
 	// Wait for server to be ready
 	var conn *grpc.ClientConn
 	for i := 0; i < 50; i++ {
 		time.Sleep(50 * time.Millisecond)
 		conn, err = grpc.NewClient(
 			addr,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(tlsCreds),
 			grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor(apiKey)),
 		)
 		if err == nil {
@@ -653,7 +669,7 @@ func TestServer_TCPIntegration(t *testing.T) {
 	// Test with wrong key
 	wrongConn, err := grpc.NewClient(
 		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(tlsCreds),
 		grpc.WithUnaryInterceptor(grpcauth.ClientInterceptor("wrong-key")),
 	)
 	if err != nil {
@@ -673,7 +689,7 @@ func TestServer_TCPIntegration(t *testing.T) {
 	// Test with no key
 	noAuthConn, err := grpc.NewClient(
 		addr,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(tlsCreds),
 	)
 	if err != nil {
 		t.Fatalf("dial error: %v", err)
