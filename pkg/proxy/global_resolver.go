@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"maps"
 	"strings"
 	"sync"
 
@@ -29,6 +28,14 @@ type registry struct {
 //
 // Call this once at application startup before creating gRPC connections.
 // This is safe to call multiple times; subsequent calls are no-ops.
+//
+// Scheme precedence: per-connection resolvers registered via a client's
+// GRPCDialOption() take priority over this global resolver for that connection.
+// If a client that registered via GRPCDialOption() is closed, its per-connection
+// resolver is unregistered and the gRPC connection will fall back to this global
+// resolver (if registered), which may have different or stale mappings. Avoid
+// mixing RegisterGlobalResolver and per-client GRPCDialOption on connections
+// that outlive the proxy client.
 func RegisterGlobalResolver() {
 	globalRegistry.mu.Lock()
 	defer globalRegistry.mu.Unlock()
@@ -81,9 +88,8 @@ func (r *registry) remove(addrs map[string]string) {
 // fallback logic as client.translateAddr.
 func (r *registry) translate(addr string) string {
 	r.mu.RLock()
-	addrs := maps.Clone(r.addrs)
-	r.mu.RUnlock()
-	return resolveAddr(addrs, addr, true)
+	defer r.mu.RUnlock()
+	return resolveAddr(r.addrs, addr, true)
 }
 
 // globalResolverBuilder implements resolver.Builder for the global registry.

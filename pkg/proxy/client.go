@@ -238,9 +238,16 @@ func (c *client) Refresh(ctx context.Context) error {
 	c.addrs = resp.Addrs
 	c.mu.Unlock()
 
-	// Update global resolver: remove stale entries, add new ones.
-	globalRegistry.remove(old)
+	// Update global resolver: merge new entries first to avoid a zero-entry gap,
+	// then remove only keys that no longer exist in the new mapping.
 	globalRegistry.merge(resp.Addrs)
+	stale := make(map[string]string)
+	for k, v := range old {
+		if _, ok := resp.Addrs[k]; !ok {
+			stale[k] = v
+		}
+	}
+	globalRegistry.remove(stale)
 	return nil
 }
 
@@ -274,10 +281,10 @@ func (c *client) GRPCTarget(addr string) string {
 }
 
 func (c *client) translateAddr(addr string) string {
-	// Safe: Refresh replaces c.addrs with a new map (never mutates in place).
-	// Clone for defense in depth against future in-place mutations.
+	// Safe: Refresh replaces c.addrs atomically (never mutates in place),
+	// so holding the pointer after releasing the lock is safe to read.
 	c.mu.Lock()
-	addrs := maps.Clone(c.addrs)
+	addrs := c.addrs
 	c.mu.Unlock()
 	return resolveAddr(addrs, addr, !c.disableFuzzy)
 }

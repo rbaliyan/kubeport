@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"net/http"
 	"sync"
 	"time"
@@ -101,6 +101,7 @@ type Manager struct {
 	order      []string            // service names in config-defined insertion order
 	children   map[string][]string // parent service name → list of expanded forward names
 	mu         sync.RWMutex
+	reloadMu   sync.Mutex // serialises Reload to prevent interleaved remove/add sequences
 	output     io.Writer
 	cancel     context.CancelFunc
 	hooks      *hook.Dispatcher
@@ -379,6 +380,10 @@ func (m *Manager) doRemove(ctx context.Context, name string) error {
 // Reload diffs current config vs running services. Adds new, removes deleted.
 // Multi-port services are re-resolved on reload (their ports may have changed).
 func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
+	// Serialise concurrent reloads to prevent interleaved remove/add sequences.
+	m.reloadMu.Lock()
+	defer m.reloadMu.Unlock()
+
 	// Build sets of running service names and parent names
 	m.mu.RLock()
 	running := make(map[string]bool, len(m.forwards))

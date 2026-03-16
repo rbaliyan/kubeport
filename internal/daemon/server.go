@@ -140,11 +140,10 @@ func (s *Server) Status(_ context.Context, _ *kubeportv1.StatusRequest) (*kubepo
 
 // Stop implements DaemonService.Stop.
 func (s *Server) Stop(_ context.Context, _ *kubeportv1.StopRequest) (*kubeportv1.StopResponse, error) {
-	// Trigger manager shutdown in a goroutine so the response can be sent first.
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		s.mgr.Stop()
-	}()
+	// Trigger manager shutdown asynchronously so the gRPC response is sent first.
+	// mgr.Stop() only stops port-forward supervisors and does not affect the gRPC
+	// server's network layer, so the response can complete independently.
+	go s.mgr.Stop()
 
 	return &kubeportv1.StopResponse{Success: true}, nil
 }

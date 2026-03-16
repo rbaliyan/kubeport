@@ -790,9 +790,15 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Build service name set for hook filter validation.
+	svcNames := make(map[string]struct{}, len(c.Services))
+	for _, svc := range c.Services {
+		svcNames[svc.Name] = struct{}{}
+	}
+
 	// Validate hooks
 	for i, h := range c.Hooks {
-		if err := validateHook(i, h); err != nil {
+		if err := validateHook(i, h, svcNames); err != nil {
 			return err
 		}
 	}
@@ -808,7 +814,7 @@ func (c *Config) Validate() error {
 // validateHook checks structural fields of a hook config.
 // Type-specific and event-name validation is deferred to hook.BuildFromConfig
 // to avoid duplicating the hook package's validation logic.
-func validateHook(idx int, h HookConfig) error {
+func validateHook(idx int, h HookConfig, svcNames map[string]struct{}) error {
 	prefix := fmt.Sprintf("hook[%d] (%s)", idx, h.Name)
 	if h.Name == "" {
 		return fmt.Errorf("hook[%d]: name is required", idx)
@@ -823,6 +829,11 @@ func validateHook(idx int, h HookConfig) error {
 	}
 	if h.FailMode != "" && h.FailMode != "open" && h.FailMode != "closed" {
 		return fmt.Errorf("%s: invalid fail_mode %q (use \"open\" or \"closed\")", prefix, h.FailMode)
+	}
+	for _, name := range h.FilterServices {
+		if _, ok := svcNames[name]; !ok {
+			return fmt.Errorf("%s: filter_services: unknown service %q", prefix, name)
+		}
 	}
 	return nil
 }

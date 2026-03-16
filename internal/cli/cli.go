@@ -60,55 +60,25 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 		arg := args[i]
 		switch {
 		case arg == "--config" || arg == "-c":
-			if i+1 < len(args) {
-				i++
-				a.configFile = args[i]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a path argument\n", arg)
-				os.Exit(1)
-			}
+			a.configFile = parseNextArg(args, &i, arg)
 		case strings.HasPrefix(arg, "--config="):
 			a.configFile = strings.TrimPrefix(arg, "--config=")
 		case arg == "--context" || arg == "--kube-context":
-			if i+1 < len(args) {
-				i++
-				a.cliContext = args[i]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", arg)
-				os.Exit(1)
-			}
+			a.cliContext = parseNextArg(args, &i, arg)
 		case strings.HasPrefix(arg, "--context="):
 			a.cliContext = strings.TrimPrefix(arg, "--context=")
 		case strings.HasPrefix(arg, "--kube-context="):
 			a.cliContext = strings.TrimPrefix(arg, "--kube-context=")
 		case arg == "--namespace" || arg == "-n":
-			if i+1 < len(args) {
-				i++
-				a.cliNamespace = args[i]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", arg)
-				os.Exit(1)
-			}
+			a.cliNamespace = parseNextArg(args, &i, arg)
 		case strings.HasPrefix(arg, "--namespace="):
 			a.cliNamespace = strings.TrimPrefix(arg, "--namespace=")
 		case arg == "--svc":
-			if i+1 < len(args) {
-				i++
-				a.cliServices = append(a.cliServices, args[i])
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a service spec\n", arg)
-				os.Exit(1)
-			}
+			a.cliServices = append(a.cliServices, parseNextArg(args, &i, arg))
 		case strings.HasPrefix(arg, "--svc="):
 			a.cliServices = append(a.cliServices, strings.TrimPrefix(arg, "--svc="))
 		case arg == "--disable-svc":
-			if i+1 < len(args) {
-				i++
-				a.disableServices = append(a.disableServices, args[i])
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a service name\n", arg)
-				os.Exit(1)
-			}
+			a.disableServices = append(a.disableServices, parseNextArg(args, &i, arg))
 		case strings.HasPrefix(arg, "--disable-svc="):
 			a.disableServices = append(a.disableServices, strings.TrimPrefix(arg, "--disable-svc="))
 		case arg == "--no-config":
@@ -120,19 +90,14 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 		case arg == "--wait":
 			a.startWait = true
 		case arg == "--timeout":
-			if i+1 < len(args) {
-				i++
-				d, err := time.ParseDuration(args[i])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: invalid --timeout value %q: %v\n", args[i], err)
-					os.Exit(1)
-				}
-				a.startTimeout = d
-				a.startWait = true // --timeout implies --wait
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a duration (e.g., 30s)\n", arg)
+			val := parseNextArg(args, &i, arg)
+			d, err := time.ParseDuration(val)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid --timeout value %q: %v\n", val, err)
 				os.Exit(1)
 			}
+			a.startTimeout = d
+			a.startWait = true // --timeout implies --wait
 		case strings.HasPrefix(arg, "--timeout="):
 			d, err := time.ParseDuration(strings.TrimPrefix(arg, "--timeout="))
 			if err != nil {
@@ -142,38 +107,21 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 			a.startTimeout = d
 			a.startWait = true
 		case arg == "--host":
-			if i+1 < len(args) {
-				i++
-				a.remoteHost = args[i]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a host:port value\n", arg)
-				os.Exit(1)
-			}
+			a.remoteHost = parseNextArg(args, &i, arg)
 		case strings.HasPrefix(arg, "--host="):
 			a.remoteHost = strings.TrimPrefix(arg, "--host=")
 		case arg == "--api-key":
-			if i+1 < len(args) {
-				i++
-				a.apiKey = args[i]
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", arg)
-				os.Exit(1)
-			}
+			a.apiKey = parseNextArg(args, &i, arg)
 		case strings.HasPrefix(arg, "--api-key="):
 			a.apiKey = strings.TrimPrefix(arg, "--api-key=")
 		case arg == "--time":
-			if i+1 < len(args) {
-				i++
-				d, err := time.ParseDuration(args[i])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: invalid --time value %q: %v\n", args[i], err)
-					os.Exit(1)
-				}
-				a.watchInterval = d
-			} else {
-				fmt.Fprintf(os.Stderr, "Error: %s requires a duration (e.g., 2s)\n", arg)
+			val := parseNextArg(args, &i, arg)
+			d, err := time.ParseDuration(val)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: invalid --time value %q: %v\n", val, err)
 				os.Exit(1)
 			}
+			a.watchInterval = d
 		case strings.HasPrefix(arg, "--time="):
 			d, err := time.ParseDuration(strings.TrimPrefix(arg, "--time="))
 			if err != nil {
@@ -493,6 +441,18 @@ func parseSvcFlag(s string) (config.ServiceConfig, error) {
 func isNumeric(s string) bool {
 	_, err := strconv.Atoi(s)
 	return err == nil
+}
+
+// parseNextArg returns the value for a flag that requires an argument.
+// It increments *i and returns the next element of args.
+// If no argument follows the flag, it prints an error and exits.
+func parseNextArg(args []string, i *int, flag string) string {
+	if *i+1 >= len(args) {
+		fmt.Fprintf(os.Stderr, "Error: %s requires a value\n", flag)
+		os.Exit(1)
+	}
+	*i++
+	return args[*i]
 }
 
 // Process management helpers

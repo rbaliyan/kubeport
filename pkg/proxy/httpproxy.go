@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -183,7 +184,8 @@ func (s *HTTPProxyServer) handleConnect(ctx context.Context, conn net.Conn, req 
 	relay(conn, target)
 }
 
-// handleHTTP forwards a plain HTTP request.
+// handleHTTP forwards plain HTTP requests, stripping proxy headers from each
+// request in the keep-alive stream so credentials are never leaked upstream.
 func (s *HTTPProxyServer) handleHTTP(ctx context.Context, conn net.Conn, br *bufio.Reader, req *http.Request) {
 	addr := req.Host
 	if !strings.Contains(addr, ":") {
@@ -205,19 +207,48 @@ func (s *HTTPProxyServer) handleHTTP(ctx context.Context, conn net.Conn, br *buf
 	}
 	defer target.Close() //nolint:errcheck
 
-	// Remove proxy-specific headers before forwarding.
-	req.Header.Del("Proxy-Authorization")
-	req.Header.Del("Proxy-Connection")
-	req.RequestURI = req.URL.RequestURI()
-
-	if err := req.Write(target); err != nil {
-		s.logger.Debug("http proxy write request failed", slog.String("error", err.Error()))
-		return
-	}
-
-	// Clear the handshake deadline before relaying data.
+	// Clear the handshake deadline before forwarding data.
 	_ = conn.SetDeadline(time.Time{})
 
-	// Relay remaining data. Wrap conn so reads drain the bufio buffer first.
-	relay(&bufferedConn{Conn: conn, br: br}, target)
+	tbr := bufio.NewReader(target)
+	for {
+		// Strip proxy-specific headers from every request in the stream.
+		req.Header.Del("Proxy-Authorization")
+		req.Header.Del("Proxy-Connection")
+		req.RequestURI = req.URL.RequestURI()
+
+		if err := req.Write(target); err != nil {
+			s.logger.Debug("http proxy write request failed", slog.String("error", err.Error()))
+			return
+		}
+
+		resp, err := http.ReadResponse(tbr, req)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				s.logger.Debug("http proxy read response failed", slog.String("error", err.Error()))
+			}
+			return
+		}
+
+		keepAlive := !req.Close && !resp.Close
+		if err := resp.Write(conn); err != nil {
+			resp.Body.Close() //nolint:errcheck
+			s.logger.Debug("http proxy write response failed", slog.String("error", err.Error()))
+			return
+		}
+		resp.Body.Close() //nolint:errcheck
+
+		if !keepAlive {
+			return
+		}
+
+		// Read the next request in the keep-alive stream.
+		req, err = http.ReadRequest(br)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				s.logger.Debug("http proxy read next request failed", slog.String("error", err.Error()))
+			}
+			return
+		}
+	}
 }
