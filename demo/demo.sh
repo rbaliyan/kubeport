@@ -136,14 +136,28 @@ record_demo() {
     comment "# Start the daemon"
     run_cmd "kubeport start" 4
 
-    comment "# Check status of all forwards"
+    comment "# Dynamic ports assigned — Cache and Platform ports chosen by the OS"
     run_cmd "kubeport status" 4
 
     comment "# The web API is forwarded - let's verify"
-    run_cmd "curl -s localhost:8080 | head -4" 3
+    run_cmd "curl -s localhost:8080 | head -4" 2
 
-    comment "# Add a service dynamically"
-    run_cmd "kubeport add --name \"Extra\" --service web-api --remote-port 80 --local-port 9090 -n demo" 3
+    comment "# Generate some traffic..."
+    run_cmd "for i in \$(seq 1 10); do curl -s localhost:8080 > /dev/null; done" 3
+
+    comment "# Status now shows bytes transferred and throughput"
+    run_cmd "kubeport status" 4
+
+    comment "# Reach services by Kubernetes FQDN via the SOCKS5 proxy"
+    run_cmd "kubeport socks &>/dev/null &" 2
+    run_cmd "curl -s --proxy socks5h://localhost:1080 http://web-api.demo.svc.cluster.local | head -4" 3
+    run_cmd "kill %1 2>/dev/null; wait %1 2>/dev/null; true" 1
+
+    comment "# All address mappings kubeport knows about"
+    run_cmd "kubeport mappings" 3
+
+    comment "# Add a service dynamically (local port assigned automatically)"
+    run_cmd "kubeport add --name \"Extra\" --service web-api --remote-port 80 -n demo" 3
 
     run_cmd "kubeport status" 3
 

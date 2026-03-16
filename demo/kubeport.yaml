@@ -9,13 +9,14 @@ services:
 
   - name: Cache
     service: cache
-    local_port: 6379
     remote_port: 6379
 
   - name: Platform
     service: platform
     ports: all
-    local_port_offset: 10000
+
+socks:
+  listen: 127.0.0.1:1080
 
 supervisor:
   health_check_interval: 10s
