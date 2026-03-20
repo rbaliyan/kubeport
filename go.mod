@@ -7,7 +7,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/rbaliyan/go-version v1.2.5
 	golang.org/x/term v0.41.0
-	google.golang.org/grpc v1.79.2
+	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.35.2
