@@ -216,8 +216,8 @@ kubeport restart            # Stop + start
 kubeport logs               # Follow daemon logs
 kubeport reload             # Sync config changes to running daemon
 kubeport mappings           # Show K8s DNS → localhost address mappings
-kubeport socks              # Start SOCKS5 proxy for address translation
-kubeport http-proxy         # Start HTTP/HTTPS proxy for address translation
+kubeport socks              # Start SOCKS5 proxy for address translation (default: 127.0.0.1:1080)
+kubeport http-proxy         # Start HTTP/HTTPS proxy for address translation (default: 127.0.0.1:3128)
 ```
 
 ### Config Management
@@ -244,6 +244,7 @@ kubeport config path        # Print resolved config file path
 | Dynamic add/remove | | | ✓ |
 | Background daemon | | ✓ | ✓ |
 | Zero cluster footprint | ✓ | | ✓ |
+| SOCKS5 / HTTP proxy | | | ✓ |
 
 ## Install
 
@@ -267,6 +268,7 @@ Pre-built binaries for Linux and macOS (amd64/arm64) are available on the [relea
 | [Installation](docs/installation.md) | All installation methods, requirements, and shell completions |
 | [Configuration](docs/configuration.md) | Config file format, service definitions, supervisor tuning |
 | [CLI Reference](docs/cli.md) | Every command and flag |
+| [Proxy Servers](docs/proxy.md) | SOCKS5 and HTTP proxy for Kubernetes DNS translation |
 | [Lifecycle Hooks](docs/hooks.md) | Shell, exec, and webhook hooks with real-world examples |
 | [Architecture](docs/architecture.md) | How kubeport works under the hood |
 | [Advanced Usage](docs/advanced-usage.md) | CI/CD integration, multiple clusters, remote control |
