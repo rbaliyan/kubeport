@@ -112,6 +112,58 @@ kubeport config remove <name>     # Remove a service
 kubeport config path              # Print config file path
 ```
 
+### `kubeport mappings`
+
+Show the Kubernetes DNS to localhost address mapping table. Requires a running daemon.
+
+```bash
+kubeport mappings                   # Human-readable grouped by service
+kubeport mappings --json            # JSON output
+kubeport mappings --yaml            # YAML output
+kubeport mappings --cluster-domain custom.local  # Custom cluster domain
+```
+
+| Flag | Description |
+|------|-------------|
+| `--json` | JSON output (global flag) |
+| `--yaml` | YAML output |
+| `--cluster-domain` | Kubernetes cluster domain (default: `cluster.local`) |
+
+### `kubeport socks`
+
+Start a SOCKS5 proxy that translates Kubernetes service DNS names to localhost ports. Requires a running daemon. See [Proxy Servers](proxy.md) for full details.
+
+```bash
+kubeport socks                                          # Listen on 127.0.0.1:1080
+kubeport socks --listen 127.0.0.1:9050                  # Custom listen address
+kubeport socks --username admin --password secret        # With authentication
+kubeport socks --cluster-domain custom.local             # Custom cluster domain
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--listen` | `-l` | `127.0.0.1:1080` | Address to listen on |
+| `--username` | `-u` | _(none)_ | Authentication username |
+| `--password` | `-p` | _(none)_ | Authentication password |
+| `--cluster-domain` | | `cluster.local` | Kubernetes cluster domain |
+
+### `kubeport http-proxy`
+
+Start an HTTP/HTTPS proxy that translates Kubernetes service DNS names to localhost ports. Supports both plain HTTP forwarding and HTTPS CONNECT tunneling. Requires a running daemon. See [Proxy Servers](proxy.md) for full details.
+
+```bash
+kubeport http-proxy                                     # Listen on 127.0.0.1:3128
+kubeport http-proxy --listen 0.0.0.0:8888               # Custom listen address
+kubeport http-proxy --username admin --password secret   # With basic auth
+```
+
+| Flag | Short | Default | Description |
+|------|-------|---------|-------------|
+| `--listen` | `-l` | `127.0.0.1:3128` | Address to listen on |
+| `--username` | `-u` | _(none)_ | Authentication username |
+| `--password` | `-p` | _(none)_ | Authentication password |
+| `--cluster-domain` | | `cluster.local` | Kubernetes cluster domain |
+
 ### `kubeport version`
 
 Print the version.

@@ -38,6 +38,8 @@ Or copy one of the examples in the repository:
 | `services` | list | Services to port-forward (see below) |
 | `supervisor` | object | Supervisor tuning (see below) |
 | `hooks` | list | Lifecycle hooks (see [Hooks](hooks.md)) |
+| `socks` | object | SOCKS5 proxy settings (see [Proxy Servers](proxy.md)) |
+| `http_proxy` | object | HTTP proxy settings (see [Proxy Servers](proxy.md)) |
 
 ### Service Fields
 
@@ -80,6 +82,17 @@ The `supervisor` section tunes restart and health-check behavior. All fields are
 | `ready_timeout` | `15s` | Timeout waiting for a forward to become ready |
 | `backoff_initial` | `1s` | Initial delay between restarts |
 | `backoff_max` | `30s` | Maximum delay between restarts |
+
+### Proxy Server Fields
+
+The `socks` and `http_proxy` sections configure the built-in proxy servers. See [Proxy Servers](proxy.md) for usage details.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `listen` | string | `127.0.0.1:1080` (SOCKS) / `127.0.0.1:3128` (HTTP) | Listen address |
+| `username` | string | _(none)_ | Authentication username |
+| `password` | string | _(none)_ | Authentication password |
+| `fuzzy_match` | bool | `true` | Enable headless service FQDN resolution |
 
 ## YAML Example
 
@@ -140,6 +153,16 @@ supervisor:
   max_restarts: 10
   health_check_interval: 10s
   health_check_threshold: 3
+
+socks:
+  listen: 127.0.0.1:1080
+  # username: admin
+  # password: secret
+
+http_proxy:
+  listen: 127.0.0.1:3128
+  # username: admin
+  # password: secret
 ```
 
 ## TOML Example
@@ -178,6 +201,16 @@ ports = "all"
 name = "Backend"
 service = "backend-svc"
 ports = ["http", "grpc"]
+
+[socks]
+listen = "127.0.0.1:1080"
+# username = "admin"
+# password = "secret"
+
+[http_proxy]
+listen = "127.0.0.1:3128"
+# username = "admin"
+# password = "secret"
 ```
 
 ## Environment Variables
