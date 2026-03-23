@@ -246,19 +246,22 @@ func (x *PortSpec) GetLocalPortOffset() int32 {
 }
 
 type ForwardStatusProto struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Service       *ServiceInfo           `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
-	State         ForwardState           `protobuf:"varint,2,opt,name=state,proto3,enum=kubeport.v1.ForwardState" json:"state,omitempty"`
-	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
-	Restarts      int32                  `protobuf:"varint,4,opt,name=restarts,proto3" json:"restarts,omitempty"`
-	LastStart     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_start,json=lastStart,proto3" json:"last_start,omitempty"`
-	Connected     bool                   `protobuf:"varint,6,opt,name=connected,proto3" json:"connected,omitempty"`
-	ActualPort    int32                  `protobuf:"varint,7,opt,name=actual_port,json=actualPort,proto3" json:"actual_port,omitempty"`
-	NextRetry     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=next_retry,json=nextRetry,proto3" json:"next_retry,omitempty"`
-	BytesIn       int64                  `protobuf:"varint,9,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`     // Total bytes received from the remote side
-	BytesOut      int64                  `protobuf:"varint,10,opt,name=bytes_out,json=bytesOut,proto3" json:"bytes_out,omitempty"` // Total bytes sent to the remote side
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Service            *ServiceInfo           `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
+	State              ForwardState           `protobuf:"varint,2,opt,name=state,proto3,enum=kubeport.v1.ForwardState" json:"state,omitempty"`
+	Error              string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	Restarts           int32                  `protobuf:"varint,4,opt,name=restarts,proto3" json:"restarts,omitempty"`
+	LastStart          *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_start,json=lastStart,proto3" json:"last_start,omitempty"`
+	Connected          bool                   `protobuf:"varint,6,opt,name=connected,proto3" json:"connected,omitempty"`
+	ActualPort         int32                  `protobuf:"varint,7,opt,name=actual_port,json=actualPort,proto3" json:"actual_port,omitempty"`
+	NextRetry          *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=next_retry,json=nextRetry,proto3" json:"next_retry,omitempty"`
+	BytesIn            int64                  `protobuf:"varint,9,opt,name=bytes_in,json=bytesIn,proto3" json:"bytes_in,omitempty"`                                     // Total bytes received from the remote side
+	BytesOut           int64                  `protobuf:"varint,10,opt,name=bytes_out,json=bytesOut,proto3" json:"bytes_out,omitempty"`                                 // Total bytes sent to the remote side
+	EffectiveLatencyMs int64                  `protobuf:"varint,11,opt,name=effective_latency_ms,json=effectiveLatencyMs,proto3" json:"effective_latency_ms,omitempty"` // Injected latency in milliseconds (0 = none)
+	EffectiveJitterMs  int64                  `protobuf:"varint,12,opt,name=effective_jitter_ms,json=effectiveJitterMs,proto3" json:"effective_jitter_ms,omitempty"`    // Jitter range in milliseconds (0 = none)
+	EffectiveBandwidth int64                  `protobuf:"varint,13,opt,name=effective_bandwidth,json=effectiveBandwidth,proto3" json:"effective_bandwidth,omitempty"`   // Bandwidth cap in bytes/sec (0 = none)
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *ForwardStatusProto) Reset() {
@@ -357,6 +360,27 @@ func (x *ForwardStatusProto) GetBytesIn() int64 {
 func (x *ForwardStatusProto) GetBytesOut() int64 {
 	if x != nil {
 		return x.BytesOut
+	}
+	return 0
+}
+
+func (x *ForwardStatusProto) GetEffectiveLatencyMs() int64 {
+	if x != nil {
+		return x.EffectiveLatencyMs
+	}
+	return 0
+}
+
+func (x *ForwardStatusProto) GetEffectiveJitterMs() int64 {
+	if x != nil {
+		return x.EffectiveJitterMs
+	}
+	return 0
+}
+
+func (x *ForwardStatusProto) GetEffectiveBandwidth() int64 {
+	if x != nil {
+		return x.EffectiveBandwidth
 	}
 	return 0
 }
@@ -1203,7 +1227,7 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"port_names\x18\x02 \x03(\tR\tportNames\x12#\n" +
 	"\rexclude_ports\x18\x03 \x03(\tR\fexcludePorts\x12*\n" +
-	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\x98\x03\n" +
+	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xab\x04\n" +
 	"\x12ForwardStatusProto\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.kubeport.v1.ForwardStateR\x05state\x12\x14\n" +
@@ -1218,7 +1242,10 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"next_retry\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tnextRetry\x12\x19\n" +
 	"\bbytes_in\x18\t \x01(\x03R\abytesIn\x12\x1b\n" +
 	"\tbytes_out\x18\n" +
-	" \x01(\x03R\bbytesOut\"\x0f\n" +
+	" \x01(\x03R\bbytesOut\x120\n" +
+	"\x14effective_latency_ms\x18\v \x01(\x03R\x12effectiveLatencyMs\x12.\n" +
+	"\x13effective_jitter_ms\x18\f \x01(\x03R\x11effectiveJitterMs\x12/\n" +
+	"\x13effective_bandwidth\x18\r \x01(\x03R\x12effectiveBandwidth\"\x0f\n" +
 	"\rStatusRequest\"\x9f\x01\n" +
 	"\x0eStatusResponse\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12\x1c\n" +

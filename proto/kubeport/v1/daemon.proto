@@ -51,6 +51,9 @@ message ForwardStatusProto {
   google.protobuf.Timestamp next_retry = 8;
   int64 bytes_in = 9;   // Total bytes received from the remote side
   int64 bytes_out = 10;  // Total bytes sent to the remote side
+  int64 effective_latency_ms = 11;  // Injected latency in milliseconds (0 = none)
+  int64 effective_jitter_ms = 12;   // Jitter range in milliseconds (0 = none)
+  int64 effective_bandwidth = 13;   // Bandwidth cap in bytes/sec (0 = none)
 }
 
 message StatusRequest {}

@@ -27,19 +27,22 @@ type statusOutput struct {
 }
 
 type forwardStatusOutput struct {
-	Name       string `json:"name"`
-	State      string `json:"state"`
-	LocalPort  int    `json:"local_port"`
-	RemotePort int    `json:"remote_port"`
-	Target     string `json:"target,omitempty"`
-	Namespace  string `json:"namespace,omitempty"`
-	ParentName string `json:"parent_name,omitempty"`
-	PortName   string `json:"port_name,omitempty"`
-	Restarts   int    `json:"restarts,omitempty"`
-	Error      string `json:"error,omitempty"`
-	NextRetry  string `json:"next_retry,omitempty"`
-	BytesIn    int64  `json:"bytes_in"`
-	BytesOut   int64  `json:"bytes_out"`
+	Name               string `json:"name"`
+	State              string `json:"state"`
+	LocalPort          int    `json:"local_port"`
+	RemotePort         int    `json:"remote_port"`
+	Target             string `json:"target,omitempty"`
+	Namespace          string `json:"namespace,omitempty"`
+	ParentName         string `json:"parent_name,omitempty"`
+	PortName           string `json:"port_name,omitempty"`
+	Restarts           int    `json:"restarts,omitempty"`
+	Error              string `json:"error,omitempty"`
+	NextRetry          string `json:"next_retry,omitempty"`
+	BytesIn            int64  `json:"bytes_in"`
+	BytesOut           int64  `json:"bytes_out"`
+	EffectiveLatencyMs int64  `json:"effective_latency_ms,omitempty"`
+	EffectiveJitterMs  int64  `json:"effective_jitter_ms,omitempty"`
+	EffectiveBandwidth int64  `json:"effective_bandwidth,omitempty"`
 }
 
 func (a *app) cmdStatus() {
@@ -194,18 +197,21 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 		target = svc.GetPod()
 	}
 	out := forwardStatusOutput{
-		Name:       svc.GetName(),
-		State:      strings.TrimPrefix(strings.ToLower(fw.State.String()), "forward_state_"),
-		LocalPort:  int(fw.ActualPort),
-		RemotePort: int(svc.GetRemotePort()),
-		Target:     target,
-		Namespace:  svc.GetNamespace(),
-		ParentName: svc.GetParentName(),
-		PortName:   svc.GetPortName(),
-		Restarts:   int(fw.Restarts),
-		Error:      fw.Error,
-		BytesIn:    fw.BytesIn,
-		BytesOut:   fw.BytesOut,
+		Name:               svc.GetName(),
+		State:              strings.TrimPrefix(strings.ToLower(fw.State.String()), "forward_state_"),
+		LocalPort:          int(fw.ActualPort),
+		RemotePort:         int(svc.GetRemotePort()),
+		Target:             target,
+		Namespace:          svc.GetNamespace(),
+		ParentName:         svc.GetParentName(),
+		PortName:           svc.GetPortName(),
+		Restarts:           int(fw.Restarts),
+		Error:              fw.Error,
+		BytesIn:            fw.BytesIn,
+		BytesOut:           fw.BytesOut,
+		EffectiveLatencyMs: fw.EffectiveLatencyMs,
+		EffectiveJitterMs:  fw.EffectiveJitterMs,
+		EffectiveBandwidth: fw.EffectiveBandwidth,
 	}
 	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
 		out.NextRetry = fw.NextRetry.AsTime().Format(time.RFC3339)
@@ -237,6 +243,21 @@ func (a *app) legacyServices() []config.ServiceConfig {
 func printForwardStatus(fw *kubeportv1.ForwardStatusProto) {
 	writeForwardStatus(os.Stdout, fw)
 	_, _ = fmt.Fprintln(os.Stdout)
+}
+
+// formatBandwidth formats a bytes-per-second value into a human-readable bandwidth string.
+func formatBandwidth(bytesPerSec int64) string {
+	bitsPerSec := float64(bytesPerSec) * 8
+	switch {
+	case bitsPerSec >= 1_000_000_000:
+		return fmt.Sprintf("%.1f Gbps", bitsPerSec/1_000_000_000)
+	case bitsPerSec >= 1_000_000:
+		return fmt.Sprintf("%.1f Mbps", bitsPerSec/1_000_000)
+	case bitsPerSec >= 1_000:
+		return fmt.Sprintf("%.1f Kbps", bitsPerSec/1_000)
+	default:
+		return fmt.Sprintf("%d bps", int64(bitsPerSec))
+	}
 }
 
 // formatBytes formats a byte count into a human-readable string.

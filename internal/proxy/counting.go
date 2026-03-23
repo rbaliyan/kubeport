@@ -1,11 +1,14 @@
 package proxy
 
 import (
+	"context"
 	"net/http"
 	"sync/atomic"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/httpstream"
+
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 // byteCounter tracks cumulative bytes and stream health across all streams.
@@ -15,10 +18,13 @@ type byteCounter struct {
 	streamErrors atomic.Int64 // stream creation failures (per-connection, reset on reconnect)
 }
 
-// countingDialer wraps an httpstream.Dialer to count bytes on all streams.
+// countingDialer wraps an httpstream.Dialer to count bytes on all streams
+// and optionally apply network simulation (latency/jitter/bandwidth).
 type countingDialer struct {
-	dialer  httpstream.Dialer
-	counter *byteCounter
+	dialer     httpstream.Dialer
+	counter    *byteCounter
+	networkCfg config.ParsedNetworkConfig
+	ctx        context.Context
 }
 
 func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, string, error) {
@@ -28,14 +34,25 @@ func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, strin
 	}
 	// Reset per-connection stream error count on fresh connection
 	d.counter.streamErrors.Store(0)
-	return &countingConnection{conn: conn, counter: d.counter}, proto, nil
+
+	cc := &countingConnection{conn: conn, counter: d.counter, ctx: d.ctx}
+	if d.networkCfg.IsEnabled() {
+		cc.networkCfg = d.networkCfg
+		if d.networkCfg.BytesPerSec > 0 {
+			cc.limiter = newRateLimiter(d.networkCfg.BytesPerSec)
+		}
+	}
+	return cc, proto, nil
 }
 
 // countingConnection wraps an httpstream.Connection to count bytes on created streams
 // and detect SPDY connection degradation via stream creation failures.
 type countingConnection struct {
-	conn    httpstream.Connection
-	counter *byteCounter
+	conn       httpstream.Connection
+	counter    *byteCounter
+	networkCfg config.ParsedNetworkConfig
+	limiter    *rateLimiter // shared across all streams; nil when no bandwidth cap
+	ctx        context.Context
 }
 
 func (c *countingConnection) CreateStream(headers http.Header) (httpstream.Stream, error) {
@@ -47,7 +64,19 @@ func (c *countingConnection) CreateStream(headers http.Header) (httpstream.Strea
 		c.counter.streamErrors.Add(1)
 		return nil, err
 	}
-	return &countingStream{stream: stream, counter: c.counter}, nil
+
+	// Wrap with throttling if network simulation is configured.
+	inner := httpstream.Stream(stream)
+	if c.networkCfg.IsEnabled() {
+		inner = &throttledStream{
+			stream:  stream,
+			ctx:     c.ctx,
+			latency: c.networkCfg.Latency,
+			jitter:  c.networkCfg.Jitter,
+			limiter: c.limiter,
+		}
+	}
+	return &countingStream{stream: inner, counter: c.counter}, nil
 }
 
 func (c *countingConnection) Close() error                        { return c.conn.Close() }
