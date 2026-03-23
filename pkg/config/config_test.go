@@ -1070,3 +1070,228 @@ func TestValidate_MixedLegacyAndMultiPort(t *testing.T) {
 		t.Fatalf("unexpected error for mixed config: %v", err)
 	}
 }
+
+// --- Network Config Tests ---
+
+func TestParseBandwidth(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    int64
+		wantErr bool
+	}{
+		{"5mbps", 5 * 1_000_000 / 8, false},
+		{"500kbps", 500 * 1_000 / 8, false},
+		{"1gbps", 1_000_000_000 / 8, false},
+		{"10Mbps", 10 * 1_000_000 / 8, false},
+		{"10mbytes", 10 * 1_000_000, false},
+		{"500kbytes", 500 * 1_000, false},
+		{"1gbytes", 1_000_000_000, false},
+		{"", 0, true},
+		{"abc", 0, true},
+		{"-5mbps", 0, true},
+		{"0mbps", 0, true},
+		{"5xyz", 0, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseBandwidth(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseBandwidth(%q) error = %v, wantErr %v", tt.input, err, tt.wantErr)
+			}
+			if !tt.wantErr && got != tt.want {
+				t.Fatalf("parseBandwidth(%q) = %d, want %d", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNetworkConfig_Parse(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     NetworkConfig
+		wantErr bool
+	}{
+		{"empty", NetworkConfig{}, false},
+		{"latency only", NetworkConfig{Latency: "50ms"}, false},
+		{"latency and jitter", NetworkConfig{Latency: "100ms", Jitter: "20ms"}, false},
+		{"bandwidth only", NetworkConfig{Bandwidth: "5mbps"}, false},
+		{"all fields", NetworkConfig{Latency: "50ms", Jitter: "10ms", Bandwidth: "1mbps"}, false},
+		{"jitter without latency", NetworkConfig{Jitter: "10ms"}, true},
+		{"jitter exceeds latency", NetworkConfig{Latency: "10ms", Jitter: "20ms"}, true},
+		{"negative latency", NetworkConfig{Latency: "-5ms"}, true},
+		{"negative jitter", NetworkConfig{Latency: "50ms", Jitter: "-5ms"}, true},
+		{"invalid latency", NetworkConfig{Latency: "abc"}, true},
+		{"invalid bandwidth", NetworkConfig{Bandwidth: "abc"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.cfg.Parse()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Parse() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestResolveNetwork(t *testing.T) {
+	global := NetworkConfig{Latency: "50ms", Jitter: "10ms", Bandwidth: "5mbps"}
+
+	t.Run("global only", func(t *testing.T) {
+		merged := ResolveNetwork(global, NetworkConfig{})
+		if merged != global {
+			t.Fatalf("expected global, got %+v", merged)
+		}
+	})
+
+	t.Run("per-service overrides all", func(t *testing.T) {
+		perSvc := NetworkConfig{Latency: "100ms", Jitter: "20ms", Bandwidth: "1mbps"}
+		merged := ResolveNetwork(global, perSvc)
+		if merged != perSvc {
+			t.Fatalf("expected per-service, got %+v", merged)
+		}
+	})
+
+	t.Run("partial override", func(t *testing.T) {
+		perSvc := NetworkConfig{Bandwidth: "1mbps"}
+		merged := ResolveNetwork(global, perSvc)
+		if merged.Latency != "50ms" || merged.Jitter != "10ms" || merged.Bandwidth != "1mbps" {
+			t.Fatalf("unexpected merge result: %+v", merged)
+		}
+	})
+
+	t.Run("both empty", func(t *testing.T) {
+		merged := ResolveNetwork(NetworkConfig{}, NetworkConfig{})
+		if merged.IsSet() {
+			t.Fatal("expected empty")
+		}
+	})
+}
+
+func TestNetworkConfig_YAMLRoundTrip(t *testing.T) {
+	cfg := &Config{
+		Context:   "test",
+		Namespace: "default",
+		Network:   NetworkConfig{Latency: "50ms", Jitter: "10ms", Bandwidth: "5mbps"},
+		Services: []ServiceConfig{
+			{
+				Name:       "api",
+				Service:    "api-svc",
+				LocalPort:  8080,
+				RemotePort: 80,
+				Network:    NetworkConfig{Latency: "100ms", Bandwidth: "1mbps"},
+			},
+		},
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var loaded Config
+	if err := yaml.Unmarshal(data, &loaded); err != nil {
+		t.Fatal(err)
+	}
+
+	if loaded.Network.Latency != "50ms" || loaded.Network.Bandwidth != "5mbps" {
+		t.Fatalf("global network not round-tripped: %+v", loaded.Network)
+	}
+	if loaded.Services[0].Network.Latency != "100ms" || loaded.Services[0].Network.Bandwidth != "1mbps" {
+		t.Fatalf("service network not round-tripped: %+v", loaded.Services[0].Network)
+	}
+}
+
+func TestValidate_NetworkConfig(t *testing.T) {
+	t.Run("valid global network", func(t *testing.T) {
+		cfg := &Config{
+			Network: NetworkConfig{Latency: "50ms", Bandwidth: "5mbps"},
+			Services: []ServiceConfig{
+				{Name: "api", Service: "api-svc", LocalPort: 8080, RemotePort: 80},
+			},
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("invalid global network", func(t *testing.T) {
+		cfg := &Config{
+			Network: NetworkConfig{Bandwidth: "abc"},
+			Services: []ServiceConfig{
+				{Name: "api", Service: "api-svc", LocalPort: 8080, RemotePort: 80},
+			},
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected error for invalid global network")
+		}
+	})
+
+	t.Run("invalid per-service network", func(t *testing.T) {
+		cfg := &Config{
+			Services: []ServiceConfig{
+				{Name: "api", Service: "api-svc", LocalPort: 8080, RemotePort: 80,
+					Network: NetworkConfig{Jitter: "10ms"}},
+			},
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected error for jitter without latency")
+		}
+	})
+}
+
+func TestNetworkConfig_TOMLRoundTrip(t *testing.T) {
+	cfg := &Config{
+		Context:   "test",
+		Namespace: "default",
+		Network:   NetworkConfig{Latency: "50ms", Jitter: "10ms", Bandwidth: "5mbps"},
+		Services: []ServiceConfig{
+			{
+				Name:       "api",
+				Service:    "api-svc",
+				LocalPort:  8080,
+				RemotePort: 80,
+				Network:    NetworkConfig{Latency: "100ms", Bandwidth: "1mbps"},
+			},
+		},
+		format: FormatTOML,
+	}
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.toml")
+	if err := cfg.SaveTo(path, FormatTOML); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if loaded.Network.Latency != "50ms" || loaded.Network.Jitter != "10ms" || loaded.Network.Bandwidth != "5mbps" {
+		t.Fatalf("global network not round-tripped: %+v", loaded.Network)
+	}
+	if loaded.Services[0].Network.Latency != "100ms" || loaded.Services[0].Network.Bandwidth != "1mbps" {
+		t.Fatalf("service network not round-tripped: %+v", loaded.Services[0].Network)
+	}
+}
+
+func TestParsedNetworkConfig_IsEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  ParsedNetworkConfig
+		want bool
+	}{
+		{"zero", ParsedNetworkConfig{}, false},
+		{"latency only", ParsedNetworkConfig{Latency: 50}, true},
+		{"jitter only", ParsedNetworkConfig{Jitter: 10}, true},
+		{"bandwidth only", ParsedNetworkConfig{BytesPerSec: 1000}, true},
+		{"all", ParsedNetworkConfig{Latency: 50, Jitter: 10, BytesPerSec: 1000}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.IsEnabled(); got != tt.want {
+				t.Fatalf("IsEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

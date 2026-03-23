@@ -274,6 +274,21 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 		_, _ = fmt.Fprint(w, ")")
 	}
 
+	if fw.EffectiveLatencyMs > 0 || fw.EffectiveBandwidth > 0 {
+		_, _ = fmt.Fprintf(w, " [net:")
+		if fw.EffectiveLatencyMs > 0 {
+			if fw.EffectiveJitterMs > 0 {
+				_, _ = fmt.Fprintf(w, " %dms+/-%dms", fw.EffectiveLatencyMs, fw.EffectiveJitterMs)
+			} else {
+				_, _ = fmt.Fprintf(w, " %dms", fw.EffectiveLatencyMs)
+			}
+		}
+		if fw.EffectiveBandwidth > 0 {
+			_, _ = fmt.Fprintf(w, " %s", formatBandwidth(fw.EffectiveBandwidth))
+		}
+		_, _ = fmt.Fprint(w, "]")
+	}
+
 	if fw.Error != "" {
 		_, _ = fmt.Fprintf(w, "\n         %sERROR: %s%s", colorRed, fw.Error, colorReset)
 	}

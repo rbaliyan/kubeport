@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -181,17 +182,18 @@ func parsePortsFromRaw(data any) (PortsConfig, error) {
 
 // ServiceConfig defines a Kubernetes service or pod to port-forward.
 type ServiceConfig struct {
-	Name            string      `yaml:"name" toml:"name"`
-	Service         string      `yaml:"service,omitempty" toml:"service,omitempty"`
-	Pod             string      `yaml:"pod,omitempty" toml:"pod,omitempty"`
-	LocalPort       int         `yaml:"local_port,omitempty" toml:"local_port,omitempty"`
-	RemotePort      int         `yaml:"remote_port,omitempty" toml:"remote_port,omitempty"`
-	Namespace       string      `yaml:"namespace,omitempty" toml:"namespace,omitempty"`
-	Ports           PortsConfig `yaml:"ports,omitempty" toml:"ports,omitempty"`
-	ExcludePorts    []string    `yaml:"exclude_ports,omitempty" toml:"exclude_ports,omitempty"`
-	LocalPortOffset int         `yaml:"local_port_offset,omitempty" toml:"local_port_offset,omitempty"`
-	ParentName      string      `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
-	PortName        string      `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
+	Name            string        `yaml:"name" toml:"name"`
+	Service         string        `yaml:"service,omitempty" toml:"service,omitempty"`
+	Pod             string        `yaml:"pod,omitempty" toml:"pod,omitempty"`
+	LocalPort       int           `yaml:"local_port,omitempty" toml:"local_port,omitempty"`
+	RemotePort      int           `yaml:"remote_port,omitempty" toml:"remote_port,omitempty"`
+	Namespace       string        `yaml:"namespace,omitempty" toml:"namespace,omitempty"`
+	Ports           PortsConfig   `yaml:"ports,omitempty" toml:"ports,omitempty"`
+	ExcludePorts    []string      `yaml:"exclude_ports,omitempty" toml:"exclude_ports,omitempty"`
+	LocalPortOffset int           `yaml:"local_port_offset,omitempty" toml:"local_port_offset,omitempty"`
+	Network         NetworkConfig `yaml:"network,omitempty" toml:"network,omitempty"`
+	ParentName      string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
+	PortName        string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 }
 
 // IsPod returns true if this config targets a pod directly.
@@ -257,6 +259,125 @@ type ProxyServerConfig struct {
 	FuzzyMatch *bool  `yaml:"fuzzy_match,omitempty" toml:"fuzzy_match,omitempty"` // nil=true; headless FQDN resolution
 }
 
+// NetworkConfig holds optional network simulation settings for latency injection
+// and bandwidth throttling. A zero value means simulation is disabled.
+type NetworkConfig struct {
+	Latency   string `yaml:"latency,omitempty" toml:"latency,omitempty"`     // Go duration, e.g. "50ms"
+	Jitter    string `yaml:"jitter,omitempty" toml:"jitter,omitempty"`       // Go duration, e.g. "10ms"
+	Bandwidth string `yaml:"bandwidth,omitempty" toml:"bandwidth,omitempty"` // e.g. "5mbps", "500kbps", "1gbps"
+}
+
+// IsSet returns true if any network simulation is configured.
+func (n NetworkConfig) IsSet() bool {
+	return n.Latency != "" || n.Jitter != "" || n.Bandwidth != ""
+}
+
+// ParsedNetworkConfig holds parsed, ready-to-use network simulation settings.
+type ParsedNetworkConfig struct {
+	Latency     time.Duration // 0 = no latency injection
+	Jitter      time.Duration // 0 = no jitter
+	BytesPerSec int64         // 0 = no bandwidth cap
+}
+
+// IsEnabled returns true if any network simulation is active.
+func (p ParsedNetworkConfig) IsEnabled() bool {
+	return p.Latency > 0 || p.Jitter > 0 || p.BytesPerSec > 0
+}
+
+// Parse validates and parses the NetworkConfig into a ParsedNetworkConfig.
+func (n NetworkConfig) Parse() (ParsedNetworkConfig, error) {
+	var p ParsedNetworkConfig
+	var err error
+
+	if n.Latency != "" {
+		p.Latency, err = time.ParseDuration(n.Latency)
+		if err != nil {
+			return p, fmt.Errorf("invalid latency %q: %w", n.Latency, err)
+		}
+		if p.Latency < 0 {
+			return p, fmt.Errorf("latency must be non-negative, got %s", n.Latency)
+		}
+	}
+
+	if n.Jitter != "" {
+		p.Jitter, err = time.ParseDuration(n.Jitter)
+		if err != nil {
+			return p, fmt.Errorf("invalid jitter %q: %w", n.Jitter, err)
+		}
+		if p.Jitter < 0 {
+			return p, fmt.Errorf("jitter must be non-negative, got %s", n.Jitter)
+		}
+	}
+
+	if p.Jitter > 0 && p.Latency == 0 {
+		return p, fmt.Errorf("jitter requires latency to be set")
+	}
+	if p.Jitter > p.Latency && p.Latency > 0 {
+		return p, fmt.Errorf("jitter (%s) must not exceed latency (%s)", n.Jitter, n.Latency)
+	}
+
+	if n.Bandwidth != "" {
+		p.BytesPerSec, err = parseBandwidth(n.Bandwidth)
+		if err != nil {
+			return p, fmt.Errorf("invalid bandwidth %q: %w", n.Bandwidth, err)
+		}
+	}
+
+	return p, nil
+}
+
+// ResolveNetwork merges global and per-service network configs.
+// Per-service fields override global when non-empty (field-by-field merge).
+func ResolveNetwork(global, perService NetworkConfig) NetworkConfig {
+	merged := global
+	if perService.Latency != "" {
+		merged.Latency = perService.Latency
+	}
+	if perService.Jitter != "" {
+		merged.Jitter = perService.Jitter
+	}
+	if perService.Bandwidth != "" {
+		merged.Bandwidth = perService.Bandwidth
+	}
+	return merged
+}
+
+// parseBandwidth parses a human-readable bandwidth string into bytes per second.
+// Accepted suffixes (case-insensitive): gbps, mbps, kbps (bits); gbytes, mbytes, kbytes (bytes).
+func parseBandwidth(s string) (int64, error) {
+	lower := strings.ToLower(strings.TrimSpace(s))
+
+	type suffix struct {
+		name       string
+		multiplier int64
+	}
+	// Order matters: check longer suffixes first to avoid partial matches.
+	suffixes := []suffix{
+		{"gbytes", 1_000_000_000},
+		{"mbytes", 1_000_000},
+		{"kbytes", 1_000},
+		{"gbps", 1_000_000_000 / 8},
+		{"mbps", 1_000_000 / 8},
+		{"kbps", 1_000 / 8},
+	}
+
+	for _, sf := range suffixes {
+		if strings.HasSuffix(lower, sf.name) {
+			numStr := strings.TrimSpace(lower[:len(lower)-len(sf.name)])
+			val, err := strconv.ParseFloat(numStr, 64)
+			if err != nil {
+				return 0, fmt.Errorf("invalid number %q", numStr)
+			}
+			if val <= 0 {
+				return 0, fmt.Errorf("bandwidth must be positive")
+			}
+			return int64(val * float64(sf.multiplier)), nil
+		}
+	}
+
+	return 0, fmt.Errorf("unknown bandwidth unit; use kbps, mbps, gbps, kbytes, mbytes, or gbytes")
+}
+
 // Config holds the full proxy configuration.
 type Config struct {
 	Context     string           `yaml:"context" toml:"context"`
@@ -265,9 +386,10 @@ type Config struct {
 	Listen      string           `yaml:"listen,omitempty" toml:"listen,omitempty"`
 	APIKey      string           `yaml:"api_key,omitempty" toml:"api_key,omitempty"`
 	Host        string           `yaml:"host,omitempty" toml:"host,omitempty"`
-	Services    []ServiceConfig  `yaml:"services" toml:"services"`
-	Hooks       []HookConfig     `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
-	Supervisor  SupervisorConfig `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
+	Services    []ServiceConfig   `yaml:"services" toml:"services"`
+	Hooks       []HookConfig      `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
+	Supervisor  SupervisorConfig  `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
+	Network     NetworkConfig     `yaml:"network,omitempty" toml:"network,omitempty"`
 	SOCKS       ProxyServerConfig `yaml:"socks,omitempty" toml:"socks,omitempty"`
 	HTTPProxy   ProxyServerConfig `yaml:"http_proxy,omitempty" toml:"http_proxy,omitempty"`
 
@@ -445,15 +567,16 @@ func migrateHookEventNames(h *HookConfig) {
 // as a raw value (string or array) since go-toml/v2 does not support custom
 // UnmarshalTOML(any) interfaces.
 type serviceConfigTOML struct {
-	Name            string   `toml:"name"`
-	Service         string   `toml:"service,omitempty"`
-	Pod             string   `toml:"pod,omitempty"`
-	LocalPort       int      `toml:"local_port,omitempty"`
-	RemotePort      int      `toml:"remote_port,omitempty"`
-	Namespace       string   `toml:"namespace,omitempty"`
-	Ports           any      `toml:"ports,omitempty"`
-	ExcludePorts    []string `toml:"exclude_ports,omitempty"`
-	LocalPortOffset int      `toml:"local_port_offset,omitempty"`
+	Name            string        `toml:"name"`
+	Service         string        `toml:"service,omitempty"`
+	Pod             string        `toml:"pod,omitempty"`
+	LocalPort       int           `toml:"local_port,omitempty"`
+	RemotePort      int           `toml:"remote_port,omitempty"`
+	Namespace       string        `toml:"namespace,omitempty"`
+	Ports           any           `toml:"ports,omitempty"`
+	ExcludePorts    []string      `toml:"exclude_ports,omitempty"`
+	LocalPortOffset int           `toml:"local_port_offset,omitempty"`
+	Network         NetworkConfig `toml:"network,omitempty"`
 }
 
 // configTOML is a TOML-specific intermediate struct for decoding.
@@ -467,6 +590,7 @@ type configTOML struct {
 	Services    []serviceConfigTOML `toml:"services"`
 	Hooks       []HookConfig        `toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig    `toml:"supervisor,omitempty"`
+	Network     NetworkConfig       `toml:"network,omitempty"`
 	SOCKS       ProxyServerConfig   `toml:"socks,omitempty"`
 	HTTPProxy   ProxyServerConfig   `toml:"http_proxy,omitempty"`
 }
@@ -486,6 +610,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 	cfg.Host = raw.Host
 	cfg.Hooks = raw.Hooks
 	cfg.Supervisor = raw.Supervisor
+	cfg.Network = raw.Network
 	cfg.SOCKS = raw.SOCKS
 	cfg.HTTPProxy = raw.HTTPProxy
 
@@ -500,6 +625,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 			Namespace:       rs.Namespace,
 			ExcludePorts:    rs.ExcludePorts,
 			LocalPortOffset: rs.LocalPortOffset,
+			Network:         rs.Network,
 		}
 		if rs.Ports != nil {
 			ports, err := parsePortsFromRaw(rs.Ports)
@@ -523,6 +649,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 		Host:        c.Host,
 		Hooks:       c.Hooks,
 		Supervisor:  c.Supervisor,
+		Network:     c.Network,
 		SOCKS:       c.SOCKS,
 		HTTPProxy:   c.HTTPProxy,
 		Services:    make([]serviceConfigTOML, len(c.Services)),
@@ -537,6 +664,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 			Namespace:       svc.Namespace,
 			ExcludePorts:    svc.ExcludePorts,
 			LocalPortOffset: svc.LocalPortOffset,
+			Network:         svc.Network,
 		}
 		if svc.Ports.All {
 			raw.Services[i].Ports = "all"
@@ -746,6 +874,14 @@ func ValidateService(svc ServiceConfig) error {
 			return fmt.Errorf("service %q: invalid remote_port %d", svc.Name, svc.RemotePort)
 		}
 	}
+
+	// Validate per-service network config
+	if svc.Network.IsSet() {
+		if _, err := svc.Network.Parse(); err != nil {
+			return fmt.Errorf("service %q: network: %w", svc.Name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -810,6 +946,13 @@ func (c *Config) Validate() error {
 	// Validate supervisor config durations
 	if err := c.Supervisor.validate(); err != nil {
 		return fmt.Errorf("supervisor: %w", err)
+	}
+
+	// Validate global network config
+	if c.Network.IsSet() {
+		if _, err := c.Network.Parse(); err != nil {
+			return fmt.Errorf("network: %w", err)
+		}
 	}
 
 	return nil

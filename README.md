@@ -12,6 +12,9 @@
   <img src="demo/demo.gif" alt="kubeport demo" width="800">
 </p>
 
+> **Project Status**
+> Kubeport is an experimental tool developed with AI assistance (Gemini/Claude). While optimized for reliability and ease of use in dev/staging, it has not yet undergone a formal security audit. Users are encouraged to review the networking logic before use in critical production systems.
+
 ---
 
 ## Why Kubeport?

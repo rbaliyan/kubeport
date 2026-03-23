@@ -57,16 +57,19 @@ func (s ForwardState) String() string {
 
 // ForwardStatus holds the status of a single port forward.
 type ForwardStatus struct {
-	Service    config.ServiceConfig
-	State      ForwardState
-	Error      error
-	Restarts   int
-	LastStart  time.Time
-	Connected  bool
-	ActualPort int       // The actual local port (differs from config when local_port is 0)
-	NextRetry  time.Time // When next reconnection attempt will be made (zero if not reconnecting)
-	BytesIn    int64     // Total bytes received from the remote side
-	BytesOut   int64     // Total bytes sent to the remote side
+	Service            config.ServiceConfig
+	State              ForwardState
+	Error              error
+	Restarts           int
+	LastStart          time.Time
+	Connected          bool
+	ActualPort         int       // The actual local port (differs from config when local_port is 0)
+	NextRetry          time.Time // When next reconnection attempt will be made (zero if not reconnecting)
+	BytesIn            int64     // Total bytes received from the remote side
+	BytesOut           int64     // Total bytes sent to the remote side
+	EffectiveLatency   time.Duration // Injected latency (0 = disabled)
+	EffectiveJitter    time.Duration // Jitter range (0 = disabled)
+	EffectiveBandwidth int64         // Bandwidth cap in bytes/sec (0 = disabled)
 }
 
 type portForward struct {
@@ -923,7 +926,18 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	}
 
 	rawDialer := spdy.NewDialer(entry.upgrader, entry.client, http.MethodPost, reqURL)
-	dialer := &countingDialer{dialer: rawDialer, counter: &pf.counter}
+
+	// Resolve effective network simulation config (global merged with per-service).
+	netCfg, netErr := config.ResolveNetwork(m.cfg.Network, pf.svc.Network).Parse()
+	if netErr != nil {
+		m.logger.Warn("invalid network config, simulation disabled", "service", pf.svc.Name, "error", netErr)
+	}
+	dialer := &countingDialer{
+		dialer:     rawDialer,
+		counter:    &pf.counter,
+		networkCfg: netCfg,
+		ctx:        fwCtx,
+	}
 
 	// stopChan is closed exactly once when fwCtx is cancelled.
 	stopChan := make(chan struct{})
@@ -1391,17 +1405,26 @@ func (m *Manager) Status() []ForwardStatus {
 		if port == 0 {
 			port = pf.svc.LocalPort
 		}
+		// Resolve effective network config for status display.
+		var globalNet config.NetworkConfig
+		if m.cfg != nil {
+			globalNet = m.cfg.Network
+		}
+		netCfg, _ := config.ResolveNetwork(globalNet, pf.svc.Network).Parse() //nolint:errcheck // validation ran at load time; zero value is safe for display
 		s := ForwardStatus{
-			Service:    pf.svc,
-			State:      pf.state,
-			Error:      pf.err,
-			Restarts:   pf.restarts,
-			LastStart:  pf.lastStart,
-			Connected:  port > 0 && netutil.IsPortOpen(port),
-			ActualPort: port,
-			NextRetry:  pf.nextRetry,
-			BytesIn:    pf.counter.bytesIn.Load(),
-			BytesOut:   pf.counter.bytesOut.Load(),
+			Service:            pf.svc,
+			State:              pf.state,
+			Error:              pf.err,
+			Restarts:           pf.restarts,
+			LastStart:          pf.lastStart,
+			Connected:          port > 0 && netutil.IsPortOpen(port),
+			ActualPort:         port,
+			NextRetry:          pf.nextRetry,
+			BytesIn:            pf.counter.bytesIn.Load(),
+			BytesOut:           pf.counter.bytesOut.Load(),
+			EffectiveLatency:   netCfg.Latency,
+			EffectiveJitter:    netCfg.Jitter,
+			EffectiveBandwidth: netCfg.BytesPerSec,
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)
