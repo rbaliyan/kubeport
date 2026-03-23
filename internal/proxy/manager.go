@@ -3,6 +3,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,6 +25,10 @@ import (
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/netutil"
 )
+
+// errPreempted is returned by runPortForward when a pod watcher detects the
+// current pod is terminating and a replacement pod is available.
+var errPreempted = errors.New("preempted by pod lifecycle event")
 
 // ForwardState represents the state of a port forward.
 type ForwardState int
@@ -75,6 +80,8 @@ type portForward struct {
 	actualPort int // Actual port assigned by OS (relevant when local_port is 0)
 	nextRetry  time.Time
 	counter    byteCounter // cumulative bytes across all connection attempts
+	currentPod string      // name of the pod currently being forwarded to
+	preemptCh  chan string  // carries replacement pod name for predictive reconnection
 	mu         sync.Mutex
 }
 
@@ -116,6 +123,8 @@ type Manager struct {
 	backoffInitial       time.Duration
 	backoffMax           time.Duration
 	maxConnectionAge     time.Duration
+
+	transports *transportCache // reuses SPDY transports across forwards
 }
 
 // Option configures optional Manager behavior.
@@ -171,6 +180,11 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		opt(o)
 	}
 
+	transportMaxAge := sup.MaxConnectionAge
+	if transportMaxAge == 0 {
+		transportMaxAge = 30 * time.Minute
+	}
+
 	m := &Manager{
 		cfg:                  cfg,
 		restConfig:           restConfig,
@@ -187,6 +201,7 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		backoffInitial:       sup.BackoffInitial,
 		backoffMax:           sup.BackoffMax,
 		maxConnectionAge:     sup.MaxConnectionAge,
+		transports:           newTransportCache(transportMaxAge),
 	}
 	return m, nil
 }
@@ -727,12 +742,23 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 		svc:       svc,
 		namespace: namespace,
 		state:     StateStarting,
+		preemptCh: make(chan string, 1),
 	}
 
 	m.mu.Lock()
 	m.forwards[svc.Name] = pf
 	m.order = append(m.order, svc.Name)
 	m.mu.Unlock()
+
+	// Start pod watcher for service-backed forwards (not direct pod targets).
+	if !svc.IsPod() && m.clientset != nil {
+		selector, err := m.getServiceSelector(ctx, namespace, svc)
+		if err == nil && selector != "" {
+			watcher := newPodWatcher(m.clientset, namespace, selector, m.logger)
+			go watcher.run(ctx)
+			go m.handlePodEvents(ctx, pf, watcher)
+		}
+	}
 
 	backoff := m.backoffInitial
 
@@ -778,6 +804,15 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 			pf.state = StateStopped
 			pf.mu.Unlock()
 			return
+		}
+
+		// Preemptive reconnection: skip backoff and retry immediately.
+		if errors.Is(err, errPreempted) {
+			m.logger.Info("preemptive reconnection, reconnecting immediately",
+				"service", svc.Name,
+			)
+			backoff = m.backoffInitial
+			continue
 		}
 
 		pf.mu.Lock()
@@ -868,6 +903,10 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		return err
 	}
 
+	pf.mu.Lock()
+	pf.currentPod = podName
+	pf.mu.Unlock()
+
 	// Build the SPDY port-forward URL
 	reqURL := m.clientset.CoreV1().RESTClient().Post().
 		Resource("pods").
@@ -876,12 +915,14 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		SubResource("portforward").
 		URL()
 
-	transport, upgrader, err := spdy.RoundTripperFor(m.restConfig)
+	entry, err := m.transports.getOrCreate(m.restConfig.Host, func() (http.RoundTripper, spdy.Upgrader, error) {
+		return spdy.RoundTripperFor(m.restConfig)
+	})
 	if err != nil {
 		return fmt.Errorf("create SPDY transport: %w", err)
 	}
 
-	rawDialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, http.MethodPost, reqURL)
+	rawDialer := spdy.NewDialer(entry.upgrader, entry.client, http.MethodPost, reqURL)
 	dialer := &countingDialer{dialer: rawDialer, counter: &pf.counter}
 
 	// stopChan is closed exactly once when fwCtx is cancelled.
@@ -982,6 +1023,14 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 			)
 			fwCancel()
 			return fmt.Errorf("max connection age (%s) reached", m.maxConnectionAge)
+		case replacementPod := <-pf.preemptCh:
+			m.logger.Info("preemptive reconnection triggered",
+				"service", pf.svc.Name,
+				"current_pod", podName,
+				"replacement_pod", replacementPod,
+			)
+			fwCancel()
+			return errPreempted
 		case <-ticker.C:
 			// Check for SPDY stream creation failures. Each failure means a
 			// client connection was dropped after a 30-second timeout waiting
@@ -994,6 +1043,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 					"new_errors", newErrors,
 					"total_errors", currentStreamErrors,
 				)
+				m.transports.evict(m.restConfig.Host)
 				fwCancel()
 				return fmt.Errorf("SPDY connection degraded: %d stream creation failures", currentStreamErrors)
 			}
@@ -1134,6 +1184,80 @@ func isPodReady(pod *corev1.Pod) bool {
 	return false
 }
 
+// getServiceSelector returns the label selector string for a Kubernetes Service.
+func (m *Manager) getServiceSelector(ctx context.Context, namespace string, svc config.ServiceConfig) (string, error) {
+	opCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	service, err := m.clientset.CoreV1().Services(namespace).Get(opCtx, svc.Target(), metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("get service %s/%s: %w", namespace, svc.Target(), err)
+	}
+	if len(service.Spec.Selector) == 0 {
+		return "", fmt.Errorf("service %s has no pod selector", svc.Target())
+	}
+	return labels.SelectorFromSet(service.Spec.Selector).String(), nil
+}
+
+// handlePodEvents processes pod lifecycle events from the watcher.
+// When the current pod enters Terminating state, it resolves a replacement
+// pod and signals runPortForward to preemptively reconnect.
+func (m *Manager) handlePodEvents(ctx context.Context, pf *portForward, watcher *podWatcher) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt, ok := <-watcher.events():
+			if !ok {
+				return
+			}
+			if evt.eventType != podTerminating {
+				continue
+			}
+
+			pf.mu.Lock()
+			currentPod := pf.currentPod
+			pf.mu.Unlock()
+
+			if evt.podName != currentPod {
+				continue // not our pod
+			}
+
+			m.logger.Info("current pod terminating, initiating preemptive reconnection",
+				"service", pf.svc.Name,
+				"pod", evt.podName,
+			)
+
+			_ = m.hooks.Fire(ctx, hook.Event{
+				Type:       hook.EventPodTerminating,
+				Time:       time.Now(),
+				Service:    pf.svc.Name,
+				ParentName: pf.svc.ParentName,
+				PortName:   pf.svc.PortName,
+				PodName:    evt.podName,
+				RemotePort: pf.svc.RemotePort,
+			})
+
+			// Find a replacement pod.
+			replacementPod, _, err := m.resolvePod(ctx, pf.namespace, pf.svc)
+			if err != nil || replacementPod == currentPod {
+				m.logger.Warn("no replacement pod available, will reconnect normally",
+					"service", pf.svc.Name,
+					"error", err,
+				)
+				continue
+			}
+
+			// Signal the running forward to preempt.
+			select {
+			case pf.preemptCh <- replacementPod:
+			default:
+				// Already a preempt pending.
+			}
+		}
+	}
+}
+
 // Stop terminates all port forwards.
 func (m *Manager) Stop() {
 	m.mu.RLock()
@@ -1154,6 +1278,10 @@ func (m *Manager) Stop() {
 		}
 		pf.state = StateStopped
 		pf.mu.Unlock()
+	}
+
+	if m.transports != nil {
+		m.transports.close()
 	}
 }
 
