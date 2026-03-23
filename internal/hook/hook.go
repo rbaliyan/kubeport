@@ -26,6 +26,7 @@ const (
 	EventHealthCheckFailed                    // A single health check failed
 	EventServiceAdded                         // New service dynamically added
 	EventServiceRemoved                       // Service dynamically removed
+	EventPodTerminating                       // Current pod is terminating, preemptive reconnect starting
 )
 
 func (e EventType) String() string {
@@ -48,6 +49,8 @@ func (e EventType) String() string {
 		return "service:added"
 	case EventServiceRemoved:
 		return "service:removed"
+	case EventPodTerminating:
+		return "pod:terminating"
 	default:
 		return "unknown"
 	}
@@ -69,6 +72,7 @@ var eventNames = map[string]EventType{
 	"health:check_failed":  EventHealthCheckFailed,
 	"service:added":        EventServiceAdded,
 	"service:removed":      EventServiceRemoved,
+	"pod:terminating":      EventPodTerminating,
 
 	// Legacy underscore names for backwards compatibility.
 	"manager_starting":     EventManagerStarting,
@@ -80,6 +84,7 @@ var eventNames = map[string]EventType{
 	"health_check_failed":  EventHealthCheckFailed,
 	"service_added":        EventServiceAdded,
 	"service_removed":      EventServiceRemoved,
+	"pod_terminating":      EventPodTerminating,
 }
 
 // Event carries all context for a lifecycle event.
