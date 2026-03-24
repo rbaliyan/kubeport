@@ -34,7 +34,10 @@ Or copy one of the examples in the repository:
 | `context` | string | Kubernetes context from your kubeconfig |
 | `namespace` | string | Default namespace for all services |
 | `log_file` | string | Custom log file path (default: `.kubeport.log` next to config) |
-| `listen` | string | Daemon socket address (default: Unix socket next to config). Use `sock://` prefix for custom path |
+| `listen` | string | Daemon socket address (default: Unix socket next to config). Use `sock://` prefix for custom path or `tcp://` for TCP |
+| `api_key` | string | API key for TCP listener authentication (required when using TCP listen) |
+| `host` | string | Hostname for the daemon |
+| `network` | object | Global network simulation settings (see below) |
 | `services` | list | Services to port-forward (see below) |
 | `supervisor` | object | Supervisor tuning (see below) |
 | `hooks` | list | Lifecycle hooks (see [Hooks](hooks.md)) |
@@ -67,6 +70,7 @@ Each entry in `services` defines one or more port-forwards. There are two modes:
 | `exclude_ports` | list | no | Port names to skip (only with `ports: all`) |
 | `local_port_offset` | int | no | Add this offset to each remote port to compute the local port |
 | `namespace` | string | no | Override the top-level namespace for this service |
+| `network` | object | no | Per-service network simulation (overrides global `network`) |
 
 Multi-port mode is mutually exclusive with `remote_port`/`local_port`. When no local port is specified, each forwarded port defaults to the same number as the remote port.
 
@@ -82,6 +86,19 @@ The `supervisor` section tunes restart and health-check behavior. All fields are
 | `ready_timeout` | `15s` | Timeout waiting for a forward to become ready |
 | `backoff_initial` | `1s` | Initial delay between restarts |
 | `backoff_max` | `30s` | Maximum delay between restarts |
+| `max_connection_age` | `30m` | Maximum lifetime of a port-forward before proactive reconnect (`0` to disable) |
+
+### Network Simulation Fields
+
+The `network` section configures latency injection and bandwidth throttling for testing. Can be set globally or per-service.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `latency` | string | _(none)_ | Added latency per connection (Go duration, e.g. `"50ms"`) |
+| `jitter` | string | _(none)_ | Random jitter added to latency (must not exceed `latency`) |
+| `bandwidth` | string | _(none)_ | Bandwidth cap (e.g. `"5mbps"`, `"500kbps"`, `"1gbps"`, `"1mbytes"`) |
+
+Per-service `network` settings override the global settings. If a service specifies only some fields, the remaining fields are inherited from the global config.
 
 ### Proxy Server Fields
 
@@ -153,6 +170,13 @@ supervisor:
   max_restarts: 10
   health_check_interval: 10s
   health_check_threshold: 3
+  max_connection_age: 30m
+
+# Global network simulation (optional, for testing)
+network:
+  latency: 50ms
+  jitter: 10ms
+  bandwidth: 5mbps
 
 socks:
   listen: 127.0.0.1:1080

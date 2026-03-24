@@ -150,7 +150,7 @@ listen: tcp://0.0.0.0:9400?key=my-secret-api-key
 
 Connect from another machine:
 ```bash
-kubeport status --address tcp://host:9400?key=my-secret-api-key
+kubeport status --config tcp://host:9400 --api-key my-secret-api-key
 ```
 
 ## Dynamic Overlays

@@ -60,19 +60,33 @@ Dynamically add a service to the running daemon.
 
 ```bash
 # Single-port
-kubeport add "My API" svc/my-api:80:8080
-kubeport add "Redis" pod/redis-0:6379:6379
-kubeport add "Vault" svc/vault:8200:8200:vault-ns
+kubeport add --name "My API" --service my-api --remote-port 80 --local-port 8080
+kubeport add --name "Redis" --pod redis-0 --remote-port 6379 --local-port 6379
+kubeport add --name "Vault" --service vault --remote-port 8200 --local-port 8200 -n vault
 
 # Multi-port
-kubeport add "Platform" svc/platform-svc --ports all
-kubeport add "Backend" svc/backend-svc --ports http,grpc
-kubeport add "Platform" svc/platform-svc --ports all --exclude-ports metrics --local-port-offset 10000
+kubeport add --name "Platform" --service platform-svc --ports all
+kubeport add --name "Backend" --service backend-svc --ports http,grpc
+kubeport add --name "Platform" --service platform-svc --ports all --exclude-ports metrics --local-port-offset 10000
+
+# Persist the addition to the config file
+kubeport add --name "My API" --service my-api --remote-port 80 --local-port 8080 --persist
 ```
 
-Single-port format: `<name> <type>/<target>:<remote>:<local>[:<namespace>]`
+| Flag | Required | Description |
+|------|----------|-------------|
+| `--name` | yes | Display name for the service |
+| `--service` | one of `--service` or `--pod` | Kubernetes Service name |
+| `--pod` | one of `--service` or `--pod` | Specific pod name |
+| `--remote-port` | yes (single-port) | Remote port on the pod |
+| `--local-port` | no | Local port (default: same as remote, `0` for auto) |
+| `--namespace`, `-n` | no | Override the default namespace |
+| `--ports` | yes (multi-port) | `all` or comma-separated port names |
+| `--exclude-ports` | no | Port names to skip (with `--ports all`) |
+| `--local-port-offset` | no | Offset added to remote ports for local ports |
+| `--persist` | no | Save the service to the config file |
 
-Multi-port flags (`--ports`, `--exclude-ports`, `--local-port-offset`) are mutually exclusive with explicit remote/local ports.
+Multi-port flags (`--ports`, `--exclude-ports`, `--local-port-offset`) are mutually exclusive with `--remote-port`/`--local-port`.
 
 ### `kubeport remove`
 
@@ -164,6 +178,21 @@ kubeport http-proxy --username admin --password secret   # With basic auth
 | `--password` | `-p` | _(none)_ | Authentication password |
 | `--cluster-domain` | | `cluster.local` | Kubernetes cluster domain |
 
+### `kubeport watch`
+
+Live-updating dashboard that refreshes the status view periodically. Press `q` to exit.
+
+```bash
+kubeport watch                  # Refresh every 2s (default)
+kubeport watch --time 5s        # Custom refresh interval
+kubeport watch --sort           # Sort services by name
+```
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--time` | `2s` | Refresh interval (Go duration) |
+| `--sort` | off | Sort services alphabetically |
+
 ### `kubeport version`
 
 Print the version.
@@ -183,10 +212,12 @@ kubeport version
 | `--svc` | | Inline service spec (repeatable). Format: `name:type/target:remote:local[:namespace]` or `name:type/target:all[:+offset[:namespace]]` for multi-port |
 | `--disable-svc` | | Disable a named service from config (repeatable) |
 | `--no-config` | | Ignore config files, use only `--svc` flags |
+| `--api-key` | | API key for TCP daemon authentication |
 | `--json` | | JSON output for commands that support it |
 | `--sort` | | Sort output |
 | `--wait` | | Wait for readiness (used with `start`) |
 | `--timeout` | | Timeout for `--wait` |
+| `--time` | | Refresh interval for `watch` (default: `2s`) |
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
 
