@@ -33,6 +33,15 @@ namespace = "default"
 # jitter = "10ms"        # Random variation on latency (+/- this value)
 # bandwidth = "5mbps"    # Bandwidth cap (supports: kbps, mbps, gbps, kbytes, mbytes, gbytes)
 
+# Chaos engineering (global defaults — applied to all services)
+# Injects random faults for resilience testing.
+# [chaos]
+# enabled = true
+# error_rate = 0.02              # 2% of writes fail with a connection error
+# [chaos.latency_spike]
+# probability = 0.01             # 1% chance of a latency spike per write
+# duration = "5s"                # Duration of each spike
+
 # Forward a Kubernetes service (auto-resolves to a running pod)
 [[services]]
 name = "My API"

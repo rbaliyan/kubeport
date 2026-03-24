@@ -26,6 +26,8 @@ Standard port-forwarding is brittle. Kubeport transforms flaky tunnels into a st
 - **Lifecycle Hooks** — Run shell commands, exec binaries, or fire webhooks when tunnels connect, disconnect, or fail.
 - **Multi-Port Discovery** — Forward every port a service exposes with `ports: all`, or pick specific named ports.
 - **Background Daemon** — Runs quietly in the background; control everything with simple CLI commands.
+- **Network Simulation** — Inject latency, jitter, and bandwidth throttling to test under degraded conditions.
+- **Chaos Engineering** — Random error injection and latency spikes to validate your app's resilience.
 - **Zero Cluster Footprint** — Pure client-side SPDY tunnels. Nothing deployed to your cluster.
 
 ## Quick Start

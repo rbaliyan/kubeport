@@ -70,6 +70,12 @@ type ForwardStatus struct {
 	EffectiveLatency   time.Duration // Injected latency (0 = disabled)
 	EffectiveJitter    time.Duration // Jitter range (0 = disabled)
 	EffectiveBandwidth int64         // Bandwidth cap in bytes/sec (0 = disabled)
+	ChaosEnabled              bool          // Whether chaos injection is active
+	ChaosErrorRate            float64       // Configured error rate (0.0-1.0)
+	ChaosSpikeProbability     float64       // Latency spike probability (0.0-1.0)
+	ChaosSpikeDuration        time.Duration // Latency spike duration
+	ChaosErrorsInjected       int64         // Count of errors injected
+	ChaosSpikesInjected       int64         // Count of latency spikes injected
 }
 
 type portForward struct {
@@ -932,10 +938,16 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	if netErr != nil {
 		m.logger.Warn("invalid network config, simulation disabled", "service", pf.svc.Name, "error", netErr)
 	}
+	// Resolve effective chaos config (global merged with per-service).
+	chaosCfg, chaosErr := config.ResolveChaos(m.cfg.Chaos, pf.svc.Chaos).Parse()
+	if chaosErr != nil {
+		m.logger.Warn("invalid chaos config, injection disabled", "service", pf.svc.Name, "error", chaosErr)
+	}
 	dialer := &countingDialer{
 		dialer:     rawDialer,
 		counter:    &pf.counter,
 		networkCfg: netCfg,
+		chaosCfg:   chaosCfg,
 		ctx:        fwCtx,
 	}
 
@@ -1411,6 +1423,12 @@ func (m *Manager) Status() []ForwardStatus {
 			globalNet = m.cfg.Network
 		}
 		netCfg, _ := config.ResolveNetwork(globalNet, pf.svc.Network).Parse() //nolint:errcheck // validation ran at load time; zero value is safe for display
+		// Resolve effective chaos config for status display.
+		var globalChaos config.ChaosConfig
+		if m.cfg != nil {
+			globalChaos = m.cfg.Chaos
+		}
+		chaosCfg, _ := config.ResolveChaos(globalChaos, pf.svc.Chaos).Parse() //nolint:errcheck
 		s := ForwardStatus{
 			Service:            pf.svc,
 			State:              pf.state,
@@ -1425,6 +1443,12 @@ func (m *Manager) Status() []ForwardStatus {
 			EffectiveLatency:   netCfg.Latency,
 			EffectiveJitter:    netCfg.Jitter,
 			EffectiveBandwidth: netCfg.BytesPerSec,
+			ChaosEnabled:          chaosCfg.IsEnabled(),
+			ChaosErrorRate:        chaosCfg.ErrorRate,
+			ChaosSpikeProbability: chaosCfg.LatencySpikeProbability,
+			ChaosSpikeDuration:    chaosCfg.LatencySpikeDuration,
+			ChaosErrorsInjected:   pf.counter.chaos.errorsInjected.Load(),
+			ChaosSpikesInjected:   pf.counter.chaos.spikesInjected.Load(),
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)

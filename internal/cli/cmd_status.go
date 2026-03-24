@@ -40,9 +40,13 @@ type forwardStatusOutput struct {
 	NextRetry          string `json:"next_retry,omitempty"`
 	BytesIn            int64  `json:"bytes_in"`
 	BytesOut           int64  `json:"bytes_out"`
-	EffectiveLatencyMs int64  `json:"effective_latency_ms,omitempty"`
-	EffectiveJitterMs  int64  `json:"effective_jitter_ms,omitempty"`
-	EffectiveBandwidth int64  `json:"effective_bandwidth,omitempty"`
+	EffectiveLatencyMs int64   `json:"effective_latency_ms,omitempty"`
+	EffectiveJitterMs  int64   `json:"effective_jitter_ms,omitempty"`
+	EffectiveBandwidth int64   `json:"effective_bandwidth,omitempty"`
+	ChaosEnabled       bool    `json:"chaos_enabled,omitempty"`
+	ChaosErrorRate     float64 `json:"chaos_error_rate,omitempty"`
+	ChaosErrorsInjected int64  `json:"chaos_errors_injected,omitempty"`
+	ChaosSpikesInjected int64  `json:"chaos_spikes_injected,omitempty"`
 }
 
 func (a *app) cmdStatus() {
@@ -209,9 +213,13 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 		Error:              fw.Error,
 		BytesIn:            fw.BytesIn,
 		BytesOut:           fw.BytesOut,
-		EffectiveLatencyMs: fw.EffectiveLatencyMs,
-		EffectiveJitterMs:  fw.EffectiveJitterMs,
-		EffectiveBandwidth: fw.EffectiveBandwidth,
+		EffectiveLatencyMs:  fw.EffectiveLatencyMs,
+		EffectiveJitterMs:   fw.EffectiveJitterMs,
+		EffectiveBandwidth:  fw.EffectiveBandwidth,
+		ChaosEnabled:        fw.ChaosEnabled,
+		ChaosErrorRate:      fw.ChaosErrorRate,
+		ChaosErrorsInjected: fw.ChaosErrorsInjected,
+		ChaosSpikesInjected: fw.ChaosSpikesInjected,
 	}
 	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
 		out.NextRetry = fw.NextRetry.AsTime().Format(time.RFC3339)

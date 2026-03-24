@@ -16,14 +16,16 @@ type byteCounter struct {
 	bytesIn      atomic.Int64
 	bytesOut     atomic.Int64
 	streamErrors atomic.Int64 // stream creation failures (per-connection, reset on reconnect)
+	chaos        chaosCounters
 }
 
 // countingDialer wraps an httpstream.Dialer to count bytes on all streams
-// and optionally apply network simulation (latency/jitter/bandwidth).
+// and optionally apply network simulation (latency/jitter/bandwidth) and chaos injection.
 type countingDialer struct {
 	dialer     httpstream.Dialer
 	counter    *byteCounter
 	networkCfg config.ParsedNetworkConfig
+	chaosCfg   config.ParsedChaosConfig
 	ctx        context.Context
 }
 
@@ -42,6 +44,9 @@ func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, strin
 			cc.limiter = newRateLimiter(d.networkCfg.BytesPerSec)
 		}
 	}
+	if d.chaosCfg.IsEnabled() {
+		cc.chaosCfg = d.chaosCfg
+	}
 	return cc, proto, nil
 }
 
@@ -51,6 +56,7 @@ type countingConnection struct {
 	conn       httpstream.Connection
 	counter    *byteCounter
 	networkCfg config.ParsedNetworkConfig
+	chaosCfg   config.ParsedChaosConfig
 	limiter    *rateLimiter // shared across all streams; nil when no bandwidth cap
 	ctx        context.Context
 }
@@ -74,6 +80,15 @@ func (c *countingConnection) CreateStream(headers http.Header) (httpstream.Strea
 			latency: c.networkCfg.Latency,
 			jitter:  c.networkCfg.Jitter,
 			limiter: c.limiter,
+		}
+	}
+	// Wrap with chaos injection if configured.
+	if c.chaosCfg.IsEnabled() {
+		inner = &chaosStream{
+			stream:   inner,
+			ctx:      c.ctx,
+			cfg:      c.chaosCfg,
+			counters: &c.counter.chaos,
 		}
 	}
 	return &countingStream{stream: inner, counter: c.counter}, nil
