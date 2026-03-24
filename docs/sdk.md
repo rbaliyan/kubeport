@@ -64,6 +64,8 @@ All Kubernetes DNS variants are mapped automatically:
 | `WithTCP(host, apiKey)` | Connect to a remote daemon over TCP |
 | `WithClusterDomain(domain)` | Override cluster domain (default: `cluster.local`) |
 | `WithRefreshInterval(d)` | Auto-refresh mapping interval (default: `10s`, `0` to disable) |
+| `WithTLSCertFile(path)` | Pin a TLS certificate for TCP connections (avoids `InsecureSkipVerify`) |
+| `WithFuzzyMatch(enabled)` | Enable/disable fuzzy headless service FQDN resolution (default: `true`) |
 | `WithLogger(logger)` | Set a `*slog.Logger` for structured logging |
 
 ### The `WithEnabled` Tri-State

@@ -66,6 +66,7 @@ Sends an HTTP POST with a JSON body to a URL:
 | `health:check_failed` | A single health-check probe failed |
 | `service:added` | A service was dynamically added |
 | `service:removed` | A service was dynamically removed |
+| `pod:terminating` | Current pod is terminating, preemptive reconnect starting |
 
 ## Hook Options
 

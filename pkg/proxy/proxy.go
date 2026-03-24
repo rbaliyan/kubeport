@@ -13,7 +13,7 @@
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
-//	defer p.Close()
+//	defer p.Close(context.Background())
 //
 //	// Use as a custom dialer for Redis, gRPC, HTTP, etc.
 //	redisClient := redis.NewClient(&redis.Options{
@@ -26,7 +26,7 @@
 //	if err != nil {
 //	    p = proxy.Noop() // Fall back to direct connections
 //	}
-//	defer p.Close()
+//	defer p.Close(context.Background())
 //
 //	// DialFunc and GRPCTarget work transparently with no translation
 //	redisClient := redis.NewClient(&redis.Options{
