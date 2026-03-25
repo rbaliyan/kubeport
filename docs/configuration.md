@@ -38,6 +38,7 @@ Or copy one of the examples in the repository:
 | `api_key` | string | API key for TCP listener authentication (required when using TCP listen) |
 | `host` | string | Hostname for the daemon |
 | `network` | object | Global network simulation settings (see below) |
+| `chaos` | object | Global chaos engineering settings (see below) |
 | `services` | list | Services to port-forward (see below) |
 | `supervisor` | object | Supervisor tuning (see below) |
 | `hooks` | list | Lifecycle hooks (see [Hooks](hooks.md)) |
@@ -71,6 +72,7 @@ Each entry in `services` defines one or more port-forwards. There are two modes:
 | `local_port_offset` | int | no | Add this offset to each remote port to compute the local port |
 | `namespace` | string | no | Override the top-level namespace for this service |
 | `network` | object | no | Per-service network simulation (overrides global `network`) |
+| `chaos` | object | no | Per-service chaos injection (overrides global `chaos`) |
 
 Multi-port mode is mutually exclusive with `remote_port`/`local_port`. When no local port is specified, each forwarded port defaults to the same number as the remote port.
 
@@ -99,6 +101,19 @@ The `network` section configures latency injection and bandwidth throttling for 
 | `bandwidth` | string | _(none)_ | Bandwidth cap (e.g. `"5mbps"`, `"500kbps"`, `"1gbps"`, `"1mbytes"`) |
 
 Per-service `network` settings override the global settings. If a service specifies only some fields, the remaining fields are inherited from the global config.
+
+### Chaos Engineering Fields
+
+The `chaos` section configures fault injection for testing resilience. Can be set globally or per-service.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch for chaos injection |
+| `error_rate` | float | `0.0` | Fraction of writes that fail with a connection error (0.0-1.0) |
+| `latency_spike.probability` | float | `0.0` | Probability of a latency spike on each write (0.0-1.0) |
+| `latency_spike.duration` | string | _(none)_ | Duration of latency spikes (Go duration, e.g. `"5s"`) |
+
+Per-service `chaos` settings fully override global when `enabled: true`. The global `enabled` flag acts as a master switch.
 
 ### Proxy Server Fields
 
@@ -177,6 +192,14 @@ network:
   latency: 50ms
   jitter: 10ms
   bandwidth: 5mbps
+
+# Global chaos engineering (optional, for resilience testing)
+chaos:
+  enabled: true
+  error_rate: 0.02           # 2% of writes fail
+  latency_spike:
+    probability: 0.01        # 1% chance of a spike
+    duration: 5s             # 5 seconds of added lag
 
 socks:
   listen: 127.0.0.1:1080

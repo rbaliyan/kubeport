@@ -32,9 +32,15 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		ActualPort: int32(fs.ActualPort),
 		BytesIn:            fs.BytesIn,
 		BytesOut:           fs.BytesOut,
-		EffectiveLatencyMs: fs.EffectiveLatency.Milliseconds(),
-		EffectiveJitterMs:  fs.EffectiveJitter.Milliseconds(),
-		EffectiveBandwidth: fs.EffectiveBandwidth,
+		EffectiveLatencyMs:    fs.EffectiveLatency.Milliseconds(),
+		EffectiveJitterMs:     fs.EffectiveJitter.Milliseconds(),
+		EffectiveBandwidth:    fs.EffectiveBandwidth,
+		ChaosEnabled:          fs.ChaosEnabled,
+		ChaosErrorRate:        fs.ChaosErrorRate,
+		ChaosSpikeProbability: fs.ChaosSpikeProbability,
+		ChaosSpikeDurationMs:  fs.ChaosSpikeDuration.Milliseconds(),
+		ChaosErrorsInjected:   fs.ChaosErrorsInjected,
+		ChaosSpikesInjected:   fs.ChaosSpikesInjected,
 	}
 	if !fs.NextRetry.IsZero() {
 		proto.NextRetry = timestamppb.New(fs.NextRetry)

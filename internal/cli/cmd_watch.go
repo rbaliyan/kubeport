@@ -289,6 +289,17 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 		_, _ = fmt.Fprint(w, "]")
 	}
 
+	if fw.ChaosEnabled {
+		_, _ = fmt.Fprintf(w, " [chaos: err=%.1f%%", fw.ChaosErrorRate*100)
+		if fw.ChaosSpikeProbability > 0 {
+			_, _ = fmt.Fprintf(w, " spike=%.1f%%/%dms", fw.ChaosSpikeProbability*100, fw.ChaosSpikeDurationMs)
+		}
+		if fw.ChaosErrorsInjected > 0 || fw.ChaosSpikesInjected > 0 {
+			_, _ = fmt.Fprintf(w, " (errs:%d spikes:%d)", fw.ChaosErrorsInjected, fw.ChaosSpikesInjected)
+		}
+		_, _ = fmt.Fprint(w, "]")
+	}
+
 	if fw.Error != "" {
 		_, _ = fmt.Fprintf(w, "\n         %sERROR: %s%s", colorRed, fw.Error, colorReset)
 	}

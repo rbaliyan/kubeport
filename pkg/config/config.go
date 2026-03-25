@@ -192,6 +192,7 @@ type ServiceConfig struct {
 	ExcludePorts    []string      `yaml:"exclude_ports,omitempty" toml:"exclude_ports,omitempty"`
 	LocalPortOffset int           `yaml:"local_port_offset,omitempty" toml:"local_port_offset,omitempty"`
 	Network         NetworkConfig `yaml:"network,omitempty" toml:"network,omitempty"`
+	Chaos           ChaosConfig   `yaml:"chaos,omitempty" toml:"chaos,omitempty"`
 	ParentName      string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 	PortName        string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 }
@@ -326,6 +327,89 @@ func (n NetworkConfig) Parse() (ParsedNetworkConfig, error) {
 	return p, nil
 }
 
+// LatencySpikeConfig holds configuration for probabilistic latency spikes.
+type LatencySpikeConfig struct {
+	Probability float64 `yaml:"probability,omitempty" toml:"probability,omitempty"` // 0.0-1.0
+	Duration    string  `yaml:"duration,omitempty" toml:"duration,omitempty"`       // Go duration, e.g. "5s"
+}
+
+// ChaosConfig holds optional chaos engineering settings for fault injection.
+// A zero value (or Enabled=false) means chaos is disabled.
+type ChaosConfig struct {
+	Enabled      bool               `yaml:"enabled,omitempty" toml:"enabled,omitempty"`
+	ErrorRate    float64            `yaml:"error_rate,omitempty" toml:"error_rate,omitempty"`         // 0.0-1.0, fraction of writes that fail
+	LatencySpike LatencySpikeConfig `yaml:"latency_spike,omitempty" toml:"latency_spike,omitempty"`
+}
+
+// IsSet returns true if chaos injection is configured and enabled.
+func (c ChaosConfig) IsSet() bool {
+	return c.Enabled
+}
+
+// ParsedChaosConfig holds parsed, ready-to-use chaos engineering settings.
+type ParsedChaosConfig struct {
+	Enabled                 bool
+	ErrorRate               float64       // 0.0-1.0
+	LatencySpikeProbability float64       // 0.0-1.0
+	LatencySpikeDuration    time.Duration // 0 = no spikes
+}
+
+// IsEnabled returns true if any chaos injection is active.
+func (p ParsedChaosConfig) IsEnabled() bool {
+	return p.Enabled && (p.ErrorRate > 0 || p.LatencySpikeProbability > 0)
+}
+
+// Parse validates and parses the ChaosConfig into a ParsedChaosConfig.
+func (c ChaosConfig) Parse() (ParsedChaosConfig, error) {
+	var p ParsedChaosConfig
+	if !c.Enabled {
+		return p, nil
+	}
+	p.Enabled = true
+
+	if c.ErrorRate < 0 || c.ErrorRate > 1 {
+		return p, fmt.Errorf("error_rate must be between 0.0 and 1.0, got %v", c.ErrorRate)
+	}
+	p.ErrorRate = c.ErrorRate
+
+	if c.LatencySpike.Probability < 0 || c.LatencySpike.Probability > 1 {
+		return p, fmt.Errorf("latency_spike.probability must be between 0.0 and 1.0, got %v", c.LatencySpike.Probability)
+	}
+	p.LatencySpikeProbability = c.LatencySpike.Probability
+
+	if c.LatencySpike.Duration != "" {
+		d, err := time.ParseDuration(c.LatencySpike.Duration)
+		if err != nil {
+			return p, fmt.Errorf("invalid latency_spike.duration %q: %w", c.LatencySpike.Duration, err)
+		}
+		if d < 0 {
+			return p, fmt.Errorf("latency_spike.duration must be non-negative, got %s", c.LatencySpike.Duration)
+		}
+		p.LatencySpikeDuration = d
+	}
+
+	if p.LatencySpikeProbability > 0 && p.LatencySpikeDuration == 0 {
+		return p, fmt.Errorf("latency_spike.duration is required when probability is set")
+	}
+
+	return p, nil
+}
+
+// ResolveChaos merges global and per-service chaos configs.
+// Per-service fields override global when non-zero (field-by-field merge).
+// The global enabled flag acts as a master switch.
+func ResolveChaos(global, perService ChaosConfig) ChaosConfig {
+	// If neither is enabled, return zero.
+	if !global.Enabled && !perService.Enabled {
+		return ChaosConfig{}
+	}
+	// Per-service fully overrides when set.
+	if perService.Enabled {
+		return perService
+	}
+	return global
+}
+
 // ResolveNetwork merges global and per-service network configs.
 // Per-service fields override global when non-empty (field-by-field merge).
 func ResolveNetwork(global, perService NetworkConfig) NetworkConfig {
@@ -390,6 +474,7 @@ type Config struct {
 	Hooks       []HookConfig      `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig  `yaml:"supervisor,omitempty" toml:"supervisor,omitempty"`
 	Network     NetworkConfig     `yaml:"network,omitempty" toml:"network,omitempty"`
+	Chaos       ChaosConfig       `yaml:"chaos,omitempty" toml:"chaos,omitempty"`
 	SOCKS       ProxyServerConfig `yaml:"socks,omitempty" toml:"socks,omitempty"`
 	HTTPProxy   ProxyServerConfig `yaml:"http_proxy,omitempty" toml:"http_proxy,omitempty"`
 
@@ -577,6 +662,7 @@ type serviceConfigTOML struct {
 	ExcludePorts    []string      `toml:"exclude_ports,omitempty"`
 	LocalPortOffset int           `toml:"local_port_offset,omitempty"`
 	Network         NetworkConfig `toml:"network,omitempty"`
+	Chaos           ChaosConfig   `toml:"chaos,omitempty"`
 }
 
 // configTOML is a TOML-specific intermediate struct for decoding.
@@ -591,6 +677,7 @@ type configTOML struct {
 	Hooks       []HookConfig        `toml:"hooks,omitempty"`
 	Supervisor  SupervisorConfig    `toml:"supervisor,omitempty"`
 	Network     NetworkConfig       `toml:"network,omitempty"`
+	Chaos       ChaosConfig         `toml:"chaos,omitempty"`
 	SOCKS       ProxyServerConfig   `toml:"socks,omitempty"`
 	HTTPProxy   ProxyServerConfig   `toml:"http_proxy,omitempty"`
 }
@@ -611,6 +698,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 	cfg.Hooks = raw.Hooks
 	cfg.Supervisor = raw.Supervisor
 	cfg.Network = raw.Network
+	cfg.Chaos = raw.Chaos
 	cfg.SOCKS = raw.SOCKS
 	cfg.HTTPProxy = raw.HTTPProxy
 
@@ -626,6 +714,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 			ExcludePorts:    rs.ExcludePorts,
 			LocalPortOffset: rs.LocalPortOffset,
 			Network:         rs.Network,
+			Chaos:           rs.Chaos,
 		}
 		if rs.Ports != nil {
 			ports, err := parsePortsFromRaw(rs.Ports)
@@ -650,6 +739,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 		Hooks:       c.Hooks,
 		Supervisor:  c.Supervisor,
 		Network:     c.Network,
+		Chaos:       c.Chaos,
 		SOCKS:       c.SOCKS,
 		HTTPProxy:   c.HTTPProxy,
 		Services:    make([]serviceConfigTOML, len(c.Services)),
@@ -665,6 +755,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 			ExcludePorts:    svc.ExcludePorts,
 			LocalPortOffset: svc.LocalPortOffset,
 			Network:         svc.Network,
+			Chaos:           svc.Chaos,
 		}
 		if svc.Ports.All {
 			raw.Services[i].Ports = "all"
@@ -882,6 +973,13 @@ func ValidateService(svc ServiceConfig) error {
 		}
 	}
 
+	// Validate per-service chaos config
+	if svc.Chaos.IsSet() {
+		if _, err := svc.Chaos.Parse(); err != nil {
+			return fmt.Errorf("service %q: chaos: %w", svc.Name, err)
+		}
+	}
+
 	return nil
 }
 
@@ -952,6 +1050,13 @@ func (c *Config) Validate() error {
 	if c.Network.IsSet() {
 		if _, err := c.Network.Parse(); err != nil {
 			return fmt.Errorf("network: %w", err)
+		}
+	}
+
+	// Validate global chaos config
+	if c.Chaos.IsSet() {
+		if _, err := c.Chaos.Parse(); err != nil {
+			return fmt.Errorf("chaos: %w", err)
 		}
 	}
 

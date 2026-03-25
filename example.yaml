@@ -33,6 +33,15 @@ namespace: default
 #   jitter: 10ms        # Random variation on latency (+/- this value)
 #   bandwidth: 5mbps    # Bandwidth cap (supports: kbps, mbps, gbps, kbytes, mbytes, gbytes)
 
+# Chaos engineering (global defaults — applied to all services)
+# Injects random faults for resilience testing.
+# chaos:
+#   enabled: true
+#   error_rate: 0.02         # 2% of writes fail with a connection error
+#   latency_spike:
+#     probability: 0.01      # 1% chance of a latency spike per write
+#     duration: 5s           # Duration of each spike
+
 # Services to port-forward
 services:
   # Forward a Kubernetes service (auto-resolves to a running pod)
@@ -89,6 +98,18 @@ services:
   #     latency: 150ms
   #     jitter: 20ms
   #     bandwidth: 1mbps
+
+  # Per-service chaos (overrides global chaos settings)
+  # - name: Fragile Backend
+  #   service: backend-svc
+  #   local_port: 9090
+  #   remote_port: 80
+  #   chaos:
+  #     enabled: true
+  #     error_rate: 0.1
+  #     latency_spike:
+  #       probability: 0.05
+  #       duration: 3s
 
   # Multi-port: all ports except metrics, with offset
   # - name: Platform
