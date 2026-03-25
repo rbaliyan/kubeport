@@ -100,7 +100,7 @@ The `network` section configures latency injection and bandwidth throttling for 
 | `jitter` | string | _(none)_ | Random jitter added to latency (must not exceed `latency`) |
 | `bandwidth` | string | _(none)_ | Bandwidth cap (e.g. `"5mbps"`, `"500kbps"`, `"1gbps"`, `"1mbytes"`) |
 
-Per-service `network` settings override the global settings. If a service specifies only some fields, the remaining fields are inherited from the global config.
+Per-service `network` settings override the global settings. If a service specifies only some fields, the remaining fields are inherited from the global config (field-by-field merge).
 
 ### Chaos Engineering Fields
 
@@ -113,7 +113,7 @@ The `chaos` section configures fault injection for testing resilience. Can be se
 | `latency_spike.probability` | float | `0.0` | Probability of a latency spike on each write (0.0-1.0) |
 | `latency_spike.duration` | string | _(none)_ | Duration of latency spikes (Go duration, e.g. `"5s"`) |
 
-Per-service `chaos` settings fully override global when `enabled: true`. The global `enabled` flag acts as a master switch.
+Per-service `chaos` settings fully override global when `enabled: true` (unlike `network`, which does field-by-field merge). The global `enabled` flag acts as a master switch.
 
 ### Proxy Server Fields
 

@@ -94,11 +94,7 @@ Bind this role to your user or service account with a ClusterRoleBinding or name
 
 ### Config file not found
 
-kubeport searches in this order:
-1. Path from `--config` / `-c` flag
-2. `kubeport.yaml` / `kubeport.yml` / `kubeport.toml` in the current directory
-3. `~/.config/kubeport/kubeport.{yaml,yml,toml}`
-4. `~/.kubeport/kubeport.{yaml,yml,toml}`
+See [Config File Discovery](configuration.md#config-file-discovery) for the full search order.
 
 Check which file kubeport resolves:
 ```bash

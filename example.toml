@@ -124,3 +124,27 @@ remote_port = 9090
 # backoff_initial = "1s"
 # backoff_max = "30s"
 # max_connection_age = "30m"
+
+# Lifecycle hooks — run actions on port-forward events
+# [[hooks]]
+# name = "notify"
+# type = "shell"
+# [hooks.shell]
+# "forward:connected" = "echo ${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
+# "forward:failed" = "echo ${KUBEPORT_SERVICE} failed"
+
+# SOCKS5 proxy for Kubernetes DNS translation
+# [socks]
+# listen = "127.0.0.1:1080"
+# username = "admin"
+# password = "secret"
+
+# HTTP/HTTPS proxy for Kubernetes DNS translation
+# [http_proxy]
+# listen = "127.0.0.1:3128"
+# username = "admin"
+# password = "secret"
+
+# Remote daemon control (TCP listener)
+# listen = "tcp://0.0.0.0:9400"
+# api_key = "my-secret-api-key"
