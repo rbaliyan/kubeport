@@ -150,6 +150,7 @@ Kubeport isn't just a tunnel — it's a workflow engine. Use hooks to bridge the
 | `health:check_failed` | A single health-check probe failed |
 | `service:added` | A service was dynamically added |
 | `service:removed` | A service was dynamically removed |
+| `pod:terminating` | Current pod is terminating, preemptive reconnect starting |
 
 Three hook types: **shell** (`sh -c`), **exec** (direct binary), and **webhook** (HTTP POST).
 

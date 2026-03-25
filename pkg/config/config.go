@@ -396,8 +396,8 @@ func (c ChaosConfig) Parse() (ParsedChaosConfig, error) {
 }
 
 // ResolveChaos merges global and per-service chaos configs.
-// Per-service fields override global when non-zero (field-by-field merge).
-// The global enabled flag acts as a master switch.
+// Per-service fully overrides global when enabled. The global enabled flag
+// acts as a master switch.
 func ResolveChaos(global, perService ChaosConfig) ChaosConfig {
 	// If neither is enabled, return zero.
 	if !global.Enabled && !perService.Enabled {
