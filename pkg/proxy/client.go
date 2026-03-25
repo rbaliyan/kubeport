@@ -51,7 +51,7 @@ type options struct {
 	logger          *slog.Logger
 }
 
-// WithRefreshInterval sets the referesh interval for auto refresh
+// WithRefreshInterval sets the refresh interval for auto refresh
 // If not set defaults to 10 seconds
 func WithRefreshInterval(t time.Duration) Option {
 	return func(o *options) { o.refreshInterval = t }

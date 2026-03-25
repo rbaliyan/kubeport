@@ -94,6 +94,19 @@ remote_port = 9090
 # jitter = "20ms"
 # bandwidth = "1mbps"
 
+# Per-service chaos (overrides global chaos settings)
+# [[services]]
+# name = "Fragile Backend"
+# service = "backend-svc"
+# local_port = 9090
+# remote_port = 80
+# [services.chaos]
+# enabled = true
+# error_rate = 0.1
+# [services.chaos.latency_spike]
+# probability = 0.05
+# duration = "3s"
+
 # Multi-port: all except metrics, with offset
 # [[services]]
 # name = "Platform"
@@ -101,3 +114,13 @@ remote_port = 9090
 # ports = "all"
 # exclude_ports = ["metrics"]
 # local_port_offset = 10000
+
+# Supervisor tuning (all optional, sensible defaults)
+# [supervisor]
+# max_restarts = 10
+# health_check_interval = "10s"
+# health_check_threshold = 3
+# ready_timeout = "15s"
+# backoff_initial = "1s"
+# backoff_max = "30s"
+# max_connection_age = "30m"

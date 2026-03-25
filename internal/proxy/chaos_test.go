@@ -127,3 +127,38 @@ func TestChaosStream_ReadPassthrough(t *testing.T) {
 		t.Fatalf("expected 'hello', got %q", string(buf[:n]))
 	}
 }
+
+func TestChaosStream_ErrorPrecedesSpike(t *testing.T) {
+	// When both error_rate=1.0 and spike probability=1.0,
+	// the error check fires first and the spike is never reached.
+	counters := &chaosCounters{}
+	s := &chaosStream{
+		stream: &mockStream{},
+		ctx:    context.Background(),
+		cfg: config.ParsedChaosConfig{
+			Enabled:                 true,
+			ErrorRate:               1.0,
+			LatencySpikeProbability: 1.0,
+			LatencySpikeDuration:    10 * time.Second,
+		},
+		counters: counters,
+	}
+
+	start := time.Now()
+	_, err := s.Write([]byte("hello"))
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, errChaosInjected) {
+		t.Fatalf("expected errChaosInjected, got %v", err)
+	}
+	// Should return immediately — no spike delay.
+	if elapsed > 100*time.Millisecond {
+		t.Fatalf("expected immediate error, but took %v (spike should not fire)", elapsed)
+	}
+	if counters.errorsInjected.Load() != 1 {
+		t.Fatalf("expected 1 error, got %d", counters.errorsInjected.Load())
+	}
+	if counters.spikesInjected.Load() != 0 {
+		t.Fatalf("expected 0 spikes, got %d", counters.spikesInjected.Load())
+	}
+}

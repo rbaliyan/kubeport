@@ -14,6 +14,7 @@ go get github.com/rbaliyan/kubeport/pkg/proxy
 package main
 
 import (
+    "context"
     "net/http"
     "log"
 
@@ -149,6 +150,18 @@ conn, err := grpc.NewClient(
 ```
 
 `GRPCTarget` returns a `kubeport:///` scheme address that the per-client resolver (from `GRPCDialOption()`) translates to the correct localhost address. For a noop proxy, `GRPCTarget` returns the address unchanged and `GRPCDialOption()` returns nil.
+
+### Global gRPC Resolver
+
+For applications with multiple proxy instances or long-lived gRPC connections, use `RegisterGlobalResolver` to register a global `kubeport:///` scheme resolver that aggregates mappings from all active proxy clients:
+
+```go
+func init() {
+    proxy.RegisterGlobalResolver()
+}
+```
+
+After calling this once at startup, any gRPC client can dial `kubeport:///addr` without needing `GRPCDialOption()` per connection. Per-client resolvers from `GRPCDialOption()` take priority over the global resolver for that connection.
 
 ### net/http
 
