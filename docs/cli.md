@@ -213,6 +213,7 @@ kubeport version
 | `--disable-svc` | | Disable a named service from config (repeatable) |
 | `--no-config` | | Ignore config files, use only `--svc` flags |
 | `--api-key` | | API key for TCP daemon authentication |
+| `--host` | | Connect to a remote daemon over TCP (requires `--api-key`) |
 | `--json` | | JSON output for commands that support it |
 | `--sort` | | Sort output |
 | `--wait` | | Wait for readiness (used with `start`) |

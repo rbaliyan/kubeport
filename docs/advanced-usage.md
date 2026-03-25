@@ -145,12 +145,17 @@ This runs in the foreground, logs to stdout, and exits on SIGTERM/SIGINT.
 kubeport supports TCP listeners with API key authentication for controlling the daemon remotely (e.g., from a different machine or container):
 
 ```yaml
-listen: tcp://0.0.0.0:9400?key=my-secret-api-key
+# Separate fields (preferred)
+listen: tcp://0.0.0.0:9400
+api_key: my-secret-api-key
+
+# Or embedded in the URL
+# listen: tcp://0.0.0.0:9400?key=my-secret-api-key
 ```
 
 Connect from another machine:
 ```bash
-kubeport status --config tcp://host:9400 --api-key my-secret-api-key
+kubeport status --host host:9400 --api-key my-secret-api-key
 ```
 
 ## Dynamic Overlays

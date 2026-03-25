@@ -117,3 +117,37 @@ services:
   #   ports: all
   #   exclude_ports: [metrics]
   #   local_port_offset: 10000
+
+# Supervisor tuning (all optional, sensible defaults)
+# supervisor:
+#   max_restarts: 10
+#   health_check_interval: 10s
+#   health_check_threshold: 3
+#   ready_timeout: 15s
+#   backoff_initial: 1s
+#   backoff_max: 30s
+#   max_connection_age: 30m
+
+# Lifecycle hooks — run actions on port-forward events
+# hooks:
+#   - name: notify
+#     type: shell
+#     shell:
+#       forward:connected: notify-send "kubeport" "${KUBEPORT_SERVICE} ready on port ${KUBEPORT_LOCAL_PORT}"
+#       forward:failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed"
+
+# SOCKS5 proxy for Kubernetes DNS translation
+# socks:
+#   listen: 127.0.0.1:1080
+#   # username: admin
+#   # password: secret
+
+# HTTP/HTTPS proxy for Kubernetes DNS translation
+# http_proxy:
+#   listen: 127.0.0.1:3128
+#   # username: admin
+#   # password: secret
+
+# Remote daemon control (TCP listener)
+# listen: tcp://0.0.0.0:9400
+# api_key: my-secret-api-key
