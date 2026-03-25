@@ -96,7 +96,7 @@ The `network` section configures latency injection and bandwidth throttling for 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `latency` | string | _(none)_ | Added latency per connection (Go duration, e.g. `"50ms"`) |
+| `latency` | string | _(none)_ | Added latency per write (Go duration, e.g. `"50ms"`) |
 | `jitter` | string | _(none)_ | Random jitter added to latency (must not exceed `latency`) |
 | `bandwidth` | string | _(none)_ | Bandwidth cap (e.g. `"5mbps"`, `"500kbps"`, `"1gbps"`, `"1mbytes"`) |
 
@@ -268,6 +268,7 @@ These override config file values:
 |----------|-------------|
 | `K8S_CONTEXT` | Override Kubernetes context |
 | `K8S_NAMESPACE` | Override default namespace |
+| `KUBEPORT_API_KEY` | Override API key for TCP listener authentication |
 
 ## Managing Config via CLI
 
