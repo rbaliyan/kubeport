@@ -88,7 +88,7 @@ The `supervisor` section tunes restart and health-check behavior. All fields are
 | `ready_timeout` | `15s` | Timeout waiting for a forward to become ready |
 | `backoff_initial` | `1s` | Initial delay between restarts |
 | `backoff_max` | `30s` | Maximum delay between restarts |
-| `max_connection_age` | `30m` | Maximum lifetime of a port-forward before proactive reconnect (`0` to disable) |
+| `max_connection_age` | `0` (disabled) | Maximum lifetime of a port-forward before proactive reconnect |
 
 ### Network Simulation Fields
 

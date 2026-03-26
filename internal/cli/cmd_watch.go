@@ -267,8 +267,8 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 		if fw.State == kubeportv1.ForwardState_FORWARD_STATE_RUNNING && fw.LastStart != nil && fw.LastStart.IsValid() {
 			elapsed := time.Since(fw.LastStart.AsTime()).Seconds()
 			if elapsed > 0 {
-				totalBytes := fw.BytesIn + fw.BytesOut
-				_, _ = fmt.Fprintf(w, ", %s/s", formatBytes(int64(float64(totalBytes)/elapsed)))
+				connBytes := fw.ConnBytesIn + fw.ConnBytesOut
+				_, _ = fmt.Fprintf(w, ", %s/s", formatBytes(int64(float64(connBytes)/elapsed)))
 			}
 		}
 		_, _ = fmt.Fprint(w, ")")

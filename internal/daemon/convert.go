@@ -41,6 +41,8 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		ChaosSpikeDurationMs:  fs.ChaosSpikeDuration.Milliseconds(),
 		ChaosErrorsInjected:   fs.ChaosErrorsInjected,
 		ChaosSpikesInjected:   fs.ChaosSpikesInjected,
+		ConnBytesIn:           fs.ConnBytesIn,
+		ConnBytesOut:          fs.ConnBytesOut,
 	}
 	if !fs.NextRetry.IsZero() {
 		proto.NextRetry = timestamppb.New(fs.NextRetry)

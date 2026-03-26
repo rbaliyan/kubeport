@@ -1143,7 +1143,7 @@ func (s SupervisorConfig) ParsedSupervisor() (ParsedSupervisorConfig, error) {
 	if p.BackoffMax, err = parseDuration(s.BackoffMax, 30*time.Second); err != nil {
 		return p, fmt.Errorf("backoff_max: %w", err)
 	}
-	if p.MaxConnectionAge, err = parseDuration(s.MaxConnectionAge, 30*time.Minute); err != nil {
+	if p.MaxConnectionAge, err = parseDuration(s.MaxConnectionAge, 0); err != nil {
 		return p, fmt.Errorf("max_connection_age: %w", err)
 	}
 	return p, nil
