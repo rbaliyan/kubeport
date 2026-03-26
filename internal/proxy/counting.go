@@ -15,6 +15,8 @@ import (
 type byteCounter struct {
 	bytesIn      atomic.Int64
 	bytesOut     atomic.Int64
+	connBytesIn  atomic.Int64 // bytes since last reconnect (for rate calculation)
+	connBytesOut atomic.Int64 // bytes since last reconnect (for rate calculation)
 	streamErrors atomic.Int64 // stream creation failures (per-connection, reset on reconnect)
 	chaos        chaosCounters
 }
@@ -34,8 +36,10 @@ func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, strin
 	if err != nil {
 		return nil, proto, err
 	}
-	// Reset per-connection stream error count on fresh connection
+	// Reset per-connection counters on fresh connection.
 	d.counter.streamErrors.Store(0)
+	d.counter.connBytesIn.Store(0)
+	d.counter.connBytesOut.Store(0)
 
 	cc := &countingConnection{conn: conn, counter: d.counter, ctx: d.ctx}
 	if d.networkCfg.IsEnabled() {
@@ -111,6 +115,7 @@ func (s *countingStream) Read(p []byte) (int, error) {
 	n, err := s.stream.Read(p)
 	if n > 0 {
 		s.counter.bytesIn.Add(int64(n))
+		s.counter.connBytesIn.Add(int64(n))
 	}
 	return n, err
 }
@@ -119,6 +124,7 @@ func (s *countingStream) Write(p []byte) (int, error) {
 	n, err := s.stream.Write(p)
 	if n > 0 {
 		s.counter.bytesOut.Add(int64(n))
+		s.counter.connBytesOut.Add(int64(n))
 	}
 	return n, err
 }

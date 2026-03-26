@@ -67,6 +67,8 @@ type ForwardStatus struct {
 	NextRetry          time.Time // When next reconnection attempt will be made (zero if not reconnecting)
 	BytesIn            int64     // Total bytes received from the remote side
 	BytesOut           int64     // Total bytes sent to the remote side
+	ConnBytesIn        int64     // Bytes received since last reconnect (for rate calculation)
+	ConnBytesOut       int64     // Bytes sent since last reconnect (for rate calculation)
 	EffectiveLatency   time.Duration // Injected latency (0 = disabled)
 	EffectiveJitter    time.Duration // Jitter range (0 = disabled)
 	EffectiveBandwidth int64         // Bandwidth cap in bytes/sec (0 = disabled)
@@ -1440,6 +1442,8 @@ func (m *Manager) Status() []ForwardStatus {
 			NextRetry:          pf.nextRetry,
 			BytesIn:            pf.counter.bytesIn.Load(),
 			BytesOut:           pf.counter.bytesOut.Load(),
+			ConnBytesIn:        pf.counter.connBytesIn.Load(),
+			ConnBytesOut:       pf.counter.connBytesOut.Load(),
 			EffectiveLatency:   netCfg.Latency,
 			EffectiveJitter:    netCfg.Jitter,
 			EffectiveBandwidth: netCfg.BytesPerSec,

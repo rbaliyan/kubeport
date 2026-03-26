@@ -60,6 +60,8 @@ message ForwardStatusProto {
   int64 chaos_spike_duration_ms = 17;     // Latency spike duration in ms
   int64 chaos_errors_injected = 18;       // Count of errors injected so far
   int64 chaos_spikes_injected = 19;       // Count of latency spikes injected so far
+  int64 conn_bytes_in = 20;              // Bytes received since last reconnect
+  int64 conn_bytes_out = 21;             // Bytes sent since last reconnect
 }
 
 message StatusRequest {}

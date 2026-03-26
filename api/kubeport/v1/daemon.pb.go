@@ -266,6 +266,8 @@ type ForwardStatusProto struct {
 	ChaosSpikeDurationMs  int64                  `protobuf:"varint,17,opt,name=chaos_spike_duration_ms,json=chaosSpikeDurationMs,proto3" json:"chaos_spike_duration_ms,omitempty"`   // Latency spike duration in ms
 	ChaosErrorsInjected   int64                  `protobuf:"varint,18,opt,name=chaos_errors_injected,json=chaosErrorsInjected,proto3" json:"chaos_errors_injected,omitempty"`        // Count of errors injected so far
 	ChaosSpikesInjected   int64                  `protobuf:"varint,19,opt,name=chaos_spikes_injected,json=chaosSpikesInjected,proto3" json:"chaos_spikes_injected,omitempty"`        // Count of latency spikes injected so far
+	ConnBytesIn           int64                  `protobuf:"varint,20,opt,name=conn_bytes_in,json=connBytesIn,proto3" json:"conn_bytes_in,omitempty"`                                // Bytes received since last reconnect
+	ConnBytesOut          int64                  `protobuf:"varint,21,opt,name=conn_bytes_out,json=connBytesOut,proto3" json:"conn_bytes_out,omitempty"`                             // Bytes sent since last reconnect
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -429,6 +431,20 @@ func (x *ForwardStatusProto) GetChaosErrorsInjected() int64 {
 func (x *ForwardStatusProto) GetChaosSpikesInjected() int64 {
 	if x != nil {
 		return x.ChaosSpikesInjected
+	}
+	return 0
+}
+
+func (x *ForwardStatusProto) GetConnBytesIn() int64 {
+	if x != nil {
+		return x.ConnBytesIn
+	}
+	return 0
+}
+
+func (x *ForwardStatusProto) GetConnBytesOut() int64 {
+	if x != nil {
+		return x.ConnBytesOut
 	}
 	return 0
 }
@@ -1275,7 +1291,7 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"port_names\x18\x02 \x03(\tR\tportNames\x12#\n" +
 	"\rexclude_ports\x18\x03 \x03(\tR\fexcludePorts\x12*\n" +
-	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xd1\x06\n" +
+	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\x9b\a\n" +
 	"\x12ForwardStatusProto\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.kubeport.v1.ForwardStateR\x05state\x12\x14\n" +
@@ -1299,7 +1315,9 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x17chaos_spike_probability\x18\x10 \x01(\x01R\x15chaosSpikeProbability\x125\n" +
 	"\x17chaos_spike_duration_ms\x18\x11 \x01(\x03R\x14chaosSpikeDurationMs\x122\n" +
 	"\x15chaos_errors_injected\x18\x12 \x01(\x03R\x13chaosErrorsInjected\x122\n" +
-	"\x15chaos_spikes_injected\x18\x13 \x01(\x03R\x13chaosSpikesInjected\"\x0f\n" +
+	"\x15chaos_spikes_injected\x18\x13 \x01(\x03R\x13chaosSpikesInjected\x12\"\n" +
+	"\rconn_bytes_in\x18\x14 \x01(\x03R\vconnBytesIn\x12$\n" +
+	"\x0econn_bytes_out\x18\x15 \x01(\x03R\fconnBytesOut\"\x0f\n" +
 	"\rStatusRequest\"\x9f\x01\n" +
 	"\x0eStatusResponse\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12\x1c\n" +
