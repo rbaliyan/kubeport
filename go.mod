@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20250520111509-a70c2aa677fa
-	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/rbaliyan/go-version v1.2.5
 	golang.org/x/term v0.41.0
 	google.golang.org/grpc v1.79.3
