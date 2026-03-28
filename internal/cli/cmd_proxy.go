@@ -11,10 +11,11 @@ import (
 	"time"
 
 	version "github.com/rbaliyan/go-version"
-	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/daemon"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/proxy"
+	"github.com/rbaliyan/kubeport/pkg/config"
+	pkgproxy "github.com/rbaliyan/kubeport/pkg/proxy"
 )
 
 func (a *app) cmdForeground(ctx context.Context) {
@@ -185,6 +186,16 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		_, _ = fmt.Fprintf(output, "gRPC server listening on %s\n", listenCfg.Address)
 	}
 
+	// Auto-start SOCKS proxy if enabled
+	if a.cfg.SOCKS.Enabled {
+		go a.autoStartSOCKS(ctx, logger, output)
+	}
+
+	// Auto-start HTTP proxy if enabled
+	if a.cfg.HTTPProxy.Enabled {
+		go a.autoStartHTTPProxy(ctx, logger, output)
+	}
+
 	// Verify namespace access
 	if err := mgr.CheckNamespace(ctx); err != nil {
 		_, _ = fmt.Fprintf(output, "Warning: %v\n", err)
@@ -227,4 +238,98 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 
 	_, _ = fmt.Fprintf(output, "Starting port forwards...\n\n")
 	mgr.Start(ctx)
+}
+
+// autoStartSOCKS starts an embedded SOCKS5 proxy server when socks.enabled is true.
+func (a *app) autoStartSOCKS(ctx context.Context, logger *slog.Logger, output io.Writer) {
+	listenAddr := a.cfg.SOCKS.Listen
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1:1080"
+	}
+
+	// Brief delay to let the daemon gRPC socket become ready.
+	time.Sleep(500 * time.Millisecond)
+
+	f := proxyFlags{
+		listenAddr: listenAddr,
+		username:   a.cfg.SOCKS.Username,
+		password:   a.cfg.SOCKS.Password,
+	}
+
+	p, err := a.connectDaemon(f, a.cfg.SOCKS)
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: SOCKS auto-start failed to connect to daemon: %v\n", err)
+		return
+	}
+
+	var socksOpts []pkgproxy.SOCKSOption
+	socksOpts = append(socksOpts, pkgproxy.WithSOCKSLogger(logger))
+	if f.username != "" || f.password != "" {
+		socksOpts = append(socksOpts, pkgproxy.WithSOCKSAuth(f.username, f.password))
+	}
+
+	srv, err := pkgproxy.NewSOCKSServer(p, f.listenAddr, socksOpts...)
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: SOCKS auto-start failed: %v\n", err)
+		return
+	}
+
+	_, _ = fmt.Fprintf(output, "SOCKS5 proxy listening on %s\n", srv.Addr())
+
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+		_ = p.Close(context.Background())
+	}()
+
+	if err := srv.Serve(ctx); err != nil && ctx.Err() == nil {
+		_, _ = fmt.Fprintf(output, "SOCKS proxy error: %v\n", err)
+	}
+}
+
+// autoStartHTTPProxy starts an embedded HTTP proxy server when http_proxy.enabled is true.
+func (a *app) autoStartHTTPProxy(ctx context.Context, logger *slog.Logger, output io.Writer) {
+	listenAddr := a.cfg.HTTPProxy.Listen
+	if listenAddr == "" {
+		listenAddr = "127.0.0.1:3128"
+	}
+
+	// Brief delay to let the daemon gRPC socket become ready.
+	time.Sleep(500 * time.Millisecond)
+
+	f := proxyFlags{
+		listenAddr: listenAddr,
+		username:   a.cfg.HTTPProxy.Username,
+		password:   a.cfg.HTTPProxy.Password,
+	}
+
+	p, err := a.connectDaemon(f, a.cfg.HTTPProxy)
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: HTTP proxy auto-start failed to connect to daemon: %v\n", err)
+		return
+	}
+
+	var httpOpts []pkgproxy.HTTPProxyOption
+	httpOpts = append(httpOpts, pkgproxy.WithHTTPProxyLogger(logger))
+	if f.username != "" || f.password != "" {
+		httpOpts = append(httpOpts, pkgproxy.WithHTTPProxyAuth(f.username, f.password))
+	}
+
+	srv, err := pkgproxy.NewHTTPProxyServer(p, f.listenAddr, httpOpts...)
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: HTTP proxy auto-start failed: %v\n", err)
+		return
+	}
+
+	_, _ = fmt.Fprintf(output, "HTTP proxy listening on %s\n", srv.Addr())
+
+	go func() {
+		<-ctx.Done()
+		_ = srv.Close()
+		_ = p.Close(context.Background())
+	}()
+
+	if err := srv.Serve(ctx); err != nil && ctx.Err() == nil {
+		_, _ = fmt.Fprintf(output, "HTTP proxy error: %v\n", err)
+	}
 }

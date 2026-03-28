@@ -121,6 +121,7 @@ The `socks` and `http_proxy` sections configure the built-in proxy servers. See 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
+| `enabled` | bool | `false` | Auto-start with daemon (`kubeport start`/`fg`) |
 | `listen` | string | `127.0.0.1:1080` (SOCKS) / `127.0.0.1:3128` (HTTP) | Listen address |
 | `username` | string | _(none)_ | Authentication username |
 | `password` | string | _(none)_ | Authentication password |
@@ -202,11 +203,13 @@ chaos:
     duration: 5s             # 5 seconds of added lag
 
 socks:
+  enabled: true
   listen: 127.0.0.1:1080
   # username: admin
   # password: secret
 
 http_proxy:
+  enabled: true
   listen: 127.0.0.1:3128
   # username: admin
   # password: secret
@@ -250,11 +253,13 @@ service = "backend-svc"
 ports = ["http", "grpc"]
 
 [socks]
+enabled = true
 listen = "127.0.0.1:1080"
 # username = "admin"
 # password = "secret"
 
 [http_proxy]
+enabled = true
 listen = "127.0.0.1:3128"
 # username = "admin"
 # password = "secret"
