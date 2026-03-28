@@ -137,13 +137,21 @@ services:
 #       forward:failed: notify-send -u critical "kubeport" "${KUBEPORT_SERVICE} failed"
 
 # SOCKS5 proxy for Kubernetes DNS translation
+# When enabled: true, starts automatically with the daemon (kubeport start/fg).
+# When enabled: false (default), use "kubeport socks" to start manually.
+# The --listen flag overrides the listen address in both modes.
 # socks:
+#   enabled: true
 #   listen: 127.0.0.1:1080
 #   # username: admin
 #   # password: secret
 
 # HTTP/HTTPS proxy for Kubernetes DNS translation
+# When enabled: true, starts automatically with the daemon (kubeport start/fg).
+# When enabled: false (default), use "kubeport http-proxy" to start manually.
+# The --listen flag overrides the listen address in both modes.
 # http_proxy:
+#   enabled: true
 #   listen: 127.0.0.1:3128
 #   # username: admin
 #   # password: secret

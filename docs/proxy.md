@@ -168,12 +168,14 @@ services:
     remote_port: 80
 
 socks:
+  enabled: true              # auto-start with daemon
   listen: 127.0.0.1:1080
   username: admin
   password: secret
   fuzzy_match: true          # default: true
 
 http_proxy:
+  enabled: true              # auto-start with daemon
   listen: 127.0.0.1:3128
   username: admin
   password: secret
@@ -187,12 +189,14 @@ context = "my-cluster"
 namespace = "default"
 
 [socks]
+enabled = true
 listen = "127.0.0.1:1080"
 username = "admin"
 password = "secret"
 fuzzy_match = true
 
 [http_proxy]
+enabled = true
 listen = "127.0.0.1:3128"
 username = "admin"
 password = "secret"
@@ -203,7 +207,8 @@ fuzzy_match = true
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `listen` | string | `127.0.0.1:1080` (SOCKS) / `127.0.0.1:3128` (HTTP) | Listen address |
+| `enabled` | bool | `false` | Auto-start with daemon (`kubeport start`/`fg`); when `false`, use `kubeport socks` or `kubeport http-proxy` to start manually |
+| `listen` | string | `127.0.0.1:1080` (SOCKS) / `127.0.0.1:3128` (HTTP) | Listen address; overridden by `--listen` flag |
 | `username` | string | _(none)_ | Authentication username |
 | `password` | string | _(none)_ | Authentication password |
 | `fuzzy_match` | bool | `true` | Enable headless service FQDN resolution (see below) |
