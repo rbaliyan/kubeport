@@ -202,6 +202,29 @@ func (a *app) renderWatch(interval time.Duration, rawMode bool) {
 		fmt.Fprintf(&content, "\nConfig:    %s", a.configFile)
 	}
 
+	socksStatus, httpProxyStatus := a.proxyStatusFromConfig()
+	if socksStatus != nil || httpProxyStatus != nil {
+		fmt.Fprintf(&content, "\n\nProxies:")
+		if socksStatus != nil {
+			state := "manual"
+			stateColor := colorYellow
+			if socksStatus.Enabled {
+				state = "auto"
+				stateColor = colorGreen
+			}
+			fmt.Fprintf(&content, "\n  SOCKS5:     %s [%s%s%s]", socksStatus.Listen, stateColor, state, colorReset)
+		}
+		if httpProxyStatus != nil {
+			state := "manual"
+			stateColor := colorYellow
+			if httpProxyStatus.Enabled {
+				state = "auto"
+				stateColor = colorGreen
+			}
+			fmt.Fprintf(&content, "\n  HTTP proxy: %s [%s%s%s]", httpProxyStatus.Listen, stateColor, state, colorReset)
+		}
+	}
+
 	if len(resp.Forwards) > 0 {
 		fmt.Fprintf(&content, "\n\nForwards:")
 		for _, fw := range resp.Forwards {

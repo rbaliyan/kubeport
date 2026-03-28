@@ -254,6 +254,7 @@ type SupervisorConfig struct {
 // ProxyServerConfig holds optional proxy server configuration shared by SOCKS5
 // and HTTP proxy modes.
 type ProxyServerConfig struct {
+	Enabled    bool   `yaml:"enabled,omitempty" toml:"enabled,omitempty"`         // auto-start with daemon
 	Listen     string `yaml:"listen,omitempty" toml:"listen,omitempty"`           // listen address
 	Username   string `yaml:"username,omitempty" toml:"username,omitempty"`       // auth username
 	Password   string `yaml:"password,omitempty" toml:"password,omitempty"`       // auth password

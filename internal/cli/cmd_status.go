@@ -16,6 +16,11 @@ import (
 )
 
 // JSON output types for --json flag.
+type proxyStatusOutput struct {
+	Enabled bool   `json:"enabled"`
+	Listen  string `json:"listen,omitempty"`
+}
+
 type statusOutput struct {
 	Running       bool                  `json:"running"`
 	CLIVersion    string                `json:"cli_version,omitempty"`
@@ -23,6 +28,8 @@ type statusOutput struct {
 	Context       string                `json:"context,omitempty"`
 	Namespace     string                `json:"namespace,omitempty"`
 	Config        string                `json:"config,omitempty"`
+	SOCKS         *proxyStatusOutput    `json:"socks,omitempty"`
+	HTTPProxy     *proxyStatusOutput    `json:"http_proxy,omitempty"`
 	Forwards      []forwardStatusOutput `json:"forwards,omitempty"`
 }
 
@@ -90,6 +97,8 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 		})
 	}
 
+	socksStatus, httpProxyStatus := a.proxyStatusFromConfig()
+
 	if a.statusJSON {
 		out := statusOutput{
 			Running:       true,
@@ -98,6 +107,8 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 			Context:       resp.Context,
 			Namespace:     resp.Namespace,
 			Config:        a.configFile,
+			SOCKS:         socksStatus,
+			HTTPProxy:     httpProxyStatus,
 		}
 		for _, fw := range resp.Forwards {
 			out.Forwards = append(out.Forwards, forwardFromProto(fw))
@@ -121,6 +132,11 @@ func (a *app) cmdStatusGRPC(dc *daemonClient) {
 		fmt.Printf("Config:    %s\n", a.configFile)
 	}
 
+	if socksStatus != nil || httpProxyStatus != nil {
+		fmt.Println("\nProxies:")
+		printProxyStatus(socksStatus, httpProxyStatus)
+	}
+
 	if len(resp.Forwards) > 0 {
 		fmt.Println("\nForwards:")
 		for _, fw := range resp.Forwards {
@@ -137,12 +153,16 @@ func (a *app) cmdStatusLegacy() {
 
 	services := a.legacyServices()
 
+	socksStatus, httpProxyStatus := a.proxyStatusFromConfig()
+
 	if a.statusJSON {
 		out := statusOutput{Running: running}
 		if a.cfg != nil {
 			out.Context = a.cfg.Context
 			out.Namespace = a.cfg.Namespace
 			out.Config = a.configFile
+			out.SOCKS = socksStatus
+			out.HTTPProxy = httpProxyStatus
 			for _, svc := range services {
 				state := "unknown"
 				if running && netutil.IsPortOpen(svc.LocalPort) {
@@ -180,6 +200,12 @@ func (a *app) cmdStatusLegacy() {
 		fmt.Printf("\nContext:   %s\n", a.cfg.Context)
 		fmt.Printf("Namespace: %s\n", a.cfg.Namespace)
 		fmt.Printf("Config:    %s\n", a.configFile)
+
+		if socksStatus != nil || httpProxyStatus != nil {
+			fmt.Println("\nProxies:")
+			printProxyStatus(socksStatus, httpProxyStatus)
+		}
+
 		fmt.Println("\nPort Status:")
 		for _, svc := range services {
 			a.printPortStatus(svc.LocalPort, svc.Name)
@@ -225,6 +251,51 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 		out.NextRetry = fw.NextRetry.AsTime().Format(time.RFC3339)
 	}
 	return out
+}
+
+// proxyStatusFromConfig returns proxy status structs from the loaded config.
+// Returns nil for each proxy if not configured (no listen address and not enabled).
+func (a *app) proxyStatusFromConfig() (socks, httpProxy *proxyStatusOutput) {
+	if a.cfg == nil {
+		return nil, nil
+	}
+	if a.cfg.SOCKS.Enabled || a.cfg.SOCKS.Listen != "" {
+		addr := a.cfg.SOCKS.Listen
+		if addr == "" {
+			addr = "127.0.0.1:1080"
+		}
+		socks = &proxyStatusOutput{Enabled: a.cfg.SOCKS.Enabled, Listen: addr}
+	}
+	if a.cfg.HTTPProxy.Enabled || a.cfg.HTTPProxy.Listen != "" {
+		addr := a.cfg.HTTPProxy.Listen
+		if addr == "" {
+			addr = "127.0.0.1:3128"
+		}
+		httpProxy = &proxyStatusOutput{Enabled: a.cfg.HTTPProxy.Enabled, Listen: addr}
+	}
+	return socks, httpProxy
+}
+
+// printProxyStatus prints SOCKS and HTTP proxy status lines.
+func printProxyStatus(socks, httpProxy *proxyStatusOutput) {
+	if socks != nil {
+		state := "manual"
+		stateColor := colorYellow
+		if socks.Enabled {
+			state = "auto"
+			stateColor = colorGreen
+		}
+		fmt.Printf("  SOCKS5:     %s [%s%s%s]\n", socks.Listen, stateColor, state, colorReset)
+	}
+	if httpProxy != nil {
+		state := "manual"
+		stateColor := colorYellow
+		if httpProxy.Enabled {
+			state = "auto"
+			stateColor = colorGreen
+		}
+		fmt.Printf("  HTTP proxy: %s [%s%s%s]\n", httpProxy.Listen, stateColor, state, colorReset)
+	}
 }
 
 func (a *app) writeJSON(v any) {
