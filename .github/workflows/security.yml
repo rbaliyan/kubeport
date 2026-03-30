@@ -73,7 +73,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Install GoSec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.22.4
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
 
       - name: Run GoSec
         run: gosec -fmt sarif -out gosec-results.sarif -severity medium -confidence medium ./...
