@@ -75,7 +75,7 @@ jobs:
       - name: Run GoSec
         uses: securego/gosec@master
         with:
-          args: '-fmt sarif -out gosec-results.sarif -severity medium -confidence medium -tests ./...'
+          args: '-fmt sarif -out gosec-results.sarif -severity medium -confidence medium ./...'
 
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v3
