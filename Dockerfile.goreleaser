@@ -1,7 +1,7 @@
-FROM busybox:1 AS dirs
+FROM busybox:1@sha256:1487d0af5f52b4ba31c7e465126ee2123fe3f2305d638e7827681e7cf6c83d5e AS dirs
 RUN mkdir -p /data
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
 
 # Copy the pre-built binary from the goreleaser build context.
 COPY kubeport /usr/local/bin/kubeport

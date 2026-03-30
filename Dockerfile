@@ -1,4 +1,4 @@
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25-alpine@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa AS builder
 
 WORKDIR /build
 
@@ -23,7 +23,7 @@ RUN CGO_ENABLED=0 go build \
 # Create the data directory here so we can COPY it with the right ownership below.
 RUN mkdir -p /data
 
-FROM gcr.io/distroless/static-debian12:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
 
 COPY --from=builder /build/kubeport /usr/local/bin/kubeport
 
