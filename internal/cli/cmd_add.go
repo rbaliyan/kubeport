@@ -52,8 +52,8 @@ func (a *app) cmdAdd(args []string) {
 			if i+1 < len(args) {
 				i++
 				p, err := strconv.Atoi(args[i])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: invalid --local-port: %v\n", err)
+				if err != nil || p < 0 || p > math.MaxUint16 {
+					fmt.Fprintf(os.Stderr, "Error: invalid --local-port: must be 0-%d\n", math.MaxUint16)
 					os.Exit(1)
 				}
 				localPort = p
@@ -62,8 +62,8 @@ func (a *app) cmdAdd(args []string) {
 			if i+1 < len(args) {
 				i++
 				p, err := strconv.Atoi(args[i])
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error: invalid --remote-port: %v\n", err)
+				if err != nil || p < 0 || p > math.MaxUint16 {
+					fmt.Fprintf(os.Stderr, "Error: invalid --remote-port: must be 0-%d\n", math.MaxUint16)
 					os.Exit(1)
 				}
 				remotePort = p
