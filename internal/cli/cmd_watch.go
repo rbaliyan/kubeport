@@ -92,7 +92,7 @@ func (a *app) cmdWatch() {
 	// We render into a buffer and convert \n to \r\n on output so that
 	// raw mode's disabled output processing doesn't break line formatting.
 	quitCh := make(chan struct{})
-	fd := int(os.Stdin.Fd())
+	fd := int(os.Stdin.Fd()) // #nosec G115 -- file descriptor fits int on all supported platforms
 	rawMode := false
 	if term.IsTerminal(fd) {
 		oldState, err := term.MakeRaw(fd)

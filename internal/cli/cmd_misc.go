@@ -135,7 +135,7 @@ func (a *app) tailLog(lines int) {
 		logFile = a.cfg.LogFile()
 	}
 
-	cmd := exec.Command("tail", "-n", strconv.Itoa(lines), logFile)
+	cmd := exec.Command("tail", "-n", strconv.Itoa(lines), logFile) // #nosec G204 -- args are sanitized integer and known log path
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	_ = cmd.Run()

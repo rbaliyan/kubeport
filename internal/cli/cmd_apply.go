@@ -75,8 +75,8 @@ func (a *app) cmdApply(args []string) {
 			Name:       svc.Name,
 			Service:    svc.Service,
 			Pod:        svc.Pod,
-			LocalPort:  int32(svc.LocalPort),
-			RemotePort: int32(svc.RemotePort),
+			LocalPort:  int32(svc.LocalPort),  // #nosec G115 -- port numbers fit int32
+			RemotePort: int32(svc.RemotePort), // #nosec G115 -- port numbers fit int32
 			Namespace:  svc.Namespace,
 		})
 	}

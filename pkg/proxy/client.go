@@ -350,7 +350,7 @@ func resolveAddr(addrs map[string]string, addr string, fuzzy bool) string {
 func tlsCredsFromCertFile(certFile string) (credentials.TransportCredentials, error) {
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if certFile != "" {
-		pem, err := os.ReadFile(certFile)
+		pem, err := os.ReadFile(certFile) // #nosec G304 -- cert file path from user config
 		if err == nil {
 			pool := x509.NewCertPool()
 			if pool.AppendCertsFromPEM(pem) {

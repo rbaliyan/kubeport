@@ -32,13 +32,13 @@ type chaosStream struct {
 
 func (s *chaosStream) Write(p []byte) (int, error) {
 	// Check for error injection first.
-	if s.cfg.ErrorRate > 0 && rand.Float64() < s.cfg.ErrorRate {
+	if s.cfg.ErrorRate > 0 && rand.Float64() < s.cfg.ErrorRate { // #nosec G404 -- math/rand is fine for chaos testing
 		s.counters.errorsInjected.Add(1)
 		return 0, errChaosInjected
 	}
 
 	// Check for latency spike injection.
-	if s.cfg.LatencySpikeProbability > 0 && rand.Float64() < s.cfg.LatencySpikeProbability {
+	if s.cfg.LatencySpikeProbability > 0 && rand.Float64() < s.cfg.LatencySpikeProbability { // #nosec G404 -- math/rand is fine for chaos testing
 		s.counters.spikesInjected.Add(1)
 		if err := sleepWithContext(s.ctx, s.cfg.LatencySpikeDuration); err != nil {
 			return 0, err
