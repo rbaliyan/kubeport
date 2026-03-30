@@ -65,7 +65,7 @@ func dialDaemonTCP(host, apiKey, certFile string) (*daemonClient, error) {
 func tlsCredsFromCertFile(certFile string) credentials.TransportCredentials {
 	cfg := &tls.Config{MinVersion: tls.VersionTLS12}
 	if certFile != "" {
-		if pem, err := os.ReadFile(certFile); err == nil {
+		if pem, err := os.ReadFile(certFile); err == nil { // #nosec G304 -- cert file path from user config
 			pool := x509.NewCertPool()
 			if pool.AppendCertsFromPEM(pem) {
 				cfg.RootCAs = pool

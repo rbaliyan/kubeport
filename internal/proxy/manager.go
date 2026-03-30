@@ -1102,7 +1102,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 // addJitter adds ±25% random jitter to a duration to prevent thundering herd.
 func addJitter(d time.Duration) time.Duration {
 	jitter := float64(d) * 0.25
-	return d + time.Duration(rand.Float64()*2*jitter-jitter)
+	return d + time.Duration(rand.Float64()*2*jitter-jitter) // #nosec G404 -- math/rand is fine for jitter
 }
 
 func (m *Manager) resolvePod(ctx context.Context, namespace string, svc config.ServiceConfig) (string, int, error) {

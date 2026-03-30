@@ -585,7 +585,7 @@ func LoadForEdit(path string) (*Config, error) {
 
 // loadRaw reads and parses a config file without env overrides.
 func loadRaw(path string) (*Config, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- config file path from user input
 	if err != nil {
 		return nil, fmt.Errorf("read config %s: %w", path, err)
 	}
@@ -780,7 +780,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 			}
 		}
 	}
-	return toml.Marshal(raw)
+	return toml.Marshal(raw) // #nosec G117 -- APIKey is intentionally saved in config file
 }
 
 // Save writes the config back to the file it was loaded from, in the same format.
@@ -800,13 +800,13 @@ func (c *Config) SaveTo(path string, format Format) error {
 	case FormatTOML:
 		data, err = marshalTOML(c)
 	default:
-		data, err = yaml.Marshal(c)
+		data, err = yaml.Marshal(c) // #nosec G117 -- APIKey is intentionally saved in config file
 	}
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0750); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}
 

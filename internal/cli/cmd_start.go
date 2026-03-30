@@ -77,7 +77,7 @@ func (a *app) cmdStart(_ context.Context) {
 		os.Exit(1)
 	}
 
-	cmd := exec.Command(exePath, daemonArgs...)
+	cmd := exec.Command(exePath, daemonArgs...) // #nosec G204 -- launching self as daemon with known args
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{

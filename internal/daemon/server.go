@@ -273,7 +273,7 @@ func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest
 		}
 	}
 
-	actualPort := int32(svc.LocalPort)
+	actualPort := int32(svc.LocalPort) // #nosec G115 -- port numbers fit int32
 	// For dynamic ports the OS-assigned port is not known until the port-forward
 	// goroutine becomes ready. Wait briefly so the response is useful to callers.
 	if svc.LocalPort == 0 && !svc.IsMultiPort() {
@@ -293,7 +293,7 @@ func (s *Server) waitForActualPort(name string, timeout time.Duration) int32 {
 	for time.Now().Before(deadline) {
 		for _, fs := range s.mgr.Status() {
 			if fs.Service.Name == name && fs.ActualPort > 0 {
-				return int32(fs.ActualPort)
+				return int32(fs.ActualPort) // #nosec G115 -- port numbers fit int32
 			}
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -345,8 +345,8 @@ func (s *Server) Reload(_ context.Context, _ *kubeportv1.ReloadRequest) (*kubepo
 
 	return &kubeportv1.ReloadResponse{
 		Success: true,
-		Added:   int32(added),
-		Removed: int32(removed),
+		Added:   int32(added),   // #nosec G115 -- service counts fit int32
+		Removed: int32(removed), // #nosec G115 -- service counts fit int32
 	}, nil
 }
 
@@ -388,8 +388,8 @@ func (s *Server) Apply(_ context.Context, req *kubeportv1.ApplyRequest) (*kubepo
 
 	return &kubeportv1.ApplyResponse{
 		Success:  true,
-		Added:    int32(added),
-		Skipped:  int32(skipped),
+		Added:    int32(added),   // #nosec G115 -- service counts fit int32
+		Skipped:  int32(skipped), // #nosec G115 -- service counts fit int32
 		Warnings: warnings,
 	}, nil
 }

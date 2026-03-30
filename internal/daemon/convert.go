@@ -18,18 +18,18 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 			Name:       fs.Service.Name,
 			Service:    fs.Service.Service,
 			Pod:        fs.Service.Pod,
-			LocalPort:  int32(fs.Service.LocalPort),
-			RemotePort: int32(fs.Service.RemotePort),
+			LocalPort:  int32(fs.Service.LocalPort),  // #nosec G115 -- port numbers fit int32
+			RemotePort: int32(fs.Service.RemotePort), // #nosec G115 -- port numbers fit int32
 			Namespace:  fs.Service.Namespace,
 			ParentName: fs.Service.ParentName,
 			PortName:   fs.Service.PortName,
 		},
 		State:      convertState(fs.State),
 		Error:      errStr,
-		Restarts:   int32(fs.Restarts),
+		Restarts:   int32(fs.Restarts), // #nosec G115 -- restart count fits int32
 		LastStart:  timestamppb.New(fs.LastStart),
 		Connected:  fs.Connected,
-		ActualPort: int32(fs.ActualPort),
+		ActualPort: int32(fs.ActualPort), // #nosec G115 -- port numbers fit int32
 		BytesIn:            fs.BytesIn,
 		BytesOut:           fs.BytesOut,
 		EffectiveLatencyMs:    fs.EffectiveLatency.Milliseconds(),

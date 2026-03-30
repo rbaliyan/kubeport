@@ -276,7 +276,7 @@ func (a *app) autoStartSOCKS(ctx context.Context, logger *slog.Logger, output io
 
 	_, _ = fmt.Fprintf(output, "SOCKS5 proxy listening on %s\n", srv.Addr())
 
-	go func() {
+	go func() { // #nosec G118 -- cleanup needs a non-cancelled context
 		<-ctx.Done()
 		_ = srv.Close()
 		_ = p.Close(context.Background())
@@ -323,7 +323,7 @@ func (a *app) autoStartHTTPProxy(ctx context.Context, logger *slog.Logger, outpu
 
 	_, _ = fmt.Fprintf(output, "HTTP proxy listening on %s\n", srv.Addr())
 
-	go func() {
+	go func() { // #nosec G118 -- cleanup needs a non-cancelled context
 		<-ctx.Done()
 		_ = srv.Close()
 		_ = p.Close(context.Background())

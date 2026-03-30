@@ -123,7 +123,7 @@ func randJitter(jitter time.Duration) time.Duration {
 		return 0
 	}
 	// rand.Int64N returns [0, n). We map it to [-jitter, +jitter].
-	return time.Duration(rand.Int64N(int64(2*jitter+1)) - int64(jitter))
+	return time.Duration(rand.Int64N(int64(2*jitter+1)) - int64(jitter)) // #nosec G404 -- math/rand is fine for jitter
 }
 
 // sleepWithContext sleeps for d but returns early with ctx.Err() if the

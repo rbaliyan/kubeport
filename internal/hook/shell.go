@@ -62,7 +62,7 @@ func (h *shellHook) run(ctx context.Context, event Event) error {
 		return nil
 	}
 
-	c := exec.CommandContext(ctx, "sh", "-c", cmd)
+	c := exec.CommandContext(ctx, "sh", "-c", cmd) // #nosec G204 -- user-configured hook command
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
 	c.Env = append(os.Environ(), eventEnv(event)...)

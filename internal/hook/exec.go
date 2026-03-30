@@ -42,7 +42,7 @@ func (h *execHook) OnEvent(ctx context.Context, event Event) error {
 		args[i] = ExpandVars(tmpl, event)
 	}
 
-	c := exec.CommandContext(ctx, args[0], args[1:]...)
+	c := exec.CommandContext(ctx, args[0], args[1:]...) // #nosec G204 -- user-configured hook command
 	c.Stdout = os.Stderr
 	c.Stderr = os.Stderr
 	c.Env = append(os.Environ(), eventEnv(event)...)
