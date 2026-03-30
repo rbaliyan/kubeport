@@ -1,8 +1,8 @@
 #!/bin/bash -eu
 
-compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/config FuzzUnmarshalYAML fuzz_unmarshal_yaml
-compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/config FuzzUnmarshalTOML fuzz_unmarshal_toml
-compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/config FuzzValidateService fuzz_validate_service
+compile_native_go_fuzzer github.com/rbaliyan/kubeport/pkg/config FuzzUnmarshalYAML fuzz_unmarshal_yaml
+compile_native_go_fuzzer github.com/rbaliyan/kubeport/pkg/config FuzzUnmarshalTOML fuzz_unmarshal_toml
+compile_native_go_fuzzer github.com/rbaliyan/kubeport/pkg/config FuzzValidateService fuzz_validate_service
 compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/hook FuzzExpandVars fuzz_expand_vars
 compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/hook FuzzParseEventType fuzz_parse_event_type
 compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/hook FuzzBuildFromConfig fuzz_build_from_config
