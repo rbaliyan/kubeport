@@ -57,3 +57,28 @@ jobs:
 
       - name: Run govulncheck
         run: govulncheck ./...
+
+  gosec:
+    name: GoSec SAST
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run GoSec
+        uses: securego/gosec@master
+        with:
+          args: '-fmt sarif -out gosec-results.sarif -severity medium -confidence medium -tests ./...'
+
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
