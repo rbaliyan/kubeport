@@ -72,10 +72,11 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Install GoSec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
+
       - name: Run GoSec
-        uses: securego/gosec@48e8716e7becbb56b60549db71a7c2f056d42659 # master
-        with:
-          args: '-fmt sarif -out gosec-results.sarif -severity medium -confidence medium ./...'
+        run: gosec -fmt sarif -out gosec-results.sarif -severity medium -confidence medium ./...
 
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@38697555549f1db7851b81482ff19f1fa5c4fedc # v3
