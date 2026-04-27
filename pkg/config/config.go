@@ -2,6 +2,7 @@
 package config
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	toml "github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 )
@@ -609,9 +611,13 @@ func (c *Config) SocketFile() string {
 
 // ResolvedKeyID returns the identifier used to represent the configured API key
 // in the instance registry and CLI output. If key_id is set in the config that
-// value is returned as-is; otherwise a stable fingerprint is derived from the
-// key material so that operators can correlate instances without exposing the
-// raw key. Returns an empty string when no API key is configured.
+// value is returned as-is; otherwise a stable HMAC-SHA256 fingerprint is derived
+// from the key material so that operators can correlate instances without exposing
+// the raw key. Returns an empty string when no API key is configured.
+//
+// Note: SaveTo automatically generates and persists a UUID key_id when api_key is
+// set and key_id is absent, so this fallback path is only hit for in-memory configs
+// that have never been saved.
 func (c *Config) ResolvedKeyID() string {
 	if c.KeyID != "" {
 		return c.KeyID
@@ -619,9 +625,9 @@ func (c *Config) ResolvedKeyID() string {
 	if c.APIKey == "" {
 		return ""
 	}
-	material := c.APIKey
-	sum := sha256.Sum256([]byte(material))
-	return hex.EncodeToString(sum[:8]) // 16 hex chars — sufficient for identification
+	mac := hmac.New(sha256.New, []byte("kubeport-key-id"))
+	_, _ = mac.Write([]byte(c.APIKey))
+	return hex.EncodeToString(mac.Sum(nil)[:8]) // 16 hex chars — stable HMAC fingerprint
 }
 
 // ListenAddress returns the resolved listen configuration.
@@ -882,7 +888,13 @@ func (c *Config) Save() error {
 }
 
 // SaveTo writes the config to the given path in the specified format.
+// If api_key is set but key_id is not, a random UUID key_id is generated and
+// persisted so operators have a stable, human-friendly identifier for the key.
 func (c *Config) SaveTo(path string, format Format) error {
+	if c.APIKey != "" && c.KeyID == "" {
+		c.KeyID = uuid.NewString()
+	}
+
 	var data []byte
 	var err error
 
