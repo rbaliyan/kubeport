@@ -30,7 +30,7 @@ type Entry struct {
 	LogFile    string    `json:"log_file,omitempty"`
 	Socket     string    `json:"socket,omitempty"`
 	TCPAddress string    `json:"tcp_address,omitempty"`
-	APIKeySet  bool      `json:"api_key_set"`
+	AuthEnabled bool      `json:"auth_enabled"`
 	APIKeyHash string    `json:"api_key_hash,omitempty"`
 	Version    string    `json:"version,omitempty"`
 	StartedAt  time.Time `json:"started_at"`
@@ -39,11 +39,11 @@ type Entry struct {
 // HashKey returns the SHA-256 hex hash of a raw API key.
 // Returns an empty string for an empty key so callers do not need to special-case
 // the "no key" path.
-func HashKey(key string) string {
-	if key == "" {
+func HashKey(raw string) string {
+	if raw == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(key)) // codeql[go/weak-cryptographic-algorithm] -- SHA-256 is appropriate for high-entropy API token identification, not password hashing
+	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }
 
