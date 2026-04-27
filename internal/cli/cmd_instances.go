@@ -11,6 +11,8 @@ import (
 )
 
 // instanceJSON is the JSON representation of a running instance for --json output.
+// APIKeyHash holds the full SHA-256 hex hash of the API key (64 chars); the
+// human-readable table and printInstanceBrief truncate to 12 chars for brevity.
 type instanceJSON struct {
 	PID        int    `json:"pid"`
 	ConfigFile string `json:"config_file,omitempty"`
@@ -18,19 +20,14 @@ type instanceJSON struct {
 	LogFile    string `json:"log_file,omitempty"`
 	Endpoint   string `json:"endpoint"`
 	HasAPIKey  bool   `json:"has_api_key"`
-	APIKeyHash string `json:"api_key_hash,omitempty"` // first 12 hex chars only
+	APIKeyHash string `json:"api_key_hash,omitempty"` // full SHA-256 hex hash
 	Version    string `json:"version,omitempty"`
 	Uptime     string `json:"uptime"`
 	StartedAt  string `json:"started_at"`
 }
 
 func (a *app) cmdInstances() {
-	cfgPath := ""
-	if a.cfg != nil {
-		cfgPath = a.cfg.FilePath()
-	}
-
-	reg, err := registry.Open(cfgPath)
+	reg, err := a.openRegistry()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error opening instance registry: %v\n", err)
 		os.Exit(1)
@@ -47,7 +44,11 @@ func (a *app) cmdInstances() {
 		for _, e := range entries {
 			out = append(out, entryToJSON(e))
 		}
-		data, _ := json.MarshalIndent(out, "", "  ")
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error encoding instances: %v\n", err)
+			os.Exit(1)
+		}
 		fmt.Println(string(data))
 		return
 	}
@@ -129,10 +130,6 @@ func entryAPIKeyLabel(e registry.Entry) string {
 }
 
 func entryToJSON(e registry.Entry) instanceJSON {
-	hashHint := ""
-	if e.HasAPIKey && len(e.APIKeyHash) >= 12 {
-		hashHint = e.APIKeyHash[:12]
-	}
 	return instanceJSON{
 		PID:        e.PID,
 		ConfigFile: e.ConfigFile,
@@ -140,7 +137,7 @@ func entryToJSON(e registry.Entry) instanceJSON {
 		LogFile:    e.LogFile,
 		Endpoint:   entryEndpoint(e),
 		HasAPIKey:  e.HasAPIKey,
-		APIKeyHash: hashHint,
+		APIKeyHash: e.APIKeyHash, // full hash; truncation is only for human-readable output
 		Version:    e.Version,
 		Uptime:     formatUptime(time.Since(e.StartedAt)),
 		StartedAt:  e.StartedAt.Format(time.RFC3339),

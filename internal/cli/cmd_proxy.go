@@ -127,7 +127,8 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	_, _ = fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
 	_, _ = fmt.Fprintf(output, "Services:  %d\n\n", len(a.cfg.Services))
 
-	// Migrate stale old-style files left by previous versions (<= files in config dir).
+	// Migrate stale old-style files (.kubeport.pid, .kubeport.sock) left in the
+	// config directory by versions before the central runtime dir was introduced.
 	migrateOldStyleFiles(a.cfg, output)
 
 	// Write PID file so the daemon can be located by CLI commands.
@@ -136,10 +137,10 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		_, _ = fmt.Fprintf(output, "Warning: failed to write PID file: %v\n", err)
 	}
 
-	// Register in the central instance registry.
-	var reg *registry.Registry
-	if r, err := registry.Open(a.cfg.FilePath()); err == nil {
-		reg = r
+	reg, err := a.openRegistry()
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: failed to open instance registry: %v\n", err)
+	} else {
 		listenCfg := a.cfg.ListenAddress()
 		entry := registry.Entry{
 			PID:        os.Getpid(),
@@ -159,21 +160,18 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		if err := reg.Register(entry); err != nil {
 			_, _ = fmt.Fprintf(output, "Warning: failed to register instance: %v\n", err)
 		}
-	} else {
-		_, _ = fmt.Fprintf(output, "Warning: failed to open instance registry: %v\n", err)
 	}
 
 	logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Build hook dispatcher from config
 	dispatcher := hook.NewDispatcher(logger)
 	for _, hc := range a.cfg.Hooks {
-		reg, err := hook.BuildFromConfig(hc)
+		hookReg, err := hook.BuildFromConfig(hc)
 		if err != nil {
 			_, _ = fmt.Fprintf(output, "Warning: skip hook %q: %v\n", hc.Name, err)
 			continue
 		}
-		dispatcher.Register(reg)
+		dispatcher.Register(hookReg)
 		_, _ = fmt.Fprintf(output, "Hook registered: %s (%s)\n", hc.Name, hc.Type)
 	}
 

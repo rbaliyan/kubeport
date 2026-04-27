@@ -16,6 +16,9 @@ _kubeport() {
         'watch:Watch proxy status'
         'fg:Run proxy in foreground'
         'foreground:Run proxy in foreground'
+        'instances:List all running kubeport daemon instances'
+        'socks:Start SOCKS5 proxy for Kubernetes DNS translation'
+        'http-proxy:Start HTTP/HTTPS proxy for Kubernetes DNS translation'
         'config:Configuration management'
         'update:Check for and apply updates'
         'version:Show version information'
@@ -52,6 +55,7 @@ _kubeport() {
         '--sort[Sort status output]' \
         '--wait[Block until all forwards are connected]' \
         '--timeout[Max wait time for --wait]:duration:' \
+        '--offload[Add services to an already-running daemon instead of starting a new one]' \
         '(-h --help)'{-h,--help}'[Show help]' \
         '(-v --version)'{-v,--version}'[Show version]' \
         '1: :->command' \

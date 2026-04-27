@@ -133,14 +133,15 @@ The Unix socket is created with `0600` permissions (owner only). If you're runni
 
 ### Logs location
 
-By default, the log file is created next to the config file (`.kubeport.log`). Override with:
+Log files are stored in `~/.config/kubeport/logs/<instance-id>.log` (not next to the config file). Each daemon instance has its own log file named after its `<instance-id>`. Override the log path with:
 ```yaml
 log_file: /tmp/kubeport.log
 ```
 
-Or check logs directly:
+To find the log file for a running instance, use:
 ```bash
-kubeport logs
+kubeport instances   # shows PID, uptime, endpoint, and log file path for each instance
+kubeport logs        # follow logs for the current config's daemon
 ```
 
 ## Multi-Port Issues

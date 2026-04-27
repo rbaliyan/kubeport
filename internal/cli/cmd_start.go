@@ -49,11 +49,9 @@ func (a *app) cmdStart(_ context.Context) {
 		return
 	}
 
-	// Check registry for an existing instance with the same config — offer to offload.
 	if a.cfg.FilePath() != "" {
-		cfgPath := a.cfg.FilePath()
-		if reg, err := registry.Open(cfgPath); err == nil {
-			if existing, err := reg.FindByConfig(cfgPath); err == nil && existing != nil {
+		if reg, err := a.openRegistry(); err == nil {
+			if existing, err := reg.FindByConfig(a.cfg.FilePath()); err == nil && existing != nil {
 				fmt.Printf("%sAn instance is already running this config (PID: %d)%s\n", colorYellow, existing.PID, colorReset)
 				fmt.Printf("  Endpoint: %s\n", entryEndpoint(*existing))
 				fmt.Printf("  Use --offload to add services to that instance instead\n")
@@ -190,11 +188,7 @@ func (a *app) cmdStart(_ context.Context) {
 
 // printConflictingInstances lists any other running kubeport instances from the registry.
 func (a *app) printConflictingInstances() {
-	cfgPath := ""
-	if a.cfg != nil {
-		cfgPath = a.cfg.FilePath()
-	}
-	reg, err := registry.Open(cfgPath)
+	reg, err := a.openRegistry()
 	if err != nil {
 		return
 	}
@@ -218,11 +212,9 @@ func (a *app) offloadServicesToInstance() {
 		os.Exit(1)
 	}
 
-	// Try to locate the target via registry first (same config file).
 	var target *registry.Entry
 	if a.cfg.FilePath() != "" {
-		reg, err := registry.Open(a.cfg.FilePath())
-		if err == nil {
+		if reg, err := a.openRegistry(); err == nil {
 			target, _ = reg.FindByConfig(a.cfg.FilePath())
 		}
 	}

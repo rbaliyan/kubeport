@@ -19,10 +19,10 @@ context = "my-cluster-context"
 # Default namespace (can be overridden per-service)
 namespace = "default"
 
-# Custom log file path (default: .kubeport.log next to config file)
+# Custom log file path (default: ~/.config/kubeport/logs/<instance-id>.log)
 # log_file = "/var/log/kubeport.log"
 
-# Daemon listen address (default: Unix socket next to config file)
+# Daemon listen address (default: ~/.config/kubeport/<instance-id>.sock)
 # Use sock:// prefix for a custom Unix socket path
 # listen = "sock:///tmp/kubeport.sock"
 

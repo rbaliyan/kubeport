@@ -487,7 +487,9 @@ type Config struct {
 }
 
 // NewInMemory creates a Config from CLI arguments without a file.
-// PIDFile/LogFile/SocketFile default to CWD-relative paths.
+// PIDFile, LogFile, and SocketFile default to paths inside the central runtime
+// directory (~/.config/kubeport/ or ~/.kubeport/) because filePath is empty and
+// CentralDir("") falls back to that directory.
 func NewInMemory(kubeContext, namespace string, services []ServiceConfig) *Config {
 	return &Config{
 		Context:   kubeContext,
@@ -583,7 +585,8 @@ func (c *Config) PIDFile() string {
 }
 
 // LogFile returns the path for the log file. If LogFilePath is set, it is used directly.
-// Otherwise the log is placed in a logs/ subdirectory of the central directory.
+// Otherwise the log is placed in a logs/ subdirectory of the central directory;
+// that subdirectory is created on first call (mode 0700).
 func (c *Config) LogFile() string {
 	if c.LogFilePath != "" {
 		return c.LogFilePath

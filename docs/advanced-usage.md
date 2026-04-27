@@ -30,7 +30,7 @@ services:
     remote_port: 80
 ```
 
-Each project gets its own daemon instance (identified by the socket path next to the config file), so they run independently.
+Each project gets its own daemon instance, identified by a stable `InstanceID` derived from the absolute path of its config file (parent directory name + SHA-256 hash prefix). Runtime files — socket, PID file, and log — are stored in the central directory (`~/.config/kubeport/`) under that `InstanceID`, so the instances run independently without file conflicts. Use `kubeport instances` to see all running daemons across all configs.
 
 ### Multiple kubeconfig files
 

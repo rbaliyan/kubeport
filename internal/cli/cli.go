@@ -12,8 +12,9 @@ import (
 	"time"
 
 	version "github.com/rbaliyan/go-version"
-	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/netutil"
+	"github.com/rbaliyan/kubeport/internal/registry"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 func init() {
@@ -510,6 +511,16 @@ func (a *app) dialTarget() (*daemonClient, error) {
 		return dialDaemonTCP(host, key, certFile)
 	}
 	return dialDaemon(a.socketPath())
+}
+
+// openRegistry opens the central instance registry rooted at the central dir
+// for the currently-loaded config (or the default when no config is loaded).
+func (a *app) openRegistry() (*registry.Registry, error) {
+	cfgPath := ""
+	if a.cfg != nil {
+		cfgPath = a.cfg.FilePath()
+	}
+	return registry.Open(config.CentralDir(cfgPath))
 }
 
 // resolveCertFile returns the path to the daemon's TLS cert derived from the

@@ -9,6 +9,9 @@ All notable changes to kubeport are documented here. This project uses [semantic
 - Build provenance attestation to release workflow
 - `pkg/proxy.GRPCDialOption()` method for per-client gRPC resolver registration
 - `pkg/proxy.WithRefreshInterval()` option to control auto-refresh interval
+- `kubeport instances` command lists all running daemon instances with PID, uptime, version, endpoint, API-key hint, and paths
+- `--offload` flag on `start` redirects services to an already-running instance instead of launching a new daemon
+- Central instance registry at `~/.config/kubeport/instances.json` tracks all running kubeport daemons
 
 ### Changed
 - Daemon server RPCs now return proper gRPC status codes instead of response `Error` fields
@@ -17,6 +20,8 @@ All notable changes to kubeport are documented here. This project uses [semantic
 - Hook event names use colon-based namespacing (e.g., `forward:connected`); legacy underscore names auto-migrate
 - Config files written with `0600` permissions (was `0644`)
 - Hook concrete types (`ShellHook`, `WebhookHook`, `ExecHook`) are now unexported
+- Runtime files (PID, socket, log) now live in `~/.config/kubeport/` per-instance instead of next to the config file
+- Stale `.kubeport.pid` and `.kubeport.sock` files from older versions are auto-removed on daemon start
 
 ### Fixed
 - Race condition in `pkg/proxy` address translation (mutex snapshot)
