@@ -43,6 +43,8 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		ChaosSpikesInjected:   fs.ChaosSpikesInjected,
 		ConnBytesIn:           fs.ConnBytesIn,
 		ConnBytesOut:          fs.ConnBytesOut,
+		Lazy:                  fs.Lazy,
+		TunnelOpen:            fs.TunnelOpen,
 	}
 	if !fs.NextRetry.IsZero() {
 		proto.NextRetry = timestamppb.New(fs.NextRetry)
@@ -83,6 +85,8 @@ func convertState(s proxy.ForwardState) kubeportv1.ForwardState {
 		return kubeportv1.ForwardState_FORWARD_STATE_FAILED
 	case proxy.StateStopped:
 		return kubeportv1.ForwardState_FORWARD_STATE_STOPPED
+	case proxy.StateWaiting:
+		return kubeportv1.ForwardState_FORWARD_STATE_WAITING
 	default:
 		return kubeportv1.ForwardState_FORWARD_STATE_UNSPECIFIED
 	}

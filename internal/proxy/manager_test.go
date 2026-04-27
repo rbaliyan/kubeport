@@ -31,6 +31,7 @@ func TestForwardState_String(t *testing.T) {
 		{StateRunning, "running"},
 		{StateFailed, "failed"},
 		{StateStopped, "stopped"},
+		{StateWaiting, "waiting"},
 		{ForwardState(99), "unknown"},
 	}
 	for _, tt := range tests {

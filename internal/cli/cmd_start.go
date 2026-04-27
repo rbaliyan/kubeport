@@ -326,7 +326,11 @@ func (a *app) allForwardsReady() bool {
 	}
 
 	for _, fw := range resp.Forwards {
-		if fw.State != kubeportv1.ForwardState_FORWARD_STATE_RUNNING {
+		switch fw.State {
+		case kubeportv1.ForwardState_FORWARD_STATE_RUNNING,
+			kubeportv1.ForwardState_FORWARD_STATE_WAITING:
+			// ready (WAITING means lazy service with port bound)
+		default:
 			return false
 		}
 	}
@@ -375,8 +379,9 @@ func (a *app) waitForReady() error {
 			allReady := true
 			for _, fw := range resp.Forwards {
 				switch fw.State {
-				case kubeportv1.ForwardState_FORWARD_STATE_RUNNING:
-					// ok
+				case kubeportv1.ForwardState_FORWARD_STATE_RUNNING,
+					kubeportv1.ForwardState_FORWARD_STATE_WAITING:
+					// ok (WAITING = lazy service with port bound, ready to accept)
 				case kubeportv1.ForwardState_FORWARD_STATE_FAILED, kubeportv1.ForwardState_FORWARD_STATE_STOPPED:
 					allReady = false
 				default:

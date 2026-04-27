@@ -30,6 +30,7 @@ const (
 	ForwardState_FORWARD_STATE_RUNNING     ForwardState = 2
 	ForwardState_FORWARD_STATE_FAILED      ForwardState = 3
 	ForwardState_FORWARD_STATE_STOPPED     ForwardState = 4
+	ForwardState_FORWARD_STATE_WAITING     ForwardState = 5 // lazy mode: local port bound, SPDY tunnel not yet open
 )
 
 // Enum value maps for ForwardState.
@@ -40,6 +41,7 @@ var (
 		2: "FORWARD_STATE_RUNNING",
 		3: "FORWARD_STATE_FAILED",
 		4: "FORWARD_STATE_STOPPED",
+		5: "FORWARD_STATE_WAITING",
 	}
 	ForwardState_value = map[string]int32{
 		"FORWARD_STATE_UNSPECIFIED": 0,
@@ -47,6 +49,7 @@ var (
 		"FORWARD_STATE_RUNNING":     2,
 		"FORWARD_STATE_FAILED":      3,
 		"FORWARD_STATE_STOPPED":     4,
+		"FORWARD_STATE_WAITING":     5,
 	}
 )
 
@@ -268,6 +271,8 @@ type ForwardStatusProto struct {
 	ChaosSpikesInjected   int64                  `protobuf:"varint,19,opt,name=chaos_spikes_injected,json=chaosSpikesInjected,proto3" json:"chaos_spikes_injected,omitempty"`        // Count of latency spikes injected so far
 	ConnBytesIn           int64                  `protobuf:"varint,20,opt,name=conn_bytes_in,json=connBytesIn,proto3" json:"conn_bytes_in,omitempty"`                                // Bytes received since last reconnect
 	ConnBytesOut          int64                  `protobuf:"varint,21,opt,name=conn_bytes_out,json=connBytesOut,proto3" json:"conn_bytes_out,omitempty"`                             // Bytes sent since last reconnect
+	Lazy                  bool                   `protobuf:"varint,22,opt,name=lazy,proto3" json:"lazy,omitempty"`                                                                   // true when service is configured in lazy mode
+	TunnelOpen            bool                   `protobuf:"varint,23,opt,name=tunnel_open,json=tunnelOpen,proto3" json:"tunnel_open,omitempty"`                                     // lazy mode: true when the SPDY tunnel is currently open
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -447,6 +452,20 @@ func (x *ForwardStatusProto) GetConnBytesOut() int64 {
 		return x.ConnBytesOut
 	}
 	return 0
+}
+
+func (x *ForwardStatusProto) GetLazy() bool {
+	if x != nil {
+		return x.Lazy
+	}
+	return false
+}
+
+func (x *ForwardStatusProto) GetTunnelOpen() bool {
+	if x != nil {
+		return x.TunnelOpen
+	}
+	return false
 }
 
 type StatusRequest struct {
@@ -1291,7 +1310,7 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"port_names\x18\x02 \x03(\tR\tportNames\x12#\n" +
 	"\rexclude_ports\x18\x03 \x03(\tR\fexcludePorts\x12*\n" +
-	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\x9b\a\n" +
+	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xd0\a\n" +
 	"\x12ForwardStatusProto\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.kubeport.v1.ForwardStateR\x05state\x12\x14\n" +
@@ -1317,7 +1336,10 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x15chaos_errors_injected\x18\x12 \x01(\x03R\x13chaosErrorsInjected\x122\n" +
 	"\x15chaos_spikes_injected\x18\x13 \x01(\x03R\x13chaosSpikesInjected\x12\"\n" +
 	"\rconn_bytes_in\x18\x14 \x01(\x03R\vconnBytesIn\x12$\n" +
-	"\x0econn_bytes_out\x18\x15 \x01(\x03R\fconnBytesOut\"\x0f\n" +
+	"\x0econn_bytes_out\x18\x15 \x01(\x03R\fconnBytesOut\x12\x12\n" +
+	"\x04lazy\x18\x16 \x01(\bR\x04lazy\x12\x1f\n" +
+	"\vtunnel_open\x18\x17 \x01(\bR\n" +
+	"tunnelOpen\"\x0f\n" +
 	"\rStatusRequest\"\x9f\x01\n" +
 	"\x0eStatusResponse\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12\x1c\n" +
@@ -1373,13 +1395,14 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"AddrsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\x99\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xb4\x01\n" +
 	"\fForwardState\x12\x1d\n" +
 	"\x19FORWARD_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FORWARD_STATE_STARTING\x10\x01\x12\x19\n" +
 	"\x15FORWARD_STATE_RUNNING\x10\x02\x12\x18\n" +
 	"\x14FORWARD_STATE_FAILED\x10\x03\x12\x19\n" +
-	"\x15FORWARD_STATE_STOPPED\x10\x042\x82\x04\n" +
+	"\x15FORWARD_STATE_STOPPED\x10\x04\x12\x19\n" +
+	"\x15FORWARD_STATE_WAITING\x10\x052\x82\x04\n" +
 	"\rDaemonService\x12A\n" +
 	"\x06Status\x12\x1a.kubeport.v1.StatusRequest\x1a\x1b.kubeport.v1.StatusResponse\x12;\n" +
 	"\x04Stop\x12\x18.kubeport.v1.StopRequest\x1a\x19.kubeport.v1.StopResponse\x12M\n" +

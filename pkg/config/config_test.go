@@ -2112,6 +2112,55 @@ func TestValidate_ChaosConfig(t *testing.T) {
 	})
 }
 
+func TestServiceConfig_LazyYAML(t *testing.T) {
+	input := `
+services:
+  - name: db
+    service: postgres
+    local_port: 5432
+    remote_port: 5432
+    lazy: true
+  - name: cache
+    service: redis
+    local_port: 6379
+    remote_port: 6379
+`
+	var cfg Config
+	if err := yaml.Unmarshal([]byte(input), &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(cfg.Services) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(cfg.Services))
+	}
+	if !cfg.Services[0].Lazy {
+		t.Fatalf("expected Services[0].Lazy = true")
+	}
+	if cfg.Services[1].Lazy {
+		t.Fatalf("expected Services[1].Lazy = false (omitted)")
+	}
+}
+
+func TestServiceConfig_LazyRoundTrip(t *testing.T) {
+	svc := ServiceConfig{
+		Name:       "db",
+		Service:    "postgres",
+		LocalPort:  5432,
+		RemotePort: 5432,
+		Lazy:       true,
+	}
+	data, err := yaml.Marshal(svc)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got ServiceConfig
+	if err := yaml.Unmarshal(data, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !got.Lazy {
+		t.Fatalf("Lazy field not preserved through YAML round-trip; marshalled: %s", data)
+	}
+}
+
 func TestParsedChaosConfig_IsEnabled(t *testing.T) {
 	tests := []struct {
 		name string
