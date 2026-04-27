@@ -114,7 +114,7 @@ func (p *PortsConfig) UnmarshalYAML(unmarshal func(any) error) error {
 }
 
 // MarshalYAML implements custom YAML marshaling for PortsConfig.
-func (p PortsConfig) MarshalYAML() (interface{}, error) {
+func (p PortsConfig) MarshalYAML() (any, error) {
 	if p.All {
 		return "all", nil
 	}
