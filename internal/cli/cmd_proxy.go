@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,6 +18,7 @@ import (
 	"github.com/rbaliyan/kubeport/internal/daemon"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/proxy"
+	"github.com/rbaliyan/kubeport/internal/registry"
 	"github.com/rbaliyan/kubeport/pkg/config"
 	pkgproxy "github.com/rbaliyan/kubeport/pkg/proxy"
 )
@@ -122,23 +127,51 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	_, _ = fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
 	_, _ = fmt.Fprintf(output, "Services:  %d\n\n", len(a.cfg.Services))
 
+	// Migrate stale old-style files (.kubeport.pid, .kubeport.sock) left in the
+	// config directory by versions before the central runtime dir was introduced.
+	migrateOldStyleFiles(a.cfg, output)
+
 	// Write PID file so the daemon can be located by CLI commands.
 	pidFile := a.cfg.PIDFile()
 	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600); err != nil {
 		_, _ = fmt.Fprintf(output, "Warning: failed to write PID file: %v\n", err)
 	}
 
+	reg, err := a.openRegistry()
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: failed to open instance registry: %v\n", err)
+	} else {
+		listenCfg := a.cfg.ListenAddress()
+		entry := registry.Entry{
+			PID:        os.Getpid(),
+			ConfigFile: a.cfg.FilePath(),
+			PIDFile:    a.cfg.PIDFile(),
+			LogFile:    a.cfg.LogFile(),
+			AuthEnabled: a.cfg.APIKey != "",
+			KeyID:       a.cfg.ResolvedKeyID(),
+			Version:    version.Get().Raw,
+			StartedAt:  time.Now(),
+		}
+		if listenCfg.Mode == config.ListenTCP {
+			entry.TCPAddress = listenCfg.Address
+		} else {
+			entry.Socket = listenCfg.Address
+		}
+		if err := reg.Register(entry); err != nil {
+			_, _ = fmt.Fprintf(output, "Warning: failed to register instance: %v\n", err)
+		}
+	}
+
 	logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	// Build hook dispatcher from config
 	dispatcher := hook.NewDispatcher(logger)
 	for _, hc := range a.cfg.Hooks {
-		reg, err := hook.BuildFromConfig(hc)
+		hookReg, err := hook.BuildFromConfig(hc)
 		if err != nil {
 			_, _ = fmt.Fprintf(output, "Warning: skip hook %q: %v\n", hc.Name, err)
 			continue
 		}
-		dispatcher.Register(reg)
+		dispatcher.Register(hookReg)
 		_, _ = fmt.Fprintf(output, "Hook registered: %s (%s)\n", hc.Name, hc.Type)
 	}
 
@@ -171,6 +204,11 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		daemonSrv.Shutdown()
 		if err := os.Remove(a.cfg.PIDFile()); err != nil && !os.IsNotExist(err) {
 			_, _ = fmt.Fprintf(output, "Warning: failed to remove PID file: %v\n", err)
+		}
+		if reg != nil {
+			if err := reg.Deregister(os.Getpid()); err != nil {
+				_, _ = fmt.Fprintf(output, "Warning: failed to deregister instance: %v\n", err)
+			}
 		}
 		_ = dispatcher.Fire(context.Background(), hook.Event{
 			Type: hook.EventManagerStopped,
@@ -331,5 +369,39 @@ func (a *app) autoStartHTTPProxy(ctx context.Context, logger *slog.Logger, outpu
 
 	if err := srv.Serve(ctx); err != nil && ctx.Err() == nil {
 		_, _ = fmt.Fprintf(output, "HTTP proxy error: %v\n", err)
+	}
+}
+
+// migrateOldStyleFiles removes stale runtime files left in the config directory by
+// older versions of kubeport that placed .pid, .sock, and .log files alongside the
+// config file rather than in the central directory.
+func migrateOldStyleFiles(cfg *config.Config, output io.Writer) {
+	if cfg.FilePath() == "" {
+		return
+	}
+	dir := filepath.Dir(cfg.FilePath())
+
+	// Remove stale PID file.
+	oldPID := filepath.Join(dir, ".kubeport.pid")
+	if data, err := os.ReadFile(oldPID); err == nil { // #nosec G304
+		pid, _ := strconv.Atoi(strings.TrimSpace(string(data)))
+		if pid > 0 && syscall.Kill(pid, 0) != nil {
+			if err := os.Remove(oldPID); err == nil {
+				_, _ = fmt.Fprintf(output, "Removed stale legacy PID file: %s\n", oldPID)
+			}
+		}
+	}
+
+	// Remove stale socket file.
+	oldSock := filepath.Join(dir, ".kubeport.sock")
+	if _, err := os.Stat(oldSock); err == nil {
+		conn, err := net.DialTimeout("unix", oldSock, 500*time.Millisecond)
+		if err != nil {
+			if err := os.Remove(oldSock); err == nil {
+				_, _ = fmt.Fprintf(output, "Removed stale legacy socket: %s\n", oldSock)
+			}
+		} else {
+			_ = conn.Close()
+		}
 	}
 }

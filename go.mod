@@ -4,6 +4,7 @@ go 1.26.2
 
 require (
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20250520111509-a70c2aa677fa
+	github.com/google/uuid v1.6.0
 	github.com/pelletier/go-toml/v2 v2.3.0
 	github.com/rbaliyan/go-version v1.2.5
 	golang.org/x/term v0.42.0
@@ -26,7 +27,6 @@ require (
 	github.com/go-openapi/jsonreference v0.20.2 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect

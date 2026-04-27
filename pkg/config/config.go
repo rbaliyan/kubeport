@@ -2,6 +2,9 @@
 package config
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	toml "github.com/pelletier/go-toml/v2"
 	"gopkg.in/yaml.v3"
 )
@@ -112,7 +116,7 @@ func (p *PortsConfig) UnmarshalYAML(unmarshal func(any) error) error {
 }
 
 // MarshalYAML implements custom YAML marshaling for PortsConfig.
-func (p PortsConfig) MarshalYAML() (interface{}, error) {
+func (p PortsConfig) MarshalYAML() (any, error) {
 	if p.All {
 		return "all", nil
 	}
@@ -470,6 +474,7 @@ type Config struct {
 	LogFilePath string           `yaml:"log_file,omitempty" toml:"log_file,omitempty"`
 	Listen      string           `yaml:"listen,omitempty" toml:"listen,omitempty"`
 	APIKey      string           `yaml:"api_key,omitempty" toml:"api_key,omitempty"`
+	KeyID       string           `yaml:"key_id,omitempty" toml:"key_id,omitempty"`
 	Host        string           `yaml:"host,omitempty" toml:"host,omitempty"`
 	Services    []ServiceConfig   `yaml:"services" toml:"services"`
 	Hooks       []HookConfig      `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
@@ -485,13 +490,60 @@ type Config struct {
 }
 
 // NewInMemory creates a Config from CLI arguments without a file.
-// PIDFile/LogFile/SocketFile default to CWD-relative paths.
+// PIDFile, LogFile, and SocketFile default to paths inside the central runtime
+// directory (~/.config/kubeport/ or ~/.kubeport/) because filePath is empty and
+// CentralDir("") falls back to that directory.
 func NewInMemory(kubeContext, namespace string, services []ServiceConfig) *Config {
 	return &Config{
 		Context:   kubeContext,
 		Namespace: namespace,
 		Services:  services,
 	}
+}
+
+// CentralDir returns the central directory used for runtime files (PID, socket, logs).
+//
+// Resolution order:
+//  1. If cfgPath is inside ~/.config/kubeport/ or ~/.kubeport/, use that dir.
+//  2. If ~/.config/kubeport/ already contains a root config, use it.
+//  3. If ~/.kubeport/ already contains a root config, use it.
+//  4. Default to ~/.config/kubeport/ (created if absent).
+func CentralDir(cfgPath string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return os.TempDir()
+	}
+	xdg := filepath.Join(home, ".config", "kubeport")
+	dot := filepath.Join(home, ".kubeport")
+
+	if cfgPath != "" {
+		abs, _ := filepath.Abs(cfgPath)
+		if strings.HasPrefix(abs, xdg+string(os.PathSeparator)) || abs == xdg {
+			_ = os.MkdirAll(xdg, 0700)
+			return xdg
+		}
+		if strings.HasPrefix(abs, dot+string(os.PathSeparator)) || abs == dot {
+			_ = os.MkdirAll(dot, 0700)
+			return dot
+		}
+	}
+
+	// Prefer whichever standard dir has a root config file.
+	for _, name := range []string{"kubeport.yaml", "kubeport.yml", "kubeport.toml"} {
+		if _, err := os.Stat(filepath.Join(xdg, name)); err == nil {
+			_ = os.MkdirAll(xdg, 0700)
+			return xdg
+		}
+	}
+	for _, name := range []string{"kubeport.yaml", "kubeport.yml", "kubeport.toml"} {
+		if _, err := os.Stat(filepath.Join(dot, name)); err == nil {
+			_ = os.MkdirAll(dot, 0700)
+			return dot
+		}
+	}
+
+	_ = os.MkdirAll(xdg, 0700)
+	return xdg
 }
 
 // FilePath returns the path the config was loaded from.
@@ -504,37 +556,78 @@ func (c *Config) FileFormat() Format {
 	return c.format
 }
 
-// PIDFile returns the path for the PID file, derived from the config file location.
-func (c *Config) PIDFile() string {
-	if c.filePath == "" {
-		return ".kubeport.pid"
+// InstanceID returns a stable, filesystem-safe identifier for this config instance.
+// It is derived from the absolute path of the config file so that multiple instances
+// with different configs can coexist in the same central directory.
+func (c *Config) InstanceID() string {
+	path := c.filePath
+	if path == "" {
+		cwd, _ := os.Getwd()
+		path = filepath.Join(cwd, "_inline")
 	}
-	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.pid")
+	abs, _ := filepath.Abs(path)
+	sum := sha256.Sum256([]byte(abs))
+	// Use the parent directory name as a human-readable prefix.
+	base := filepath.Base(filepath.Dir(abs))
+	if base == "." || base == "" || base == string(os.PathSeparator) {
+		base = "kubeport"
+	}
+	// Sanitize: replace non-alphanumeric characters with hyphens.
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			return r
+		}
+		return '-'
+	}, base)
+	return safe + "-" + hex.EncodeToString(sum[:4])
+}
+
+// PIDFile returns the path for the PID file in the central runtime directory.
+func (c *Config) PIDFile() string {
+	return filepath.Join(CentralDir(c.filePath), c.InstanceID()+".pid")
 }
 
 // LogFile returns the path for the log file. If LogFilePath is set, it is used directly.
-// Otherwise the path is derived from the config file location.
+// Otherwise the log is placed in a logs/ subdirectory of the central directory;
+// that subdirectory is created on first call (mode 0700).
 func (c *Config) LogFile() string {
 	if c.LogFilePath != "" {
 		return c.LogFilePath
 	}
-	if c.filePath == "" {
-		return ".kubeport.log"
-	}
-	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.log")
+	logsDir := filepath.Join(CentralDir(c.filePath), "logs")
+	_ = os.MkdirAll(logsDir, 0700)
+	return filepath.Join(logsDir, c.InstanceID()+".log")
 }
 
-// SocketFile returns the path for the Unix domain socket. If Listen is set with a
-// "sock://" prefix, that path is used. Otherwise the path is derived from the config
-// file location.
+// SocketFile returns the path for the Unix domain socket. An explicit "sock://" prefix
+// in the Listen field takes precedence; otherwise the socket is placed in the central
+// runtime directory.
 func (c *Config) SocketFile() string {
 	if path, ok := strings.CutPrefix(c.Listen, "sock://"); ok {
 		return path
 	}
-	if c.filePath == "" {
-		return ".kubeport.sock"
+	return filepath.Join(CentralDir(c.filePath), c.InstanceID()+".sock")
+}
+
+// ResolvedKeyID returns the identifier used to represent the configured API key
+// in the instance registry and CLI output. If key_id is set in the config that
+// value is returned as-is; otherwise a stable HMAC-SHA256 fingerprint is derived
+// from the key material so that operators can correlate instances without exposing
+// the raw key. Returns an empty string when no API key is configured.
+//
+// Note: SaveTo automatically generates and persists a UUID key_id when api_key is
+// set and key_id is absent, so this fallback path is only hit for in-memory configs
+// that have never been saved.
+func (c *Config) ResolvedKeyID() string {
+	if c.KeyID != "" {
+		return c.KeyID
 	}
-	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.sock")
+	if c.APIKey == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte("kubeport-key-id"))
+	_, _ = mac.Write([]byte(c.APIKey))
+	return hex.EncodeToString(mac.Sum(nil)[:8]) // 16 hex chars — stable HMAC fingerprint
 }
 
 // ListenAddress returns the resolved listen configuration.
@@ -673,6 +766,7 @@ type configTOML struct {
 	LogFilePath string              `toml:"log_file,omitempty"`
 	Listen      string              `toml:"listen,omitempty"`
 	APIKey      string              `toml:"api_key,omitempty"`
+	KeyID       string              `toml:"key_id,omitempty"`
 	Host        string              `toml:"host,omitempty"`
 	Services    []serviceConfigTOML `toml:"services"`
 	Hooks       []HookConfig        `toml:"hooks,omitempty"`
@@ -695,6 +789,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 	cfg.LogFilePath = raw.LogFilePath
 	cfg.Listen = raw.Listen
 	cfg.APIKey = raw.APIKey
+	cfg.KeyID = raw.KeyID
 	cfg.Host = raw.Host
 	cfg.Hooks = raw.Hooks
 	cfg.Supervisor = raw.Supervisor
@@ -736,6 +831,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 		LogFilePath: c.LogFilePath,
 		Listen:      c.Listen,
 		APIKey:      c.APIKey,
+		KeyID:       c.KeyID,
 		Host:        c.Host,
 		Hooks:       c.Hooks,
 		Supervisor:  c.Supervisor,
@@ -792,7 +888,13 @@ func (c *Config) Save() error {
 }
 
 // SaveTo writes the config to the given path in the specified format.
+// If api_key is set but key_id is not, a random UUID key_id is generated and
+// persisted so operators have a stable, human-friendly identifier for the key.
 func (c *Config) SaveTo(path string, format Format) error {
+	if c.APIKey != "" && c.KeyID == "" {
+		c.KeyID = uuid.NewString()
+	}
+
 	var data []byte
 	var err error
 

@@ -7,7 +7,7 @@ _kubeport() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    commands="start stop status logs restart add remove reload apply mappings watch fg foreground config update version help"
+    commands="start stop status logs restart add remove reload apply mappings watch fg foreground instances socks http-proxy config update version help"
     config_commands="init show validate set add remove path"
     update_commands="check"
 
@@ -46,7 +46,7 @@ _kubeport() {
 
     # Global flags available for most commands
     if [[ "${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "-c --config --no-config --context --kube-context -n --namespace --svc --disable-svc --host --api-key --json --sort --wait --timeout --time -h --help -v --version" -- "${cur}") )
+        COMPREPLY=( $(compgen -W "-c --config --no-config --context --kube-context -n --namespace --svc --disable-svc --host --api-key --json --sort --wait --timeout --time --offload -h --help -v --version" -- "${cur}") )
         return 0
     fi
 

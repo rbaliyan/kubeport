@@ -70,6 +70,16 @@ Hooks can operate as **gates** (using `fail_mode: closed`) to block operations l
 
 Loads and validates YAML/TOML config files. Manages file discovery, environment variable overrides, and path resolution for PID files, log files, and sockets. Supports two service modes: single-port (explicit `remote_port`/`local_port`) and multi-port (`ports: all` or a list of named ports), with custom YAML and TOML unmarshalers to handle the polymorphic `ports` field. This is a public package so that `pkg/proxy` (the client SDK) can share config parsing and discovery without importing Kubernetes dependencies.
 
+### Instance Registry (`internal/registry/`)
+
+Maintains a flock-protected JSON store of running daemon instances at `~/.config/kubeport/instances.json`. The registry is used for:
+
+- **Conflict detection** — when `kubeport start` is called, the registry checks whether another instance is already serving the same config file.
+- **Offload routing** — `kubeport start --offload` looks up an existing instance in the registry and sends the config's services to it via gRPC instead of launching a new daemon.
+- **Instance listing** — `kubeport instances` reads the registry to display all live daemons with their PID, uptime, endpoint, and file paths.
+
+Each entry is keyed by process PID. Stale entries (whose process is no longer alive) are pruned automatically when the list is read. All mutations are guarded by an exclusive `flock` on `instances.lock`.
+
 ### Auth (`pkg/grpcauth/`)
 
 Provides gRPC unary interceptors for API key authentication (Bearer token). Used by both the daemon server (server interceptor) and clients connecting over TCP (client interceptor).
@@ -87,5 +97,5 @@ Provides gRPC unary interceptors for API key authentication (Bearer token). Used
 
 - **No kubectl dependency** — Uses client-go directly for API access, making kubeport a single self-contained binary.
 - **Unix socket for IPC** — Simpler than TCP, naturally scoped to the local machine, and permissions restrict access to the socket owner.
-- **Daemon-per-config** — Each config file gets its own daemon instance, identified by its socket path. This allows multiple independent sets of forwards.
+- **Daemon-per-config** — Each config file gets its own daemon instance, identified by a stable `InstanceID()` (parent directory name + SHA-256 hash of the absolute config path). Runtime files (socket, PID, log) are stored in the central directory under that `InstanceID`. All running instances are tracked in `instances.json` for conflict detection and offload routing.
 - **gRPC for control** — Typed RPC interface makes it easy to add new commands and maintain backwards compatibility.

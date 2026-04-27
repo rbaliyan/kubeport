@@ -10,6 +10,8 @@ import (
 	"time"
 
 	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
+	"github.com/rbaliyan/kubeport/internal/registry"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 const defaultWaitTimeout = 30 * time.Second
@@ -20,7 +22,13 @@ func (a *app) cmdStart(_ context.Context) {
 		os.Exit(1)
 	}
 
-	// Check if already running
+	// --offload: send services to an already-running instance instead of starting a new one.
+	if a.offload {
+		a.offloadServicesToInstance()
+		return
+	}
+
+	// Check if already running (via PID file)
 	if pid, running := a.isRunning(); running {
 		// If --wait, check if all forwards are ready — if so, no-op
 		if a.startWait {
@@ -39,6 +47,17 @@ func (a *app) cmdStart(_ context.Context) {
 		fmt.Printf("%sProxy is already running (PID: %d)%s\n", colorYellow, pid, colorReset)
 		fmt.Println("Use 'status' to check or 'restart' to restart")
 		return
+	}
+
+	if a.cfg.FilePath() != "" {
+		if reg, err := a.openRegistry(); err == nil {
+			if existing, err := reg.FindByConfig(a.cfg.FilePath()); err == nil && existing != nil {
+				fmt.Printf("%sAn instance is already running this config (PID: %d)%s\n", colorYellow, existing.PID, colorReset)
+				fmt.Printf("  Endpoint: %s\n", entryEndpoint(*existing))
+				fmt.Printf("  Use --offload to add services to that instance instead\n")
+				os.Exit(1)
+			}
+		}
 	}
 
 	fmt.Print("Starting proxy in background... ")
@@ -159,9 +178,132 @@ func (a *app) cmdStart(_ context.Context) {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Println("\nCheck logs for errors:")
 		a.tailLog(20)
+
+		// Show running instances from registry to help diagnose port conflicts.
+		a.printConflictingInstances()
+
 		os.Exit(1)
 	}
 }
+
+// printConflictingInstances lists any other running kubeport instances from the registry.
+func (a *app) printConflictingInstances() {
+	reg, err := a.openRegistry()
+	if err != nil {
+		return
+	}
+	entries, err := reg.List()
+	if err != nil || len(entries) == 0 {
+		return
+	}
+	fmt.Printf("\n%sOther running kubeport instances (possible port conflict):%s\n", colorYellow, colorReset)
+	for i := range entries {
+		printInstanceBrief(&entries[i])
+	}
+	fmt.Println()
+}
+
+// offloadServicesToInstance sends all services from the current config to an
+// already-running kubeport instance. The target is either found via the registry
+// (matching config file) or via --host / the socket from the loaded config.
+func (a *app) offloadServicesToInstance() {
+	if a.cfg == nil || len(a.cfg.Services) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no services to offload\n")
+		os.Exit(1)
+	}
+
+	var target *registry.Entry
+	if a.cfg.FilePath() != "" {
+		if reg, err := a.openRegistry(); err == nil {
+			target, _ = reg.FindByConfig(a.cfg.FilePath())
+		}
+	}
+
+	// Fall back to direct dial (--host or socket).
+	dc, err := a.dialTarget()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error connecting to running instance: %v\n", err)
+		os.Exit(1)
+	}
+	if dc == nil {
+		if target != nil {
+			fmt.Fprintf(os.Stderr, "Error: instance found in registry (PID %d) but cannot connect\n", target.PID)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: no running kubeport instance found\n")
+		}
+		os.Exit(1)
+	}
+	if target != nil {
+		fmt.Printf("Offloading to existing instance (PID: %d, endpoint: %s)\n", target.PID, entryEndpoint(*target))
+	} else {
+		fmt.Println("Offloading to existing instance...")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	ok, failed := 0, 0
+	for _, svc := range a.cfg.Services {
+		req := serviceConfigToProto(svc)
+		resp, err := dc.client.AddService(ctx, req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %v\n", colorRed, colorReset, svc.Name, err)
+			failed++
+			continue
+		}
+		if !resp.Success {
+			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %s\n", colorRed, colorReset, svc.Name, resp.Error)
+			failed++
+			continue
+		}
+		fmt.Printf("  %s✓%s %s", colorGreen, colorReset, svc.Name)
+		if resp.ActualPort > 0 {
+			fmt.Printf(" (local port: %d)", resp.ActualPort)
+		}
+		fmt.Println()
+		ok++
+	}
+	cancel()
+	dc.Close()
+
+	if failed > 0 {
+		fmt.Fprintf(os.Stderr, "\n%d service(s) failed to offload\n", failed)
+		os.Exit(1)
+	}
+	fmt.Printf("\n%d service(s) offloaded successfully\n", ok)
+}
+
+// serviceConfigToProto converts a config.ServiceConfig to an AddServiceRequest.
+func serviceConfigToProto(svc config.ServiceConfig) *kubeportv1.AddServiceRequest {
+	req := &kubeportv1.AddServiceRequest{
+		Service: &kubeportv1.ServiceInfo{
+			Name:       svc.Name,
+			Service:    svc.Service,
+			Pod:        svc.Pod,
+			LocalPort:  int32(svc.LocalPort),  // #nosec G115 -- port numbers fit int32
+			RemotePort: int32(svc.RemotePort), // #nosec G115 -- port numbers fit int32
+			Namespace:  svc.Namespace,
+		},
+	}
+	if svc.Ports.IsSet() {
+		ps := &kubeportv1.PortSpec{
+			LocalPortOffset: int32(svc.LocalPortOffset), // #nosec G115 -- offset fits int32
+		}
+		if svc.Ports.All {
+			ps.All = true
+		} else {
+			names := make([]string, 0, len(svc.Ports.Selectors))
+			for _, sel := range svc.Ports.Selectors {
+				if sel.Name != "" {
+					names = append(names, sel.Name)
+				}
+			}
+			ps.PortNames = names
+		}
+		req.Ports = ps
+	}
+	return req
+}
+
 
 // allForwardsReady checks if all forwards are in RUNNING state via gRPC.
 func (a *app) allForwardsReady() bool {

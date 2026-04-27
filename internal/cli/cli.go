@@ -12,8 +12,9 @@ import (
 	"time"
 
 	version "github.com/rbaliyan/go-version"
-	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/netutil"
+	"github.com/rbaliyan/kubeport/internal/registry"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 func init() {
@@ -41,6 +42,7 @@ type app struct {
 	disableServices []string
 	startWait       bool
 	startTimeout    time.Duration
+	offload         bool
 	statusJSON      bool
 	statusSort      bool
 	remoteHost      string
@@ -88,6 +90,8 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 			a.statusJSON = true
 		case arg == "--sort":
 			a.statusSort = true
+		case arg == "--offload":
+			a.offload = true
 		case arg == "--wait":
 			a.startWait = true
 		case arg == "--timeout":
@@ -177,7 +181,8 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 			// Allow stop/status/logs/add/remove/reload without valid config
 			if command != "stop" && command != "status" && command != "logs" &&
 				command != "add" && command != "remove" && command != "reload" && command != "apply" &&
-				command != "mappings" && command != "watch" && command != "socks" && command != "http-proxy" {
+				command != "mappings" && command != "watch" && command != "socks" && command != "http-proxy" &&
+				command != "instances" {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
@@ -215,6 +220,8 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		a.cmdSocks(remaining)
 	case "http-proxy":
 		a.cmdHTTPProxy(remaining)
+	case "instances":
+		a.cmdInstances()
 	case "_daemon":
 		a.cmdDaemon(ctx, remaining)
 	default:
@@ -504,6 +511,16 @@ func (a *app) dialTarget() (*daemonClient, error) {
 		return dialDaemonTCP(host, key, certFile)
 	}
 	return dialDaemon(a.socketPath())
+}
+
+// openRegistry opens the central instance registry rooted at the central dir
+// for the currently-loaded config (or the default when no config is loaded).
+func (a *app) openRegistry() (*registry.Registry, error) {
+	cfgPath := ""
+	if a.cfg != nil {
+		cfgPath = a.cfg.FilePath()
+	}
+	return registry.Open(config.CentralDir(cfgPath))
 }
 
 // resolveCertFile returns the path to the daemon's TLS cert derived from the

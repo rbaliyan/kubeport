@@ -18,6 +18,7 @@ complete -c kubeport -l json -d "Output status as JSON"
 complete -c kubeport -l sort -d "Sort status output"
 complete -c kubeport -l wait -d "Block until all forwards are connected"
 complete -c kubeport -l timeout -d "Max wait time for --wait" -r
+complete -c kubeport -l offload -d "Add services to an already-running daemon instead of starting a new one"
 complete -c kubeport -s h -l help -d "Show help"
 complete -c kubeport -s v -l version -d "Show version"
 
@@ -35,6 +36,9 @@ complete -c kubeport -n "__fish_use_subcommand" -a "mappings" -d "Show K8s DNS t
 complete -c kubeport -n "__fish_use_subcommand" -a "watch" -d "Watch proxy status"
 complete -c kubeport -n "__fish_use_subcommand" -a "fg" -d "Run proxy in foreground"
 complete -c kubeport -n "__fish_use_subcommand" -a "foreground" -d "Run proxy in foreground"
+complete -c kubeport -n "__fish_use_subcommand" -a "instances" -d "List all running kubeport daemon instances"
+complete -c kubeport -n "__fish_use_subcommand" -a "socks" -d "Start SOCKS5 proxy for Kubernetes DNS translation"
+complete -c kubeport -n "__fish_use_subcommand" -a "http-proxy" -d "Start HTTP/HTTPS proxy for Kubernetes DNS translation"
 complete -c kubeport -n "__fish_use_subcommand" -a "config" -d "Configuration management"
 complete -c kubeport -n "__fish_use_subcommand" -a "update" -d "Check for and apply updates"
 complete -c kubeport -n "__fish_use_subcommand" -a "version" -d "Show version information"

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	instanceregistry "github.com/rbaliyan/kubeport/internal/registry"
 	pkgconfig "github.com/rbaliyan/kubeport/pkg/config"
 )
 
@@ -19,7 +20,9 @@ type discoveredTarget struct {
 // discoverTarget finds the kubeport daemon by:
 // 1. Discovering and loading the kubeport config file (same search order as the CLI)
 // 2. Reading the listen address (Unix socket or TCP) and API key from config
-// 3. Falling back to checking standard socket locations if no config is found
+// 3. Consulting the central instance registry (~/.config/kubeport/instances.json) for
+//    new-style per-instance sockets (<instance-id>.sock)
+// 4. Falling back to checking standard socket locations for old-style .kubeport.sock files
 func discoverTarget() (*discoveredTarget, error) {
 	cfgPath, err := pkgconfig.Discover()
 	if err == nil {
@@ -43,21 +46,30 @@ func discoverTarget() (*discoveredTarget, error) {
 			}
 		}
 
-		// Try the default socket next to the config file regardless of whether
-		// the config loaded successfully (socket may exist from a prior run).
-		sock := filepath.Join(filepath.Dir(cfgPath), ".kubeport.sock")
-		if _, err := os.Stat(sock); err == nil {
-			return &discoveredTarget{mode: pkgconfig.ListenUnix, address: sock}, nil
-		}
-
-		// Config file exists but failed to load and no socket found — surface the
-		// load error so the caller can diagnose a corrupted or invalid config.
+		// Config file exists but failed to load — surface the error so the caller
+		// can diagnose a corrupted or invalid config.
 		if loadErr != nil {
 			return nil, fmt.Errorf("load kubeport config %s: %w", cfgPath, loadErr)
 		}
 	}
 
-	// Fallback: check common socket locations directly
+	// Consult the central instance registry for new-style per-instance sockets.
+	// The registry lives in ~/.config/kubeport/ (or ~/.kubeport/ if that is the
+	// central dir) and tracks running daemons by their InstanceID-derived socket.
+	centralDir := pkgconfig.CentralDir("")
+	if reg, openErr := instanceregistry.Open(centralDir); openErr == nil {
+		if entries, listErr := reg.List(); listErr == nil {
+			for _, e := range entries {
+				if e.Socket != "" {
+					if _, statErr := os.Stat(e.Socket); statErr == nil {
+						return &discoveredTarget{mode: pkgconfig.ListenUnix, address: e.Socket}, nil
+					}
+				}
+			}
+		}
+	}
+
+	// Fallback: check old-style .kubeport.sock locations for backward compatibility.
 	cwd, _ := os.Getwd()
 	if cwd != "" {
 		sock := filepath.Join(cwd, ".kubeport.sock")

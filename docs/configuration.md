@@ -13,6 +13,26 @@ kubeport searches for its config file in this order:
 
 The first match wins.
 
+## Runtime Files
+
+kubeport stores its runtime files in a central directory rather than next to the config file:
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/kubeport/instances.json` | Central registry of all running daemon instances |
+| `~/.config/kubeport/instances.lock` | flock-based lock file guarding registry mutations |
+| `~/.config/kubeport/<instance-id>.pid` | PID file for the daemon |
+| `~/.config/kubeport/<instance-id>.sock` | Unix domain socket for gRPC control |
+| `~/.config/kubeport/logs/<instance-id>.log` | Daemon log file |
+
+The `<instance-id>` is derived from the config file path: it takes the parent directory name and appends a short SHA-256 hash of the absolute config path (e.g., `myproject-a3f8b2c1`). This ensures that multiple daemons started from different config files coexist without naming conflicts.
+
+**Alternate central directory:** If your config file is located inside `~/.kubeport/`, or if that directory contains a root kubeport config, the central directory is `~/.kubeport/` instead of `~/.config/kubeport/`.
+
+**Auto-migration:** On daemon start, stale `.kubeport.pid` and `.kubeport.sock` files left by older versions in the config file's directory are automatically removed if no live process owns them.
+
+**Override:** Set `log_file` in your config to use a custom log path. Use `sock://` prefix in the `listen` field for a custom socket path (e.g., `listen: sock:///tmp/kubeport.sock`).
+
 ## Creating a Config File
 
 Generate a starter config interactively:
@@ -33,8 +53,8 @@ Or copy one of the examples in the repository:
 |-------|------|-------------|
 | `context` | string | Kubernetes context from your kubeconfig |
 | `namespace` | string | Default namespace for all services |
-| `log_file` | string | Custom log file path (default: `.kubeport.log` next to config) |
-| `listen` | string | Daemon socket address (default: Unix socket next to config). Use `sock://` prefix for custom path or `tcp://` for TCP |
+| `log_file` | string | Custom log file path (default: `~/.config/kubeport/logs/<instance-id>.log`) |
+| `listen` | string | Daemon socket address (default: `~/.config/kubeport/<instance-id>.sock`). Use `sock://` prefix for custom path or `tcp://` for TCP |
 | `api_key` | string | API key for TCP listener authentication (required when using TCP listen) |
 | `host` | string | Hostname for the daemon |
 | `network` | object | Global network simulation settings (see below) |

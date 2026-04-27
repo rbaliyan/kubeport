@@ -224,6 +224,34 @@ kubeport reload             # Sync config changes to running daemon
 kubeport mappings           # Show K8s DNS → localhost address mappings
 kubeport socks              # Start SOCKS5 proxy for address translation (default: 127.0.0.1:1080)
 kubeport http-proxy         # Start HTTP/HTTPS proxy for address translation (default: 127.0.0.1:3128)
+kubeport instances          # List all running kubeport daemons (useful for diagnosing port conflicts)
+```
+
+### Managing Multiple Daemons
+
+```bash
+# See all running kubeport daemons (across all config files)
+kubeport instances
+
+# Example output:
+# PID      UPTIME  VERSION  ENDPOINT                                      API KEY  CONFIG
+# 12345    4m32s   v0.7.0   ~/.config/kubeport/myproject-a3f8b2c1.sock   none     ~/myproject/kubeport.yaml
+# 67890    1h5m    v0.7.0   ~/.config/kubeport/infra-d9e1f234.sock        none     ~/infra/kubeport.yaml
+```
+
+### Offloading Services to a Running Daemon
+
+Use `--offload` to add the services from your config to an already-running daemon instead of starting a new one. This is useful when you want to reuse an existing daemon rather than launch a second process.
+
+```bash
+# Start the primary daemon
+kubeport start
+
+# In another project, offload its services to the already-running daemon
+# instead of starting a second daemon
+kubeport start --config ~/other-project/kubeport.yaml --offload
+
+# The services from other-project/kubeport.yaml are added to the running daemon
 ```
 
 ### Config Management

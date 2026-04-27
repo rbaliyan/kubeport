@@ -10,7 +10,14 @@ Start the port-forward daemon in the background.
 kubeport start                  # Start and return immediately
 kubeport start --wait           # Start and wait until all forwards are ready
 kubeport start --wait --timeout 30s
+kubeport start --offload        # Send services to an already-running daemon instead of starting a new one
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--wait` | Block until all forwards are connected |
+| `--timeout` | Maximum time to wait for readiness (default: 30s) |
+| `--offload` | Add this config's services to an already-running daemon instead of launching a new process |
 
 ### `kubeport stop`
 
@@ -192,6 +199,17 @@ kubeport watch --sort           # Sort services by name
 |------|---------|-------------|
 | `--time` | `2s` | Refresh interval (Go duration) |
 | `--sort` | off | Sort services alphabetically |
+
+### `kubeport instances`
+
+List all running kubeport daemon instances registered in the central instance registry (`~/.config/kubeport/instances.json`). Useful for diagnosing port conflicts and finding socket or log file paths.
+
+```bash
+kubeport instances           # Human-readable table
+kubeport instances --json    # JSON output
+```
+
+Each row shows the PID, uptime, version, gRPC endpoint (Unix socket or TCP address), API key hint, and config file path. A detail block below the table includes the full paths to the PID file and log file for each instance.
 
 ### `kubeport version`
 
