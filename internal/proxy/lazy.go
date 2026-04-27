@@ -12,9 +12,9 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
+	"k8s.io/streaming/pkg/httpstream"
 
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/pkg/config"
@@ -87,7 +87,7 @@ func (m *Manager) runLazyPortForward(ctx context.Context, pf *portForward) error
 			return fmt.Errorf("create SPDY transport: %w", entryErr)
 		}
 
-		rawDialer := spdy.NewDialer(entry.upgrader, entry.client, http.MethodPost, reqURL)
+		rawDialer := spdy.NewDialerForStreaming(entry.upgrader, entry.client, http.MethodPost, reqURL)
 
 		netCfg, netErr := config.ResolveNetwork(m.cfg.Network, pf.svc.Network).Parse()
 		if netErr != nil {
