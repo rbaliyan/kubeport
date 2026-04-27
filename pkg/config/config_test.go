@@ -10,6 +10,561 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ---------------------------------------------------------------------------
+// ResolvedKeyID
+// ---------------------------------------------------------------------------
+
+func TestResolvedKeyID_UserProvided(t *testing.T) {
+	cfg := &Config{APIKey: "s3cr3t", KeyID: "prod"}
+	if got := cfg.ResolvedKeyID(); got != "prod" {
+		t.Fatalf("expected %q, got %q", "prod", got)
+	}
+}
+
+func TestResolvedKeyID_Derived(t *testing.T) {
+	cfg := &Config{APIKey: "s3cr3t"}
+	got := cfg.ResolvedKeyID()
+	if got == "" {
+		t.Fatal("expected non-empty fingerprint")
+	}
+	// Stable across calls.
+	if cfg.ResolvedKeyID() != got {
+		t.Fatal("expected stable fingerprint")
+	}
+	// Different key → different fingerprint.
+	cfg2 := &Config{APIKey: "other-key"}
+	if cfg2.ResolvedKeyID() == got {
+		t.Fatal("expected different fingerprint for different key")
+	}
+	// 16 hex chars (8 bytes * 2).
+	if len(got) != 16 {
+		t.Fatalf("expected 16-char fingerprint, got %d chars: %q", len(got), got)
+	}
+}
+
+func TestResolvedKeyID_NoKey(t *testing.T) {
+	cfg := &Config{}
+	if got := cfg.ResolvedKeyID(); got != "" {
+		t.Fatalf("expected empty for no API key, got %q", got)
+	}
+}
+
+func TestResolvedKeyID_KeyIDOnlyNoKey(t *testing.T) {
+	// KeyID set but no APIKey — still returns the user-provided KeyID.
+	cfg := &Config{KeyID: "my-id"}
+	if got := cfg.ResolvedKeyID(); got != "my-id" {
+		t.Fatalf("expected %q, got %q", "my-id", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// NewInMemory
+// ---------------------------------------------------------------------------
+
+func TestNewInMemory(t *testing.T) {
+	svcs := []ServiceConfig{
+		{Name: "api", Service: "my-svc", LocalPort: 8080, RemotePort: 80},
+	}
+	cfg := NewInMemory("my-context", "my-ns", svcs)
+	if cfg.Context != "my-context" {
+		t.Errorf("Context = %q, want %q", cfg.Context, "my-context")
+	}
+	if cfg.Namespace != "my-ns" {
+		t.Errorf("Namespace = %q, want %q", cfg.Namespace, "my-ns")
+	}
+	if len(cfg.Services) != 1 || cfg.Services[0].Name != "api" {
+		t.Errorf("unexpected services: %+v", cfg.Services)
+	}
+	if cfg.FilePath() != "" {
+		t.Errorf("expected empty file path for in-memory config, got %q", cfg.FilePath())
+	}
+	// Runtime paths should be non-empty even without a file.
+	if cfg.PIDFile() == "" {
+		t.Error("expected non-empty PIDFile for in-memory config")
+	}
+	if cfg.LogFile() == "" {
+		t.Error("expected non-empty LogFile for in-memory config")
+	}
+	if cfg.SocketFile() == "" {
+		t.Error("expected non-empty SocketFile for in-memory config")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// KeyID round-trips through YAML and TOML
+// ---------------------------------------------------------------------------
+
+func TestKeyID_YAMLRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.yaml")
+	yaml := `
+context: test
+services:
+  - name: api
+    service: my-svc
+    local_port: 8080
+    remote_port: 80
+api_key: secret
+key_id: staging
+`
+	if err := os.WriteFile(path, []byte(yaml), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.KeyID != "staging" {
+		t.Errorf("KeyID = %q, want %q", cfg.KeyID, "staging")
+	}
+	if cfg.ResolvedKeyID() != "staging" {
+		t.Errorf("ResolvedKeyID = %q, want %q", cfg.ResolvedKeyID(), "staging")
+	}
+}
+
+func TestKeyID_TOMLRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.toml")
+	content := `
+context = "test"
+api_key = "secret"
+key_id  = "prod"
+
+[[services]]
+name        = "api"
+service     = "my-svc"
+local_port  = 8080
+remote_port = 80
+`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.KeyID != "prod" {
+		t.Errorf("KeyID = %q, want %q", cfg.KeyID, "prod")
+	}
+
+	// Save and reload to verify marshal path.
+	out := filepath.Join(dir, "out.toml")
+	if err := cfg.SaveTo(out, FormatTOML); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+	cfg2, err := Load(out)
+	if err != nil {
+		t.Fatalf("Load reloaded: %v", err)
+	}
+	if cfg2.KeyID != "prod" {
+		t.Errorf("reloaded KeyID = %q, want %q", cfg2.KeyID, "prod")
+	}
+}
+
+func TestKeyID_SaveAndReload_YAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.yaml")
+	content := `
+context: test
+api_key: token
+key_id: ci-runner
+services:
+  - name: api
+    service: my-svc
+    local_port: 8080
+    remote_port: 80
+`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	out := filepath.Join(dir, "out.yaml")
+	if err := cfg.SaveTo(out, FormatYAML); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+	cfg2, err := Load(out)
+	if err != nil {
+		t.Fatalf("Load reloaded: %v", err)
+	}
+	if cfg2.KeyID != "ci-runner" {
+		t.Errorf("reloaded KeyID = %q, want %q", cfg2.KeyID, "ci-runner")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CentralDir
+// ---------------------------------------------------------------------------
+
+func TestCentralDir_Empty(t *testing.T) {
+	// Smoke test: must return a non-empty path.
+	dir := CentralDir("")
+	if dir == "" {
+		t.Fatal("expected non-empty CentralDir for empty input")
+	}
+}
+
+func TestCentralDir_InsideXDG(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	xdg := filepath.Join(home, ".config", "kubeport")
+	if err := os.MkdirAll(xdg, 0700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	cfgPath := filepath.Join(xdg, "kubeport.yaml")
+	got := CentralDir(cfgPath)
+	if got != xdg {
+		t.Errorf("CentralDir = %q, want %q", got, xdg)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// InstanceID
+// ---------------------------------------------------------------------------
+
+func TestInstanceID_Stable(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{filePath: filepath.Join(dir, "kubeport.yaml")}
+	id1 := cfg.InstanceID()
+	id2 := cfg.InstanceID()
+	if id1 != id2 {
+		t.Errorf("InstanceID not stable: %q vs %q", id1, id2)
+	}
+	if id1 == "" {
+		t.Fatal("expected non-empty InstanceID")
+	}
+}
+
+func TestInstanceID_DifferentPaths(t *testing.T) {
+	dir := t.TempDir()
+	c1 := &Config{filePath: filepath.Join(dir, "a", "kubeport.yaml")}
+	c2 := &Config{filePath: filepath.Join(dir, "b", "kubeport.yaml")}
+	if c1.InstanceID() == c2.InstanceID() {
+		t.Errorf("expected different InstanceIDs for different paths: both %q", c1.InstanceID())
+	}
+}
+
+func TestInstanceID_InMemory(t *testing.T) {
+	cfg := &Config{}
+	id := cfg.InstanceID()
+	if id == "" {
+		t.Fatal("expected non-empty InstanceID for in-memory config")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// PortsConfig.IsSet
+// ---------------------------------------------------------------------------
+
+func TestPortsConfig_IsSet(t *testing.T) {
+	if (PortsConfig{}).IsSet() {
+		t.Error("empty PortsConfig should not be set")
+	}
+	if !(PortsConfig{All: true}).IsSet() {
+		t.Error("All=true should be set")
+	}
+	if !(PortsConfig{Selectors: []PortSelector{{Name: "http"}}}).IsSet() {
+		t.Error("non-empty selectors should be set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateHook
+// ---------------------------------------------------------------------------
+
+func TestValidateHook(t *testing.T) {
+	svcNames := map[string]struct{}{"api": {}}
+
+	tests := []struct {
+		name    string
+		hook    HookConfig
+		wantErr bool
+	}{
+		{
+			name:    "missing hook name",
+			hook:    HookConfig{Type: "exec"},
+			wantErr: true,
+		},
+		{
+			name:    "missing hook type",
+			hook:    HookConfig{Name: "my-hook"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid timeout",
+			hook:    HookConfig{Name: "h", Type: "exec", Timeout: "not-a-duration"},
+			wantErr: true,
+		},
+		{
+			name:    "invalid fail_mode",
+			hook:    HookConfig{Name: "h", Type: "exec", FailMode: "invalid"},
+			wantErr: true,
+		},
+		{
+			name:    "unknown filter service",
+			hook:    HookConfig{Name: "h", Type: "exec", FilterServices: []string{"unknown"}},
+			wantErr: true,
+		},
+		{
+			name:    "valid hook",
+			hook:    HookConfig{Name: "h", Type: "exec", Timeout: "5s", FailMode: "open", FilterServices: []string{"api"}},
+			wantErr: false,
+		},
+		{
+			name:    "valid hook closed fail_mode",
+			hook:    HookConfig{Name: "h", Type: "exec", FailMode: "closed"},
+			wantErr: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateHook(0, tt.hook, svcNames)
+			if tt.wantErr && err == nil {
+				t.Error("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SupervisorConfig.validate and ParsedSupervisor
+// ---------------------------------------------------------------------------
+
+func TestSupervisorConfig_Validate(t *testing.T) {
+	valid := SupervisorConfig{
+		HealthCheckInterval: "10s",
+		ReadyTimeout:        "15s",
+		BackoffInitial:      "1s",
+		BackoffMax:          "30s",
+		MaxConnectionAge:    "1m",
+	}
+	if err := valid.validate(); err != nil {
+		t.Errorf("unexpected error for valid config: %v", err)
+	}
+
+	invalid := SupervisorConfig{HealthCheckInterval: "not-a-duration"}
+	if err := invalid.validate(); err == nil {
+		t.Error("expected error for invalid duration")
+	}
+}
+
+func TestParsedSupervisor_Defaults(t *testing.T) {
+	s := SupervisorConfig{}
+	p, err := s.ParsedSupervisor()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.HealthCheckInterval != 10*time.Second {
+		t.Errorf("HealthCheckInterval = %v, want 10s", p.HealthCheckInterval)
+	}
+	if p.ReadyTimeout != 15*time.Second {
+		t.Errorf("ReadyTimeout = %v, want 15s", p.ReadyTimeout)
+	}
+	if p.BackoffInitial != time.Second {
+		t.Errorf("BackoffInitial = %v, want 1s", p.BackoffInitial)
+	}
+	if p.BackoffMax != 30*time.Second {
+		t.Errorf("BackoffMax = %v, want 30s", p.BackoffMax)
+	}
+	if p.HealthCheckThreshold != 3 {
+		t.Errorf("HealthCheckThreshold = %d, want 3", p.HealthCheckThreshold)
+	}
+}
+
+func TestParsedSupervisor_CustomValues(t *testing.T) {
+	s := SupervisorConfig{
+		HealthCheckInterval:  "5s",
+		ReadyTimeout:         "20s",
+		BackoffInitial:       "2s",
+		BackoffMax:           "60s",
+		MaxConnectionAge:     "2m",
+		MaxRestarts:          5,
+		HealthCheckThreshold: 2,
+	}
+	p, err := s.ParsedSupervisor()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if p.HealthCheckInterval != 5*time.Second {
+		t.Errorf("HealthCheckInterval = %v, want 5s", p.HealthCheckInterval)
+	}
+	if p.MaxConnectionAge != 2*time.Minute {
+		t.Errorf("MaxConnectionAge = %v, want 2m", p.MaxConnectionAge)
+	}
+	if p.MaxRestarts != 5 {
+		t.Errorf("MaxRestarts = %d, want 5", p.MaxRestarts)
+	}
+	if p.HealthCheckThreshold != 2 {
+		t.Errorf("HealthCheckThreshold = %d, want 2", p.HealthCheckThreshold)
+	}
+}
+
+func TestParsedSupervisor_InvalidDuration(t *testing.T) {
+	s := SupervisorConfig{HealthCheckInterval: "bad"}
+	if _, err := s.ParsedSupervisor(); err == nil {
+		t.Error("expected error for invalid duration")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LoadServices
+// ---------------------------------------------------------------------------
+
+func TestLoadServices(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	content := `
+services:
+  - name: api
+    service: my-svc
+    local_port: 8080
+    remote_port: 80
+  - name: db
+    service: postgres
+    local_port: 5432
+    remote_port: 5432
+`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	svcs, err := LoadServices(path)
+	if err != nil {
+		t.Fatalf("LoadServices: %v", err)
+	}
+	if len(svcs) != 2 {
+		t.Fatalf("expected 2 services, got %d", len(svcs))
+	}
+	if svcs[0].Name != "api" || svcs[1].Name != "db" {
+		t.Errorf("unexpected services: %+v", svcs)
+	}
+}
+
+func TestLoadServices_InvalidService(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "services.yaml")
+	content := `
+services:
+  - name: bad
+    local_port: 8080
+    remote_port: 80
+`
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if _, err := LoadServices(path); err == nil {
+		t.Error("expected error for invalid service (missing service/pod)")
+	}
+}
+
+func TestLoadServices_FileNotFound(t *testing.T) {
+	if _, err := LoadServices("/no/such/file.yaml"); err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// marshalTOML — service port branches
+// ---------------------------------------------------------------------------
+
+func TestMarshalTOML_AllPorts(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{
+		Context:   "test",
+		filePath:  filepath.Join(dir, "kubeport.toml"),
+		format:    FormatTOML,
+		Services: []ServiceConfig{
+			{
+				Name:    "api",
+				Service: "my-svc",
+				Ports:   PortsConfig{All: true},
+			},
+		},
+	}
+	out := filepath.Join(dir, "out.toml")
+	if err := cfg.SaveTo(out, FormatTOML); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), "all") {
+		t.Errorf("expected 'all' in TOML output, got:\n%s", data)
+	}
+}
+
+func TestMarshalTOML_ComplexPortSelectors(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{
+		Context:  "test",
+		filePath: filepath.Join(dir, "kubeport.toml"),
+		format:   FormatTOML,
+		Services: []ServiceConfig{
+			{
+				Name:    "api",
+				Service: "my-svc",
+				Ports: PortsConfig{
+					Selectors: []PortSelector{
+						{Name: "http", Port: 80, LocalPort: 8080},
+					},
+				},
+			},
+		},
+	}
+	out := filepath.Join(dir, "out.toml")
+	if err := cfg.SaveTo(out, FormatTOML); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+}
+
+func TestMarshalTOML_SimpleNamedPorts(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{
+		Context:  "test",
+		filePath: filepath.Join(dir, "kubeport.toml"),
+		format:   FormatTOML,
+		Services: []ServiceConfig{
+			{
+				Name:    "api",
+				Service: "my-svc",
+				Ports: PortsConfig{
+					Selectors: []PortSelector{
+						{Name: "http"},
+						{Name: "grpc"},
+					},
+				},
+			},
+		},
+	}
+	out := filepath.Join(dir, "out.toml")
+	if err := cfg.SaveTo(out, FormatTOML); err != nil {
+		t.Fatalf("SaveTo: %v", err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !strings.Contains(string(data), "http") {
+		t.Errorf("expected port names in TOML output, got:\n%s", data)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Save (no file path error path)
+// ---------------------------------------------------------------------------
+
+func TestSave_NoFilePath(t *testing.T) {
+	cfg := &Config{}
+	if err := cfg.Save(); err == nil {
+		t.Error("expected error for Save with no file path")
+	}
+}
+
 func TestValidate_NoServices(t *testing.T) {
 	cfg := &Config{Services: []ServiceConfig{}}
 	if err := cfg.Validate(); err == nil {

@@ -208,6 +208,122 @@ func TestList_RejectsCorruptStore(t *testing.T) {
 }
 
 
+func TestRegister_WithKeyID(t *testing.T) {
+	r, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	e := Entry{
+		PID:         os.Getpid(),
+		Socket:      "/tmp/kube.sock",
+		AuthEnabled: true,
+		KeyID:       "prod",
+	}
+	if err := r.Register(e); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	got, err := r.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(got))
+	}
+	if !got[0].AuthEnabled {
+		t.Error("AuthEnabled should be true")
+	}
+	if got[0].KeyID != "prod" {
+		t.Errorf("KeyID = %q, want %q", got[0].KeyID, "prod")
+	}
+}
+
+func TestRegister_WithTCPAddress(t *testing.T) {
+	r, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	e := Entry{PID: os.Getpid(), TCPAddress: "127.0.0.1:9090"}
+	if err := r.Register(e); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	got, err := r.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 1 || got[0].TCPAddress != "127.0.0.1:9090" {
+		t.Fatalf("unexpected entry: %+v", got)
+	}
+}
+
+func TestList_EmptyRegistry(t *testing.T) {
+	r, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	got, err := r.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty list, got %+v", got)
+	}
+}
+
+func TestFindByConfig_AbsPathMatch(t *testing.T) {
+	dir := t.TempDir()
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	cfgPath := dir + "/kubeport.yaml"
+	if err := r.Register(Entry{PID: os.Getpid(), ConfigFile: cfgPath, Socket: "/tmp/a.sock"}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	// Pass a relative-looking but equivalent path.
+	got, err := r.FindByConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("FindByConfig: %v", err)
+	}
+	if got == nil || got.PID != os.Getpid() {
+		t.Fatalf("expected match, got %v", got)
+	}
+}
+
+func TestFindByConfig_DeadPIDNotReturned(t *testing.T) {
+	dir := t.TempDir()
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	cfgPath := dir + "/kubeport.yaml"
+	// Register with a dead PID.
+	if err := r.Register(Entry{PID: 999999999, ConfigFile: cfgPath, Socket: "/tmp/a.sock"}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	got, err := r.FindByConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("FindByConfig: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("expected nil for dead PID, got %+v", got)
+	}
+}
+
+func TestIsAlive_InvalidPID(t *testing.T) {
+	if isAlive(0) {
+		t.Error("pid 0 should not be alive")
+	}
+	if isAlive(-1) {
+		t.Error("negative pid should not be alive")
+	}
+}
+
+func TestIsAlive_SelfIsAlive(t *testing.T) {
+	if !isAlive(os.Getpid()) {
+		t.Error("own pid should be alive")
+	}
+}
+
 func TestConcurrentRegister(t *testing.T) {
 	r, err := Open(t.TempDir())
 	if err != nil {
