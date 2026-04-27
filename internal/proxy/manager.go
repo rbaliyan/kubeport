@@ -38,6 +38,7 @@ const (
 	StateRunning
 	StateFailed
 	StateStopped
+	StateWaiting // lazy mode: local port bound, SPDY tunnel not yet open
 )
 
 func (s ForwardState) String() string {
@@ -50,6 +51,8 @@ func (s ForwardState) String() string {
 		return "failed"
 	case StateStopped:
 		return "stopped"
+	case StateWaiting:
+		return "waiting"
 	default:
 		return "unknown"
 	}
@@ -78,6 +81,8 @@ type ForwardStatus struct {
 	ChaosSpikeDuration        time.Duration // Latency spike duration
 	ChaosErrorsInjected       int64         // Count of errors injected
 	ChaosSpikesInjected       int64         // Count of latency spikes injected
+	Lazy       bool // true when configured in lazy mode
+	TunnelOpen bool // lazy mode: true when the SPDY tunnel to k8s is currently open
 }
 
 type portForward struct {
@@ -93,6 +98,7 @@ type portForward struct {
 	counter    byteCounter // cumulative bytes across all connection attempts
 	currentPod string      // name of the pod currently being forwarded to
 	preemptCh  chan string  // carries replacement pod name for predictive reconnection
+	tunnelOpen bool        // lazy mode: true when SPDY tunnel is active
 	mu         sync.Mutex
 }
 
@@ -807,7 +813,12 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 		pf.mu.Unlock()
 
 		startTime := time.Now()
-		err := m.runPortForward(ctx, pf)
+		var err error
+		if svc.Lazy {
+			err = m.runLazyPortForward(ctx, pf)
+		} else {
+			err = m.runPortForward(ctx, pf)
+		}
 		duration := time.Since(startTime)
 
 		if ctx.Err() != nil {
@@ -1453,6 +1464,8 @@ func (m *Manager) Status() []ForwardStatus {
 			ChaosSpikeDuration:    chaosCfg.LatencySpikeDuration,
 			ChaosErrorsInjected:   pf.counter.chaos.errorsInjected.Load(),
 			ChaosSpikesInjected:   pf.counter.chaos.spikesInjected.Load(),
+			Lazy:                  pf.svc.Lazy,
+			TunnelOpen:            pf.tunnelOpen,
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)

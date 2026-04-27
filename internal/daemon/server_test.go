@@ -276,6 +276,7 @@ func TestConvertState(t *testing.T) {
 		{proxy.StateRunning, kubeportv1.ForwardState_FORWARD_STATE_RUNNING},
 		{proxy.StateFailed, kubeportv1.ForwardState_FORWARD_STATE_FAILED},
 		{proxy.StateStopped, kubeportv1.ForwardState_FORWARD_STATE_STOPPED},
+		{proxy.StateWaiting, kubeportv1.ForwardState_FORWARD_STATE_WAITING},
 		{proxy.ForwardState(99), kubeportv1.ForwardState_FORWARD_STATE_UNSPECIFIED},
 	}
 

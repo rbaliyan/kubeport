@@ -20,6 +20,7 @@ enum ForwardState {
   FORWARD_STATE_RUNNING = 2;
   FORWARD_STATE_FAILED = 3;
   FORWARD_STATE_STOPPED = 4;
+  FORWARD_STATE_WAITING = 5;  // lazy mode: local port bound, SPDY tunnel not yet open
 }
 
 message ServiceInfo {
@@ -62,6 +63,8 @@ message ForwardStatusProto {
   int64 chaos_spikes_injected = 19;       // Count of latency spikes injected so far
   int64 conn_bytes_in = 20;              // Bytes received since last reconnect
   int64 conn_bytes_out = 21;             // Bytes sent since last reconnect
+  bool lazy = 22;                        // true when service is configured in lazy mode
+  bool tunnel_open = 23;                 // lazy mode: true when the SPDY tunnel is currently open
 }
 
 message StatusRequest {}

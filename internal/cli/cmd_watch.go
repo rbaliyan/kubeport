@@ -252,6 +252,10 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 		stateColor = colorYellow
 		stateText = "starting"
 		indicator = "◌"
+	case kubeportv1.ForwardState_FORWARD_STATE_WAITING:
+		stateColor = colorYellow
+		stateText = "waiting"
+		indicator = "◌"
 	case kubeportv1.ForwardState_FORWARD_STATE_FAILED:
 		stateColor = colorRed
 		stateText = "failed"
@@ -321,6 +325,14 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 			_, _ = fmt.Fprintf(w, " (errs:%d spikes:%d)", fw.ChaosErrorsInjected, fw.ChaosSpikesInjected)
 		}
 		_, _ = fmt.Fprint(w, "]")
+	}
+
+	if fw.Lazy {
+		if fw.TunnelOpen {
+			_, _ = fmt.Fprint(w, " [lazy: tunnel open]")
+		} else {
+			_, _ = fmt.Fprint(w, " [lazy: no traffic yet]")
+		}
 	}
 
 	if fw.Error != "" {

@@ -54,6 +54,8 @@ type forwardStatusOutput struct {
 	ChaosErrorRate     float64 `json:"chaos_error_rate,omitempty"`
 	ChaosErrorsInjected int64  `json:"chaos_errors_injected,omitempty"`
 	ChaosSpikesInjected int64  `json:"chaos_spikes_injected,omitempty"`
+	Lazy               bool   `json:"lazy,omitempty"`
+	TunnelOpen         bool   `json:"tunnel_open,omitempty"`
 }
 
 func (a *app) cmdStatus() {
@@ -250,6 +252,8 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 	if fw.NextRetry != nil && fw.NextRetry.IsValid() {
 		out.NextRetry = fw.NextRetry.AsTime().Format(time.RFC3339)
 	}
+	out.Lazy = fw.Lazy
+	out.TunnelOpen = fw.TunnelOpen
 	return out
 }
 

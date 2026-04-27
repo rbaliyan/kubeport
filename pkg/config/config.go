@@ -197,6 +197,7 @@ type ServiceConfig struct {
 	LocalPortOffset int           `yaml:"local_port_offset,omitempty" toml:"local_port_offset,omitempty"`
 	Network         NetworkConfig `yaml:"network,omitempty" toml:"network,omitempty"`
 	Chaos           ChaosConfig   `yaml:"chaos,omitempty" toml:"chaos,omitempty"`
+	Lazy            bool          `yaml:"lazy,omitempty" toml:"lazy,omitempty"`
 	ParentName      string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 	PortName        string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 }
