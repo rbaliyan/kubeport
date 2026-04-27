@@ -43,7 +43,7 @@ func HashKey(key string) string {
 	if key == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(key)) // lgtm[go/weak-cryptographic-algorithm] -- SHA-256 is appropriate for high-entropy API token identification, not password hashing
+	sum := sha256.Sum256([]byte(key)) // codeql[go/weak-cryptographic-algorithm] -- SHA-256 is appropriate for high-entropy API token identification, not password hashing
 	return hex.EncodeToString(sum[:])
 }
 
