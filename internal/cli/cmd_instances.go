@@ -11,19 +11,19 @@ import (
 )
 
 // instanceJSON is the JSON representation of a running instance for --json output.
-// APIKeyHash holds the full SHA-256 hex hash of the API key (64 chars); the
-// human-readable table and printInstanceBrief truncate to 12 chars for brevity.
+// KeyID is the operator-visible identifier for the API key: either the user-provided
+// key_id from config, or a short SHA-256 fingerprint derived from the key material.
 type instanceJSON struct {
-	PID        int    `json:"pid"`
-	ConfigFile string `json:"config_file,omitempty"`
-	PIDFile    string `json:"pid_file,omitempty"`
-	LogFile    string `json:"log_file,omitempty"`
-	Endpoint   string `json:"endpoint"`
-	AuthEnabled  bool   `json:"auth_enabled"`
-	APIKeyHash string `json:"api_key_hash,omitempty"` // full SHA-256 hex hash
-	Version    string `json:"version,omitempty"`
-	Uptime     string `json:"uptime"`
-	StartedAt  string `json:"started_at"`
+	PID         int    `json:"pid"`
+	ConfigFile  string `json:"config_file,omitempty"`
+	PIDFile     string `json:"pid_file,omitempty"`
+	LogFile     string `json:"log_file,omitempty"`
+	Endpoint    string `json:"endpoint"`
+	AuthEnabled bool   `json:"auth_enabled"`
+	KeyID       string `json:"key_id,omitempty"`
+	Version     string `json:"version,omitempty"`
+	Uptime      string `json:"uptime"`
+	StartedAt   string `json:"started_at"`
 }
 
 func (a *app) cmdInstances() {
@@ -66,7 +66,7 @@ func (a *app) cmdInstances() {
 			formatUptime(time.Since(e.StartedAt)),
 			e.Version,
 			entryEndpoint(e),
-			entryAPIKeyLabel(e),
+			entryAuthLabel(e),
 			entryConfigLabel(e),
 		)
 	}
@@ -95,11 +95,11 @@ func (a *app) cmdInstances() {
 func printInstanceBrief(e *registry.Entry) {
 	authNote := ""
 	if e.AuthEnabled {
-		hint := ""
-		if len(e.APIKeyHash) >= 12 {
-			hint = " hash:" + e.APIKeyHash[:12] + "…"
+		note := e.KeyID
+		if note == "" {
+			note = "yes"
 		}
-		authNote = fmt.Sprintf(" [API key required%s]", hint)
+		authNote = fmt.Sprintf(" [auth: %s]", note)
 	}
 	fmt.Printf("  PID %-8d  endpoint: %-40s  config: %s%s\n",
 		e.PID, entryEndpoint(*e), entryConfigLabel(*e), authNote)
@@ -119,28 +119,28 @@ func entryConfigLabel(e registry.Entry) string {
 	return e.ConfigFile
 }
 
-func entryAPIKeyLabel(e registry.Entry) string {
+func entryAuthLabel(e registry.Entry) string {
 	if !e.AuthEnabled {
 		return "none"
 	}
-	if len(e.APIKeyHash) >= 12 {
-		return "yes (" + e.APIKeyHash[:12] + "…)"
+	if e.KeyID != "" {
+		return "yes (" + e.KeyID + ")"
 	}
 	return "yes"
 }
 
 func entryToJSON(e registry.Entry) instanceJSON {
 	return instanceJSON{
-		PID:        e.PID,
-		ConfigFile: e.ConfigFile,
-		PIDFile:    e.PIDFile,
-		LogFile:    e.LogFile,
-		Endpoint:   entryEndpoint(e),
-		AuthEnabled:  e.AuthEnabled,
-		APIKeyHash: e.APIKeyHash, // full hash; truncation is only for human-readable output
-		Version:    e.Version,
-		Uptime:     formatUptime(time.Since(e.StartedAt)),
-		StartedAt:  e.StartedAt.Format(time.RFC3339),
+		PID:         e.PID,
+		ConfigFile:  e.ConfigFile,
+		PIDFile:     e.PIDFile,
+		LogFile:     e.LogFile,
+		Endpoint:    entryEndpoint(e),
+		AuthEnabled: e.AuthEnabled,
+		KeyID:       e.KeyID,
+		Version:     e.Version,
+		Uptime:      formatUptime(time.Since(e.StartedAt)),
+		StartedAt:   e.StartedAt.Format(time.RFC3339),
 	}
 }
 

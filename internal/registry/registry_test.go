@@ -207,19 +207,6 @@ func TestList_RejectsCorruptStore(t *testing.T) {
 	}
 }
 
-func TestHashKey(t *testing.T) {
-	if got := HashKey(""); got != "" {
-		t.Fatalf("expected empty hash for empty key, got %q", got)
-	}
-	a := HashKey("secret")
-	b := HashKey("secret")
-	if a != b || a == "" {
-		t.Fatalf("expected stable non-empty hash, got %q vs %q", a, b)
-	}
-	if HashKey("secret-2") == a {
-		t.Fatal("expected different hash for different key")
-	}
-}
 
 func TestConcurrentRegister(t *testing.T) {
 	r, err := Open(t.TempDir())

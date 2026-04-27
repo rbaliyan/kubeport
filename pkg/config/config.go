@@ -472,6 +472,7 @@ type Config struct {
 	LogFilePath string           `yaml:"log_file,omitempty" toml:"log_file,omitempty"`
 	Listen      string           `yaml:"listen,omitempty" toml:"listen,omitempty"`
 	APIKey      string           `yaml:"api_key,omitempty" toml:"api_key,omitempty"`
+	KeyID       string           `yaml:"key_id,omitempty" toml:"key_id,omitempty"`
 	Host        string           `yaml:"host,omitempty" toml:"host,omitempty"`
 	Services    []ServiceConfig   `yaml:"services" toml:"services"`
 	Hooks       []HookConfig      `yaml:"hooks,omitempty" toml:"hooks,omitempty"`
@@ -604,6 +605,23 @@ func (c *Config) SocketFile() string {
 		return path
 	}
 	return filepath.Join(CentralDir(c.filePath), c.InstanceID()+".sock")
+}
+
+// ResolvedKeyID returns the identifier used to represent the configured API key
+// in the instance registry and CLI output. If key_id is set in the config that
+// value is returned as-is; otherwise a stable fingerprint is derived from the
+// key material so that operators can correlate instances without exposing the
+// raw key. Returns an empty string when no API key is configured.
+func (c *Config) ResolvedKeyID() string {
+	if c.KeyID != "" {
+		return c.KeyID
+	}
+	if c.APIKey == "" {
+		return ""
+	}
+	material := c.APIKey
+	sum := sha256.Sum256([]byte(material))
+	return hex.EncodeToString(sum[:8]) // 16 hex chars — sufficient for identification
 }
 
 // ListenAddress returns the resolved listen configuration.
@@ -742,6 +760,7 @@ type configTOML struct {
 	LogFilePath string              `toml:"log_file,omitempty"`
 	Listen      string              `toml:"listen,omitempty"`
 	APIKey      string              `toml:"api_key,omitempty"`
+	KeyID       string              `toml:"key_id,omitempty"`
 	Host        string              `toml:"host,omitempty"`
 	Services    []serviceConfigTOML `toml:"services"`
 	Hooks       []HookConfig        `toml:"hooks,omitempty"`
@@ -764,6 +783,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 	cfg.LogFilePath = raw.LogFilePath
 	cfg.Listen = raw.Listen
 	cfg.APIKey = raw.APIKey
+	cfg.KeyID = raw.KeyID
 	cfg.Host = raw.Host
 	cfg.Hooks = raw.Hooks
 	cfg.Supervisor = raw.Supervisor
@@ -805,6 +825,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 		LogFilePath: c.LogFilePath,
 		Listen:      c.Listen,
 		APIKey:      c.APIKey,
+		KeyID:       c.KeyID,
 		Host:        c.Host,
 		Hooks:       c.Hooks,
 		Supervisor:  c.Supervisor,

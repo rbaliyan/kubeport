@@ -6,8 +6,6 @@
 package registry
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,21 +28,10 @@ type Entry struct {
 	LogFile    string    `json:"log_file,omitempty"`
 	Socket     string    `json:"socket,omitempty"`
 	TCPAddress string    `json:"tcp_address,omitempty"`
-	AuthEnabled bool      `json:"auth_enabled"`
-	APIKeyHash string    `json:"api_key_hash,omitempty"`
+	AuthEnabled bool   `json:"auth_enabled"`
+	KeyID       string `json:"key_id,omitempty"`
 	Version    string    `json:"version,omitempty"`
 	StartedAt  time.Time `json:"started_at"`
-}
-
-// HashKey returns the SHA-256 hex hash of a raw API key.
-// Returns an empty string for an empty key so callers do not need to special-case
-// the "no key" path.
-func HashKey(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(raw))
-	return hex.EncodeToString(sum[:])
 }
 
 // store is the JSON-serialised shape written to instances.json.
