@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/httpstream"
+	"k8s.io/streaming/pkg/httpstream"
 )
 
 // rateLimiter implements a token-bucket algorithm for bandwidth throttling.
