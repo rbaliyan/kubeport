@@ -1,6 +1,6 @@
 [tools]
-go = "1.25"
-golangci-lint = "2.8.0"
+go = "1.26"
+golangci-lint = "2.11.4"
 just = "latest"
 pre-commit = "latest"
 buf = "latest"
