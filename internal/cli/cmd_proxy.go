@@ -225,12 +225,12 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	}
 
 	// Auto-start SOCKS proxy if enabled
-	if a.cfg.SOCKS.Enabled {
+	if a.cfg.SOCKS.IsEnabled() {
 		go a.autoStartSOCKS(ctx, logger, output)
 	}
 
 	// Auto-start HTTP proxy if enabled
-	if a.cfg.HTTPProxy.Enabled {
+	if a.cfg.HTTPProxy.IsEnabled() {
 		go a.autoStartHTTPProxy(ctx, logger, output)
 	}
 

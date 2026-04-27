@@ -13,6 +13,13 @@
 #   K8S_CONTEXT   - Override the context below
 #   K8S_NAMESPACE - Override the namespace below
 
+# Inherit from a parent config (optional).
+# Supports relative paths (resolved from this file's directory) and ~/...
+# Child values override parent values; services and hooks are merged by name.
+# Example: share api_key, listen, and supervisor settings across projects.
+#
+# extends: ~/.config/kubeport/global.yaml
+
 # Kubernetes context from ~/.kube/config
 context: my-cluster-context
 

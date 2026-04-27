@@ -12,6 +12,9 @@ All notable changes to kubeport are documented here. This project uses [semantic
 - `kubeport instances` command lists all running daemon instances with PID, uptime, version, endpoint, API-key hint, and paths
 - `--offload` flag on `start` redirects services to an already-running instance instead of launching a new daemon
 - Central instance registry at `~/.config/kubeport/instances.json` tracks all running kubeport daemons
+- `extends` field in config files for config inheritance — a project config can inherit `api_key`, `context`, `supervisor`, and other settings from a parent (e.g., `~/.config/kubeport/global.yaml`); chains and circular-reference detection are supported
+- `key_id` config field — key identifier sent alongside `api_key` for token rotation
+- `lazy` service field — defers opening the SPDY tunnel until the first client connection, reducing idle resource use
 
 ### Changed
 - Daemon server RPCs now return proper gRPC status codes instead of response `Error` fields
@@ -22,6 +25,7 @@ All notable changes to kubeport are documented here. This project uses [semantic
 - Hook concrete types (`ShellHook`, `WebhookHook`, `ExecHook`) are now unexported
 - Runtime files (PID, socket, log) now live in `~/.config/kubeport/` per-instance instead of next to the config file
 - Stale `.kubeport.pid` and `.kubeport.sock` files from older versions are auto-removed on daemon start
+- `chaos.enabled`, `socks.enabled`, and `http_proxy.enabled` are now pointer booleans (`*bool`): omitting the field (nil) means "inherit from parent config", `false` explicitly disables even if the parent config enables it
 
 ### Fixed
 - Race condition in `pkg/proxy` address translation (mutex snapshot)

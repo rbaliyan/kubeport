@@ -1947,19 +1947,19 @@ func TestChaosConfig_Parse(t *testing.T) {
 		wantErr bool
 	}{
 		{"disabled", ChaosConfig{}, false},
-		{"enabled no faults", ChaosConfig{Enabled: true}, false},
-		{"error rate only", ChaosConfig{Enabled: true, ErrorRate: 0.02}, false},
-		{"latency spike only", ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}}, false},
-		{"all fields", ChaosConfig{Enabled: true, ErrorRate: 0.05, LatencySpike: LatencySpikeConfig{Probability: 0.1, Duration: "2s"}}, false},
-		{"error rate too high", ChaosConfig{Enabled: true, ErrorRate: 1.5}, true},
-		{"error rate negative", ChaosConfig{Enabled: true, ErrorRate: -0.1}, true},
-		{"spike probability too high", ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: 2.0, Duration: "1s"}}, true},
-		{"spike probability negative", ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: -0.1, Duration: "1s"}}, true},
-		{"spike without duration", ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: 0.1}}, true},
-		{"invalid duration", ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: 0.1, Duration: "abc"}}, true},
-		{"negative duration", ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: 0.1, Duration: "-5s"}}, true},
-		{"boundary error rate 0", ChaosConfig{Enabled: true, ErrorRate: 0.0}, false},
-		{"boundary error rate 1", ChaosConfig{Enabled: true, ErrorRate: 1.0}, false},
+		{"enabled no faults", ChaosConfig{Enabled: boolPtr(true)}, false},
+		{"error rate only", ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.02}, false},
+		{"latency spike only", ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}}, false},
+		{"all fields", ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.05, LatencySpike: LatencySpikeConfig{Probability: 0.1, Duration: "2s"}}, false},
+		{"error rate too high", ChaosConfig{Enabled: boolPtr(true), ErrorRate: 1.5}, true},
+		{"error rate negative", ChaosConfig{Enabled: boolPtr(true), ErrorRate: -0.1}, true},
+		{"spike probability too high", ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: 2.0, Duration: "1s"}}, true},
+		{"spike probability negative", ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: -0.1, Duration: "1s"}}, true},
+		{"spike without duration", ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: 0.1}}, true},
+		{"invalid duration", ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: 0.1, Duration: "abc"}}, true},
+		{"negative duration", ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: 0.1, Duration: "-5s"}}, true},
+		{"boundary error rate 0", ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.0}, false},
+		{"boundary error rate 1", ChaosConfig{Enabled: boolPtr(true), ErrorRate: 1.0}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1972,7 +1972,7 @@ func TestChaosConfig_Parse(t *testing.T) {
 }
 
 func TestResolveChaos(t *testing.T) {
-	global := ChaosConfig{Enabled: true, ErrorRate: 0.02, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}}
+	global := ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.02, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}}
 
 	t.Run("global only", func(t *testing.T) {
 		merged := ResolveChaos(global, ChaosConfig{})
@@ -1982,7 +1982,7 @@ func TestResolveChaos(t *testing.T) {
 	})
 
 	t.Run("per-service overrides", func(t *testing.T) {
-		perSvc := ChaosConfig{Enabled: true, ErrorRate: 0.1}
+		perSvc := ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.1}
 		merged := ResolveChaos(global, perSvc)
 		if merged != perSvc {
 			t.Fatalf("expected per-service, got %+v", merged)
@@ -1996,10 +1996,19 @@ func TestResolveChaos(t *testing.T) {
 		}
 	})
 
-	t.Run("per-service disabled global enabled", func(t *testing.T) {
-		merged := ResolveChaos(global, ChaosConfig{Enabled: false})
+	t.Run("per-service not set falls back to global", func(t *testing.T) {
+		// nil Enabled means "not configured at service level"; use global.
+		merged := ResolveChaos(global, ChaosConfig{})
 		if merged != global {
-			t.Fatalf("expected global when per-service not enabled, got %+v", merged)
+			t.Fatalf("expected global when per-service not set, got %+v", merged)
+		}
+	})
+
+	t.Run("per-service explicitly disabled overrides global", func(t *testing.T) {
+		// &false means the service explicitly opts out of chaos.
+		merged := ResolveChaos(global, ChaosConfig{Enabled: boolPtr(false)})
+		if merged.IsSet() {
+			t.Fatal("expected chaos disabled when per-service sets Enabled: false")
 		}
 	})
 }
@@ -2008,14 +2017,14 @@ func TestChaosConfig_YAMLRoundTrip(t *testing.T) {
 	cfg := &Config{
 		Context:   "test",
 		Namespace: "default",
-		Chaos:     ChaosConfig{Enabled: true, ErrorRate: 0.02, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}},
+		Chaos:     ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.02, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}},
 		Services: []ServiceConfig{
 			{
 				Name:       "api",
 				Service:    "api-svc",
 				LocalPort:  8080,
 				RemotePort: 80,
-				Chaos:      ChaosConfig{Enabled: true, ErrorRate: 0.1},
+				Chaos:      ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.1},
 			},
 		},
 	}
@@ -2030,10 +2039,10 @@ func TestChaosConfig_YAMLRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !loaded.Chaos.Enabled || loaded.Chaos.ErrorRate != 0.02 {
+	if !boolVal(loaded.Chaos.Enabled) || loaded.Chaos.ErrorRate != 0.02 {
 		t.Fatalf("global chaos not round-tripped: %+v", loaded.Chaos)
 	}
-	if !loaded.Services[0].Chaos.Enabled || loaded.Services[0].Chaos.ErrorRate != 0.1 {
+	if !boolVal(loaded.Services[0].Chaos.Enabled) || loaded.Services[0].Chaos.ErrorRate != 0.1 {
 		t.Fatalf("service chaos not round-tripped: %+v", loaded.Services[0].Chaos)
 	}
 }
@@ -2042,14 +2051,14 @@ func TestChaosConfig_TOMLRoundTrip(t *testing.T) {
 	cfg := &Config{
 		Context:   "test",
 		Namespace: "default",
-		Chaos:     ChaosConfig{Enabled: true, ErrorRate: 0.02, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}},
+		Chaos:     ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.02, LatencySpike: LatencySpikeConfig{Probability: 0.01, Duration: "5s"}},
 		Services: []ServiceConfig{
 			{
 				Name:       "api",
 				Service:    "api-svc",
 				LocalPort:  8080,
 				RemotePort: 80,
-				Chaos:      ChaosConfig{Enabled: true, ErrorRate: 0.1},
+				Chaos:      ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.1},
 			},
 		},
 		format: FormatTOML,
@@ -2066,10 +2075,10 @@ func TestChaosConfig_TOMLRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !loaded.Chaos.Enabled || loaded.Chaos.ErrorRate != 0.02 {
+	if !boolVal(loaded.Chaos.Enabled) || loaded.Chaos.ErrorRate != 0.02 {
 		t.Fatalf("global chaos not round-tripped: %+v", loaded.Chaos)
 	}
-	if !loaded.Services[0].Chaos.Enabled || loaded.Services[0].Chaos.ErrorRate != 0.1 {
+	if !boolVal(loaded.Services[0].Chaos.Enabled) || loaded.Services[0].Chaos.ErrorRate != 0.1 {
 		t.Fatalf("service chaos not round-tripped: %+v", loaded.Services[0].Chaos)
 	}
 }
@@ -2077,7 +2086,7 @@ func TestChaosConfig_TOMLRoundTrip(t *testing.T) {
 func TestValidate_ChaosConfig(t *testing.T) {
 	t.Run("valid global chaos", func(t *testing.T) {
 		cfg := &Config{
-			Chaos: ChaosConfig{Enabled: true, ErrorRate: 0.02},
+			Chaos: ChaosConfig{Enabled: boolPtr(true), ErrorRate: 0.02},
 			Services: []ServiceConfig{
 				{Name: "api", Service: "api-svc", LocalPort: 8080, RemotePort: 80},
 			},
@@ -2089,7 +2098,7 @@ func TestValidate_ChaosConfig(t *testing.T) {
 
 	t.Run("invalid global chaos", func(t *testing.T) {
 		cfg := &Config{
-			Chaos: ChaosConfig{Enabled: true, ErrorRate: 2.0},
+			Chaos: ChaosConfig{Enabled: boolPtr(true), ErrorRate: 2.0},
 			Services: []ServiceConfig{
 				{Name: "api", Service: "api-svc", LocalPort: 8080, RemotePort: 80},
 			},
@@ -2103,7 +2112,7 @@ func TestValidate_ChaosConfig(t *testing.T) {
 		cfg := &Config{
 			Services: []ServiceConfig{
 				{Name: "api", Service: "api-svc", LocalPort: 8080, RemotePort: 80,
-					Chaos: ChaosConfig{Enabled: true, LatencySpike: LatencySpikeConfig{Probability: 0.5}}},
+					Chaos: ChaosConfig{Enabled: boolPtr(true), LatencySpike: LatencySpikeConfig{Probability: 0.5}}},
 			},
 		}
 		if err := cfg.Validate(); err == nil {

@@ -95,6 +95,22 @@ hooks:
 
 Both YAML and TOML formats are supported. See [example.yaml](example.yaml) and [example.toml](example.toml).
 
+**Shared global config:** Use `extends` to inherit common settings (API key, context, supervisor) from a parent config:
+
+```yaml
+# ~/projects/myapp/kubeport.yaml
+extends: ~/.config/kubeport/global.yaml
+namespace: myapp
+
+services:
+  - name: postgres
+    service: postgres
+    local_port: 5432
+    remote_port: 5432
+```
+
+See [Config Inheritance](docs/configuration.md#config-inheritance) for full merge semantics.
+
 ## Feature Deep Dive
 
 ### Self-Healing Connections
@@ -216,6 +232,7 @@ kubeport start --no-config \
 kubeport start              # Start daemon in background
 kubeport status             # Check all forwards
 kubeport status --json      # Machine-readable output
+kubeport watch              # Live-refresh status display (updates every 2s)
 kubeport fg                 # Run in foreground (for debugging or containers)
 kubeport stop               # Graceful shutdown
 kubeport restart            # Stop + start

@@ -7,7 +7,7 @@ kubeport uses a simple config file to define which Kubernetes services and pods 
 kubeport searches for its config file in this order:
 
 1. Path specified via `--config` / `-c` flag
-2. `kubeport.yaml`, `kubeport.yml`, or `kubeport.toml` in the current directory
+2. `kubeport.yaml`, `kubeport.yml`, `kubeport.toml`, `.kubeport.yaml`, `.kubeport.yml`, or `.kubeport.toml` in the current directory
 3. `~/.config/kubeport/kubeport.{yaml,yml,toml}`
 4. `~/.kubeport/kubeport.{yaml,yml,toml}`
 
@@ -51,11 +51,13 @@ Or copy one of the examples in the repository:
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `extends` | string | Path to a parent config to inherit from (supports `~` and relative paths; see [Config Inheritance](#config-inheritance)) |
 | `context` | string | Kubernetes context from your kubeconfig |
 | `namespace` | string | Default namespace for all services |
 | `log_file` | string | Custom log file path (default: `~/.config/kubeport/logs/<instance-id>.log`) |
 | `listen` | string | Daemon socket address (default: `~/.config/kubeport/<instance-id>.sock`). Use `sock://` prefix for custom path or `tcp://` for TCP |
 | `api_key` | string | API key for TCP listener authentication (required when using TCP listen) |
+| `key_id` | string | Key identifier sent alongside `api_key` (for token rotation) |
 | `host` | string | Hostname for the daemon |
 | `network` | object | Global network simulation settings (see below) |
 | `chaos` | object | Global chaos engineering settings (see below) |
@@ -79,6 +81,9 @@ Each entry in `services` defines one or more port-forwards. There are two modes:
 | `local_port` | int | yes | Local port to listen on. Use `0` for automatic assignment |
 | `remote_port` | int | yes | Port on the pod to forward to |
 | `namespace` | string | no | Override the top-level namespace for this service |
+| `lazy` | bool | no | Defer opening the tunnel until the first client connection arrives |
+| `network` | object | no | Per-service network simulation (overrides global `network`) |
+| `chaos` | object | no | Per-service chaos injection (overrides global `chaos`) |
 
 **Multi-port mode** — automatically discover and forward multiple ports from a service:
 
@@ -128,12 +133,12 @@ The `chaos` section configures fault injection for testing resilience. Can be se
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Master switch for chaos injection |
+| `enabled` | \*bool | `nil` (inherit) | Controls chaos injection. `true` enables, `false` explicitly disables (overrides global even if global is on), omitting the field (nil) inherits from the global config |
 | `error_rate` | float | `0.0` | Fraction of writes that fail with a connection error (0.0-1.0) |
 | `latency_spike.probability` | float | `0.0` | Probability of a latency spike on each write (0.0-1.0) |
 | `latency_spike.duration` | string | _(none)_ | Duration of latency spikes (Go duration, e.g. `"5s"`) |
 
-Per-service `chaos` settings fully override global when `enabled: true` (unlike `network`, which does field-by-field merge). The global `enabled` flag acts as a master switch.
+Per-service `chaos` settings fully override the global settings when `enabled` is set. When `enabled` is omitted, the global settings are used. Unlike `network`, chaos does not field-by-field merge.
 
 ### Proxy Server Fields
 
@@ -141,11 +146,47 @@ The `socks` and `http_proxy` sections configure the built-in proxy servers. See 
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `enabled` | bool | `false` | Auto-start with daemon (`kubeport start`/`fg`) |
+| `enabled` | \*bool | `nil` (inherit) | Auto-start with daemon. `true` enables, `false` explicitly disables (overrides a parent config that enables it), omitting the field inherits from a parent config |
 | `listen` | string | `127.0.0.1:1080` (SOCKS) / `127.0.0.1:3128` (HTTP) | Listen address |
 | `username` | string | _(none)_ | Authentication username |
 | `password` | string | _(none)_ | Authentication password |
 | `fuzzy_match` | bool | `true` | Enable headless service FQDN resolution |
+
+## Config Inheritance
+
+Use `extends` to share common settings (API key, context, supervisor tuning) across multiple project configs without duplication.
+
+```yaml
+# ~/.config/kubeport/global.yaml
+api_key: sk-secret
+listen: tcp://0.0.0.0:50500
+context: prod-cluster
+supervisor:
+  health_check_interval: 10s
+  max_restarts: 10
+```
+
+```yaml
+# ~/projects/myapp/kubeport.yaml
+extends: ~/.config/kubeport/global.yaml
+namespace: myapp
+
+services:
+  - name: postgres
+    service: postgres
+    remote_port: 5432
+    local_port: 5432
+```
+
+**Merge semantics:**
+- **Scalar fields** (`context`, `namespace`, `api_key`, etc.): child wins if non-empty; otherwise parent value is used.
+- **`supervisor`**: field-by-field merge — child overrides only the fields it sets.
+- **`services`/`hooks`**: merged by name — child entries replace parent entries with the same name; unique entries from both are included.
+- **`chaos`/`socks`/`http_proxy`**: child wins when `enabled` is set to any value (`true` or `false`); if `enabled` is omitted the parent config is used wholesale.
+- **`network`**: field-by-field merge (same as per-service network resolution).
+- **Environment variables** (`K8S_CONTEXT`, `KUBEPORT_API_KEY`, etc.) are applied after inheritance, so they always win.
+
+**Path resolution:** `extends` supports `~` expansion and relative paths (resolved from the directory of the config file that contains it). Chains (A → B → C) are supported; circular references are detected and reported as an error.
 
 ## YAML Example
 
@@ -293,7 +334,7 @@ These override config file values:
 |----------|-------------|
 | `K8S_CONTEXT` | Override Kubernetes context |
 | `K8S_NAMESPACE` | Override default namespace |
-| `KUBEPORT_API_KEY` | Override API key for TCP listener authentication |
+| `KUBEPORT_API_KEY` | Override API key for TCP listener authentication (applied after `extends` inheritance) |
 
 ## Managing Config via CLI
 
