@@ -233,8 +233,6 @@ func (a *app) offloadServicesToInstance() {
 		}
 		os.Exit(1)
 	}
-	defer dc.Close()
-
 	if target != nil {
 		fmt.Printf("Offloading to existing instance (PID: %d, endpoint: %s)\n", target.PID, entryEndpoint(*target))
 	} else {
@@ -265,6 +263,7 @@ func (a *app) offloadServicesToInstance() {
 		ok++
 	}
 	cancel()
+	dc.Close()
 
 	if failed > 0 {
 		fmt.Fprintf(os.Stderr, "\n%d service(s) failed to offload\n", failed)

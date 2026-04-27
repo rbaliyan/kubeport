@@ -43,7 +43,7 @@ func HashKey(key string) string {
 	if key == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(key))
+	sum := sha256.Sum256([]byte(key)) // lgtm[go/weak-cryptographic-algorithm] -- SHA-256 is appropriate for high-entropy API token identification, not password hashing
 	return hex.EncodeToString(sum[:])
 }
 
@@ -177,10 +177,10 @@ func (r *Registry) withLock(fn func(*store) error) (retErr error) {
 		}
 	}()
 
-	if err := syscall.Flock(int(lf.Fd()), syscall.LOCK_EX); err != nil {
+	if err := syscall.Flock(int(lf.Fd()), syscall.LOCK_EX); err != nil { // #nosec G115 -- fd fits int on all supported platforms
 		return fmt.Errorf("registry: acquire lock: %w", err)
 	}
-	defer func() { _ = syscall.Flock(int(lf.Fd()), syscall.LOCK_UN) }()
+	defer func() { _ = syscall.Flock(int(lf.Fd()), syscall.LOCK_UN) }() // #nosec G115
 
 	s := &store{}
 	data, err := os.ReadFile(r.path) // #nosec G304 -- registry-controlled path

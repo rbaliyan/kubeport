@@ -49,7 +49,7 @@ func (a *app) cmdInstances() {
 			fmt.Fprintf(os.Stderr, "Error encoding instances: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println(string(data))
+		fmt.Println(string(data)) // lgtm[go/clear-text-logging] -- intentional: API key presence indicator, never the raw key
 		return
 	}
 
@@ -101,7 +101,7 @@ func printInstanceBrief(e *registry.Entry) {
 		}
 		apiKeyNote = fmt.Sprintf(" [API key required%s]", hint)
 	}
-	fmt.Printf("  PID %-8d  endpoint: %-40s  config: %s%s\n",
+	fmt.Printf("  PID %-8d  endpoint: %-40s  config: %s%s\n", // lgtm[go/clear-text-logging] -- intentional: shows key presence, never the raw key
 		e.PID, entryEndpoint(*e), entryConfigLabel(*e), apiKeyNote)
 }
 
