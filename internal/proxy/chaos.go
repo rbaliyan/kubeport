@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"sync/atomic"
 
-	"k8s.io/apimachinery/pkg/util/httpstream"
+	"k8s.io/streaming/pkg/httpstream"
 
 	"github.com/rbaliyan/kubeport/pkg/config"
 )

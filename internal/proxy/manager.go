@@ -933,7 +933,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		return fmt.Errorf("create SPDY transport: %w", err)
 	}
 
-	rawDialer := spdy.NewDialer(entry.upgrader, entry.client, http.MethodPost, reqURL)
+	rawDialer := spdy.NewDialerForStreaming(entry.upgrader, entry.client, http.MethodPost, reqURL)
 
 	// Resolve effective network simulation config (global merged with per-service).
 	netCfg, netErr := config.ResolveNetwork(m.cfg.Network, pf.svc.Network).Parse()
@@ -964,7 +964,7 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 
 	ports := []string{fmt.Sprintf("%d:%d", pf.svc.LocalPort, targetPort)}
 
-	fw, err := portforward.New(dialer, ports, stopChan, readyChan, io.Discard, io.Discard)
+	fw, err := portforward.NewForStreaming(dialer, ports, stopChan, readyChan, io.Discard, io.Discard)
 	if err != nil {
 		return fmt.Errorf("create port forwarder: %w", err)
 	}
