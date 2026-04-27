@@ -161,30 +161,53 @@ func TestRemoveService(t *testing.T) {
 }
 
 func TestSocketFile(t *testing.T) {
-	cfg := &Config{filePath: "/home/user/project/kubeport.yaml"}
-	if got := cfg.SocketFile(); got != "/home/user/project/.kubeport.sock" {
-		t.Fatalf("expected /home/user/project/.kubeport.sock, got %s", got)
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "project", "kubeport.yaml")
+	cfg := &Config{filePath: cfgPath}
+	got := cfg.SocketFile()
+	want := filepath.Join(CentralDir(cfgPath), cfg.InstanceID()+".sock")
+	if got != want {
+		t.Fatalf("expected %s, got %s", want, got)
+	}
+	if !strings.HasSuffix(got, ".sock") {
+		t.Fatalf("expected .sock suffix, got %s", got)
 	}
 }
 
 func TestSocketFile_Empty(t *testing.T) {
 	cfg := &Config{}
-	if got := cfg.SocketFile(); got != ".kubeport.sock" {
-		t.Fatalf("expected .kubeport.sock, got %s", got)
+	got := cfg.SocketFile()
+	// With no config path, falls back to CWD-based central dir; result must be absolute and end in .sock.
+	if !filepath.IsAbs(got) {
+		t.Fatalf("expected absolute path, got %s", got)
+	}
+	if !strings.HasSuffix(got, ".sock") {
+		t.Fatalf("expected .sock suffix, got %s", got)
 	}
 }
 
 func TestPIDFile(t *testing.T) {
-	cfg := &Config{filePath: "/tmp/kubeport.yaml"}
-	if got := cfg.PIDFile(); got != "/tmp/.kubeport.pid" {
-		t.Fatalf("expected /tmp/.kubeport.pid, got %s", got)
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "kubeport.yaml")
+	cfg := &Config{filePath: cfgPath}
+	got := cfg.PIDFile()
+	want := filepath.Join(CentralDir(cfgPath), cfg.InstanceID()+".pid")
+	if got != want {
+		t.Fatalf("expected %s, got %s", want, got)
 	}
 }
 
 func TestLogFile(t *testing.T) {
-	cfg := &Config{filePath: "/tmp/kubeport.yaml"}
-	if got := cfg.LogFile(); got != "/tmp/.kubeport.log" {
-		t.Fatalf("expected /tmp/.kubeport.log, got %s", got)
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "kubeport.yaml")
+	cfg := &Config{filePath: cfgPath}
+	got := cfg.LogFile()
+	want := filepath.Join(CentralDir(cfgPath), "logs", cfg.InstanceID()+".log")
+	if got != want {
+		t.Fatalf("expected %s, got %s", want, got)
+	}
+	if !strings.Contains(got, "/logs/") {
+		t.Fatalf("expected log file under logs/ subdirectory, got %s", got)
 	}
 }
 
@@ -281,13 +304,19 @@ func TestListenAddress_Unix(t *testing.T) {
 }
 
 func TestListenAddress_Default(t *testing.T) {
-	cfg := &Config{filePath: "/home/user/kubeport.yaml"}
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "kubeport.yaml")
+	cfg := &Config{filePath: cfgPath}
 	lc := cfg.ListenAddress()
 	if lc.Mode != ListenUnix {
 		t.Fatalf("expected ListenUnix, got %d", lc.Mode)
 	}
-	if lc.Address != "/home/user/.kubeport.sock" {
-		t.Fatalf("expected /home/user/.kubeport.sock, got %s", lc.Address)
+	// Address must be the socket file in the central directory.
+	if lc.Address != cfg.SocketFile() {
+		t.Fatalf("expected %s, got %s", cfg.SocketFile(), lc.Address)
+	}
+	if !strings.HasSuffix(lc.Address, ".sock") {
+		t.Fatalf("expected .sock suffix, got %s", lc.Address)
 	}
 }
 

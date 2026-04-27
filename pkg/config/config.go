@@ -2,6 +2,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -494,6 +496,51 @@ func NewInMemory(kubeContext, namespace string, services []ServiceConfig) *Confi
 	}
 }
 
+// CentralDir returns the central directory used for runtime files (PID, socket, logs).
+//
+// Resolution order:
+//  1. If cfgPath is inside ~/.config/kubeport/ or ~/.kubeport/, use that dir.
+//  2. If ~/.config/kubeport/ already contains a root config, use it.
+//  3. If ~/.kubeport/ already contains a root config, use it.
+//  4. Default to ~/.config/kubeport/ (created if absent).
+func CentralDir(cfgPath string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return os.TempDir()
+	}
+	xdg := filepath.Join(home, ".config", "kubeport")
+	dot := filepath.Join(home, ".kubeport")
+
+	if cfgPath != "" {
+		abs, _ := filepath.Abs(cfgPath)
+		if strings.HasPrefix(abs, xdg+string(os.PathSeparator)) || abs == xdg {
+			_ = os.MkdirAll(xdg, 0700)
+			return xdg
+		}
+		if strings.HasPrefix(abs, dot+string(os.PathSeparator)) || abs == dot {
+			_ = os.MkdirAll(dot, 0700)
+			return dot
+		}
+	}
+
+	// Prefer whichever standard dir has a root config file.
+	for _, name := range []string{"kubeport.yaml", "kubeport.yml", "kubeport.toml"} {
+		if _, err := os.Stat(filepath.Join(xdg, name)); err == nil {
+			_ = os.MkdirAll(xdg, 0700)
+			return xdg
+		}
+	}
+	for _, name := range []string{"kubeport.yaml", "kubeport.yml", "kubeport.toml"} {
+		if _, err := os.Stat(filepath.Join(dot, name)); err == nil {
+			_ = os.MkdirAll(dot, 0700)
+			return dot
+		}
+	}
+
+	_ = os.MkdirAll(xdg, 0700)
+	return xdg
+}
+
 // FilePath returns the path the config was loaded from.
 func (c *Config) FilePath() string {
 	return c.filePath
@@ -504,37 +551,56 @@ func (c *Config) FileFormat() Format {
 	return c.format
 }
 
-// PIDFile returns the path for the PID file, derived from the config file location.
-func (c *Config) PIDFile() string {
-	if c.filePath == "" {
-		return ".kubeport.pid"
+// InstanceID returns a stable, filesystem-safe identifier for this config instance.
+// It is derived from the absolute path of the config file so that multiple instances
+// with different configs can coexist in the same central directory.
+func (c *Config) InstanceID() string {
+	path := c.filePath
+	if path == "" {
+		cwd, _ := os.Getwd()
+		path = filepath.Join(cwd, "_inline")
 	}
-	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.pid")
+	abs, _ := filepath.Abs(path)
+	sum := sha256.Sum256([]byte(abs))
+	// Use the parent directory name as a human-readable prefix.
+	base := filepath.Base(filepath.Dir(abs))
+	if base == "." || base == "" || base == string(os.PathSeparator) {
+		base = "kubeport"
+	}
+	// Sanitize: replace non-alphanumeric characters with hyphens.
+	safe := strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			return r
+		}
+		return '-'
+	}, base)
+	return safe + "-" + hex.EncodeToString(sum[:4])
+}
+
+// PIDFile returns the path for the PID file in the central runtime directory.
+func (c *Config) PIDFile() string {
+	return filepath.Join(CentralDir(c.filePath), c.InstanceID()+".pid")
 }
 
 // LogFile returns the path for the log file. If LogFilePath is set, it is used directly.
-// Otherwise the path is derived from the config file location.
+// Otherwise the log is placed in a logs/ subdirectory of the central directory.
 func (c *Config) LogFile() string {
 	if c.LogFilePath != "" {
 		return c.LogFilePath
 	}
-	if c.filePath == "" {
-		return ".kubeport.log"
-	}
-	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.log")
+	logsDir := filepath.Join(CentralDir(c.filePath), "logs")
+	_ = os.MkdirAll(logsDir, 0700)
+	return filepath.Join(logsDir, c.InstanceID()+".log")
 }
 
-// SocketFile returns the path for the Unix domain socket. If Listen is set with a
-// "sock://" prefix, that path is used. Otherwise the path is derived from the config
-// file location.
+// SocketFile returns the path for the Unix domain socket. An explicit "sock://" prefix
+// in the Listen field takes precedence; otherwise the socket is placed in the central
+// runtime directory.
 func (c *Config) SocketFile() string {
 	if path, ok := strings.CutPrefix(c.Listen, "sock://"); ok {
 		return path
 	}
-	if c.filePath == "" {
-		return ".kubeport.sock"
-	}
-	return filepath.Join(filepath.Dir(c.filePath), ".kubeport.sock")
+	return filepath.Join(CentralDir(c.filePath), c.InstanceID()+".sock")
 }
 
 // ListenAddress returns the resolved listen configuration.
