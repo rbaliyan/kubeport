@@ -30,7 +30,7 @@ type Entry struct {
 	LogFile    string    `json:"log_file,omitempty"`
 	Socket     string    `json:"socket,omitempty"`
 	TCPAddress string    `json:"tcp_address,omitempty"`
-	HasAPIKey  bool      `json:"has_api_key"`
+	APIKeySet  bool      `json:"api_key_set"`
 	APIKeyHash string    `json:"api_key_hash,omitempty"`
 	Version    string    `json:"version,omitempty"`
 	StartedAt  time.Time `json:"started_at"`

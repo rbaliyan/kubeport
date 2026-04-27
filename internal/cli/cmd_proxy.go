@@ -147,7 +147,7 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 			ConfigFile: a.cfg.FilePath(),
 			PIDFile:    a.cfg.PIDFile(),
 			LogFile:    a.cfg.LogFile(),
-			HasAPIKey:  a.cfg.APIKey != "",
+			APIKeySet:  a.cfg.APIKey != "",
 			APIKeyHash: registry.HashKey(a.cfg.APIKey),
 			Version:    version.Get().Raw,
 			StartedAt:  time.Now(),

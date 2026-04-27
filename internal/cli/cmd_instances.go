@@ -19,7 +19,7 @@ type instanceJSON struct {
 	PIDFile    string `json:"pid_file,omitempty"`
 	LogFile    string `json:"log_file,omitempty"`
 	Endpoint   string `json:"endpoint"`
-	HasAPIKey  bool   `json:"has_api_key"`
+	APIKeySet  bool   `json:"api_key_set"`
 	APIKeyHash string `json:"api_key_hash,omitempty"` // full SHA-256 hex hash
 	Version    string `json:"version,omitempty"`
 	Uptime     string `json:"uptime"`
@@ -49,7 +49,7 @@ func (a *app) cmdInstances() {
 			fmt.Fprintf(os.Stderr, "Error encoding instances: %v\n", err)
 			os.Exit(1)
 		}
-		fmt.Println(string(data)) // codeql[go/clear-text-logging] -- intentional: API key presence indicator, never the raw key
+		fmt.Println(string(data))
 		return
 	}
 
@@ -94,15 +94,15 @@ func (a *app) cmdInstances() {
 // conflict reports and offload prompts.
 func printInstanceBrief(e *registry.Entry) {
 	apiKeyNote := ""
-	if e.HasAPIKey {
+	if e.APIKeySet {
 		hint := ""
 		if len(e.APIKeyHash) >= 12 {
 			hint = " hash:" + e.APIKeyHash[:12] + "…"
 		}
 		apiKeyNote = fmt.Sprintf(" [API key required%s]", hint)
 	}
-	fmt.Printf("  PID %-8d  endpoint: %-40s  config: %s%s\n", // codeql[go/clear-text-logging] -- intentional: shows key presence, never the raw key
-		e.PID, entryEndpoint(*e), entryConfigLabel(*e), apiKeyNote)
+	fmt.Printf("  PID %-8d  endpoint: %-40s  config: %s%s\n",
+		e.PID, entryEndpoint(*e), entryConfigLabel(*e), apiKeyNote) // codeql[go/clear-text-logging] -- intentional: shows key presence, never the raw key
 }
 
 func entryEndpoint(e registry.Entry) string {
@@ -120,7 +120,7 @@ func entryConfigLabel(e registry.Entry) string {
 }
 
 func entryAPIKeyLabel(e registry.Entry) string {
-	if !e.HasAPIKey {
+	if !e.APIKeySet {
 		return "none"
 	}
 	if len(e.APIKeyHash) >= 12 {
@@ -136,7 +136,7 @@ func entryToJSON(e registry.Entry) instanceJSON {
 		PIDFile:    e.PIDFile,
 		LogFile:    e.LogFile,
 		Endpoint:   entryEndpoint(e),
-		HasAPIKey:  e.HasAPIKey,
+		APIKeySet:  e.APIKeySet,
 		APIKeyHash: e.APIKeyHash, // full hash; truncation is only for human-readable output
 		Version:    e.Version,
 		Uptime:     formatUptime(time.Since(e.StartedAt)),
