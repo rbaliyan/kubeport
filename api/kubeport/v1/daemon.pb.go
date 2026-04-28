@@ -80,6 +80,60 @@ func (ForwardState) EnumDescriptor() ([]byte, []int) {
 	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{0}
 }
 
+// ChaosPreset selects a named chaos profile. When set, preset params
+// override any inline fields in UpdateChaosRequest.
+type ChaosPreset int32
+
+const (
+	ChaosPreset_CHAOS_PRESET_UNSPECIFIED      ChaosPreset = 0
+	ChaosPreset_CHAOS_PRESET_SLOW_NETWORK     ChaosPreset = 1 // 200 ms spikes, 10% probability
+	ChaosPreset_CHAOS_PRESET_UNSTABLE_CLUSTER ChaosPreset = 2 // 5% errors, 5% spike prob, 2 s spikes
+	ChaosPreset_CHAOS_PRESET_PACKET_LOSS      ChaosPreset = 3 // 15% error rate
+)
+
+// Enum value maps for ChaosPreset.
+var (
+	ChaosPreset_name = map[int32]string{
+		0: "CHAOS_PRESET_UNSPECIFIED",
+		1: "CHAOS_PRESET_SLOW_NETWORK",
+		2: "CHAOS_PRESET_UNSTABLE_CLUSTER",
+		3: "CHAOS_PRESET_PACKET_LOSS",
+	}
+	ChaosPreset_value = map[string]int32{
+		"CHAOS_PRESET_UNSPECIFIED":      0,
+		"CHAOS_PRESET_SLOW_NETWORK":     1,
+		"CHAOS_PRESET_UNSTABLE_CLUSTER": 2,
+		"CHAOS_PRESET_PACKET_LOSS":      3,
+	}
+)
+
+func (x ChaosPreset) Enum() *ChaosPreset {
+	p := new(ChaosPreset)
+	*p = x
+	return p
+}
+
+func (x ChaosPreset) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ChaosPreset) Descriptor() protoreflect.EnumDescriptor {
+	return file_kubeport_v1_daemon_proto_enumTypes[1].Descriptor()
+}
+
+func (ChaosPreset) Type() protoreflect.EnumType {
+	return &file_kubeport_v1_daemon_proto_enumTypes[1]
+}
+
+func (x ChaosPreset) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ChaosPreset.Descriptor instead.
+func (ChaosPreset) EnumDescriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{1}
+}
+
 type ServiceInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -1176,6 +1230,153 @@ func (x *AddressMapping) GetServiceName() string {
 	return ""
 }
 
+// UpdateChaosRequest mutates live chaos parameters for one or more services
+// without requiring a config reload or reconnect.
+type UpdateChaosRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Services []string               `protobuf:"bytes,1,rep,name=services,proto3" json:"services,omitempty"`                           // service names to update; empty = all forwards
+	Preset   ChaosPreset            `protobuf:"varint,2,opt,name=preset,proto3,enum=kubeport.v1.ChaosPreset" json:"preset,omitempty"` // named preset (takes precedence when non-zero)
+	// Inline params — used when preset = UNSPECIFIED.
+	Enabled          bool    `protobuf:"varint,3,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	ErrorRate        float64 `protobuf:"fixed64,4,opt,name=error_rate,json=errorRate,proto3" json:"error_rate,omitempty"`
+	SpikeProbability float64 `protobuf:"fixed64,5,opt,name=spike_probability,json=spikeProbability,proto3" json:"spike_probability,omitempty"`
+	SpikeDurationMs  int64   `protobuf:"varint,6,opt,name=spike_duration_ms,json=spikeDurationMs,proto3" json:"spike_duration_ms,omitempty"`
+	Reset_           bool    `protobuf:"varint,7,opt,name=reset,proto3" json:"reset,omitempty"` // true = revert to config-defined chaos for named services
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *UpdateChaosRequest) Reset() {
+	*x = UpdateChaosRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateChaosRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateChaosRequest) ProtoMessage() {}
+
+func (x *UpdateChaosRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateChaosRequest.ProtoReflect.Descriptor instead.
+func (*UpdateChaosRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UpdateChaosRequest) GetServices() []string {
+	if x != nil {
+		return x.Services
+	}
+	return nil
+}
+
+func (x *UpdateChaosRequest) GetPreset() ChaosPreset {
+	if x != nil {
+		return x.Preset
+	}
+	return ChaosPreset_CHAOS_PRESET_UNSPECIFIED
+}
+
+func (x *UpdateChaosRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+func (x *UpdateChaosRequest) GetErrorRate() float64 {
+	if x != nil {
+		return x.ErrorRate
+	}
+	return 0
+}
+
+func (x *UpdateChaosRequest) GetSpikeProbability() float64 {
+	if x != nil {
+		return x.SpikeProbability
+	}
+	return 0
+}
+
+func (x *UpdateChaosRequest) GetSpikeDurationMs() int64 {
+	if x != nil {
+		return x.SpikeDurationMs
+	}
+	return 0
+}
+
+func (x *UpdateChaosRequest) GetReset_() bool {
+	if x != nil {
+		return x.Reset_
+	}
+	return false
+}
+
+type UpdateChaosResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Updated       []string               `protobuf:"bytes,1,rep,name=updated,proto3" json:"updated,omitempty"`                   // names of services successfully updated
+	NotFound      []string               `protobuf:"bytes,2,rep,name=not_found,json=notFound,proto3" json:"not_found,omitempty"` // names that were not recognised
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateChaosResponse) Reset() {
+	*x = UpdateChaosResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateChaosResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateChaosResponse) ProtoMessage() {}
+
+func (x *UpdateChaosResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateChaosResponse.ProtoReflect.Descriptor instead.
+func (*UpdateChaosResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UpdateChaosResponse) GetUpdated() []string {
+	if x != nil {
+		return x.Updated
+	}
+	return nil
+}
+
+func (x *UpdateChaosResponse) GetNotFound() []string {
+	if x != nil {
+		return x.NotFound
+	}
+	return nil
+}
+
 type MappingsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClusterDomain string                 `protobuf:"bytes,1,opt,name=cluster_domain,json=clusterDomain,proto3" json:"cluster_domain,omitempty"` // Custom cluster domain (default: "cluster.local")
@@ -1185,7 +1386,7 @@ type MappingsRequest struct {
 
 func (x *MappingsRequest) Reset() {
 	*x = MappingsRequest{}
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[16]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1197,7 +1398,7 @@ func (x *MappingsRequest) String() string {
 func (*MappingsRequest) ProtoMessage() {}
 
 func (x *MappingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[16]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1210,7 +1411,7 @@ func (x *MappingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MappingsRequest.ProtoReflect.Descriptor instead.
 func (*MappingsRequest) Descriptor() ([]byte, []int) {
-	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{16}
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *MappingsRequest) GetClusterDomain() string {
@@ -1232,7 +1433,7 @@ type MappingsResponse struct {
 
 func (x *MappingsResponse) Reset() {
 	*x = MappingsResponse{}
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[17]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1244,7 +1445,7 @@ func (x *MappingsResponse) String() string {
 func (*MappingsResponse) ProtoMessage() {}
 
 func (x *MappingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[17]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1257,7 +1458,7 @@ func (x *MappingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MappingsResponse.ProtoReflect.Descriptor instead.
 func (*MappingsResponse) Descriptor() ([]byte, []int) {
-	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{17}
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *MappingsResponse) GetAddrs() map[string]string {
@@ -1384,7 +1585,19 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\rinternal_addr\x18\x01 \x01(\tR\finternalAddr\x12\x1d\n" +
 	"\n" +
 	"local_addr\x18\x02 \x01(\tR\tlocalAddr\x12!\n" +
-	"\fservice_name\x18\x03 \x01(\tR\vserviceName\"8\n" +
+	"\fservice_name\x18\x03 \x01(\tR\vserviceName\"\x8a\x02\n" +
+	"\x12UpdateChaosRequest\x12\x1a\n" +
+	"\bservices\x18\x01 \x03(\tR\bservices\x120\n" +
+	"\x06preset\x18\x02 \x01(\x0e2\x18.kubeport.v1.ChaosPresetR\x06preset\x12\x18\n" +
+	"\aenabled\x18\x03 \x01(\bR\aenabled\x12\x1d\n" +
+	"\n" +
+	"error_rate\x18\x04 \x01(\x01R\terrorRate\x12+\n" +
+	"\x11spike_probability\x18\x05 \x01(\x01R\x10spikeProbability\x12*\n" +
+	"\x11spike_duration_ms\x18\x06 \x01(\x03R\x0fspikeDurationMs\x12\x14\n" +
+	"\x05reset\x18\a \x01(\bR\x05reset\"L\n" +
+	"\x13UpdateChaosResponse\x12\x18\n" +
+	"\aupdated\x18\x01 \x03(\tR\aupdated\x12\x1b\n" +
+	"\tnot_found\x18\x02 \x03(\tR\bnotFound\"8\n" +
 	"\x0fMappingsRequest\x12%\n" +
 	"\x0ecluster_domain\x18\x01 \x01(\tR\rclusterDomain\"\xfd\x01\n" +
 	"\x10MappingsResponse\x12>\n" +
@@ -1402,7 +1615,12 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x15FORWARD_STATE_RUNNING\x10\x02\x12\x18\n" +
 	"\x14FORWARD_STATE_FAILED\x10\x03\x12\x19\n" +
 	"\x15FORWARD_STATE_STOPPED\x10\x04\x12\x19\n" +
-	"\x15FORWARD_STATE_WAITING\x10\x052\x82\x04\n" +
+	"\x15FORWARD_STATE_WAITING\x10\x05*\x8b\x01\n" +
+	"\vChaosPreset\x12\x1c\n" +
+	"\x18CHAOS_PRESET_UNSPECIFIED\x10\x00\x12\x1d\n" +
+	"\x19CHAOS_PRESET_SLOW_NETWORK\x10\x01\x12!\n" +
+	"\x1dCHAOS_PRESET_UNSTABLE_CLUSTER\x10\x02\x12\x1c\n" +
+	"\x18CHAOS_PRESET_PACKET_LOSS\x10\x032\xd4\x04\n" +
 	"\rDaemonService\x12A\n" +
 	"\x06Status\x12\x1a.kubeport.v1.StatusRequest\x1a\x1b.kubeport.v1.StatusResponse\x12;\n" +
 	"\x04Stop\x12\x18.kubeport.v1.StopRequest\x1a\x19.kubeport.v1.StopResponse\x12M\n" +
@@ -1411,7 +1629,8 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\rRemoveService\x12!.kubeport.v1.RemoveServiceRequest\x1a\".kubeport.v1.RemoveServiceResponse\x12A\n" +
 	"\x06Reload\x12\x1a.kubeport.v1.ReloadRequest\x1a\x1b.kubeport.v1.ReloadResponse\x12>\n" +
 	"\x05Apply\x12\x19.kubeport.v1.ApplyRequest\x1a\x1a.kubeport.v1.ApplyResponse\x12G\n" +
-	"\bMappings\x12\x1c.kubeport.v1.MappingsRequest\x1a\x1d.kubeport.v1.MappingsResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
+	"\bMappings\x12\x1c.kubeport.v1.MappingsRequest\x1a\x1d.kubeport.v1.MappingsResponse\x12P\n" +
+	"\vUpdateChaos\x12\x1f.kubeport.v1.UpdateChaosRequest\x1a .kubeport.v1.UpdateChaosResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
 
 var (
 	file_kubeport_v1_daemon_proto_rawDescOnce sync.Once
@@ -1425,61 +1644,67 @@ func file_kubeport_v1_daemon_proto_rawDescGZIP() []byte {
 	return file_kubeport_v1_daemon_proto_rawDescData
 }
 
-var file_kubeport_v1_daemon_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_kubeport_v1_daemon_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_kubeport_v1_daemon_proto_goTypes = []any{
 	(ForwardState)(0),             // 0: kubeport.v1.ForwardState
-	(*ServiceInfo)(nil),           // 1: kubeport.v1.ServiceInfo
-	(*PortSpec)(nil),              // 2: kubeport.v1.PortSpec
-	(*ForwardStatusProto)(nil),    // 3: kubeport.v1.ForwardStatusProto
-	(*StatusRequest)(nil),         // 4: kubeport.v1.StatusRequest
-	(*StatusResponse)(nil),        // 5: kubeport.v1.StatusResponse
-	(*StopRequest)(nil),           // 6: kubeport.v1.StopRequest
-	(*StopResponse)(nil),          // 7: kubeport.v1.StopResponse
-	(*AddServiceRequest)(nil),     // 8: kubeport.v1.AddServiceRequest
-	(*AddServiceResponse)(nil),    // 9: kubeport.v1.AddServiceResponse
-	(*RemoveServiceRequest)(nil),  // 10: kubeport.v1.RemoveServiceRequest
-	(*RemoveServiceResponse)(nil), // 11: kubeport.v1.RemoveServiceResponse
-	(*ReloadRequest)(nil),         // 12: kubeport.v1.ReloadRequest
-	(*ReloadResponse)(nil),        // 13: kubeport.v1.ReloadResponse
-	(*ApplyRequest)(nil),          // 14: kubeport.v1.ApplyRequest
-	(*ApplyResponse)(nil),         // 15: kubeport.v1.ApplyResponse
-	(*AddressMapping)(nil),        // 16: kubeport.v1.AddressMapping
-	(*MappingsRequest)(nil),       // 17: kubeport.v1.MappingsRequest
-	(*MappingsResponse)(nil),      // 18: kubeport.v1.MappingsResponse
-	nil,                           // 19: kubeport.v1.MappingsResponse.AddrsEntry
-	(*timestamppb.Timestamp)(nil), // 20: google.protobuf.Timestamp
+	(ChaosPreset)(0),              // 1: kubeport.v1.ChaosPreset
+	(*ServiceInfo)(nil),           // 2: kubeport.v1.ServiceInfo
+	(*PortSpec)(nil),              // 3: kubeport.v1.PortSpec
+	(*ForwardStatusProto)(nil),    // 4: kubeport.v1.ForwardStatusProto
+	(*StatusRequest)(nil),         // 5: kubeport.v1.StatusRequest
+	(*StatusResponse)(nil),        // 6: kubeport.v1.StatusResponse
+	(*StopRequest)(nil),           // 7: kubeport.v1.StopRequest
+	(*StopResponse)(nil),          // 8: kubeport.v1.StopResponse
+	(*AddServiceRequest)(nil),     // 9: kubeport.v1.AddServiceRequest
+	(*AddServiceResponse)(nil),    // 10: kubeport.v1.AddServiceResponse
+	(*RemoveServiceRequest)(nil),  // 11: kubeport.v1.RemoveServiceRequest
+	(*RemoveServiceResponse)(nil), // 12: kubeport.v1.RemoveServiceResponse
+	(*ReloadRequest)(nil),         // 13: kubeport.v1.ReloadRequest
+	(*ReloadResponse)(nil),        // 14: kubeport.v1.ReloadResponse
+	(*ApplyRequest)(nil),          // 15: kubeport.v1.ApplyRequest
+	(*ApplyResponse)(nil),         // 16: kubeport.v1.ApplyResponse
+	(*AddressMapping)(nil),        // 17: kubeport.v1.AddressMapping
+	(*UpdateChaosRequest)(nil),    // 18: kubeport.v1.UpdateChaosRequest
+	(*UpdateChaosResponse)(nil),   // 19: kubeport.v1.UpdateChaosResponse
+	(*MappingsRequest)(nil),       // 20: kubeport.v1.MappingsRequest
+	(*MappingsResponse)(nil),      // 21: kubeport.v1.MappingsResponse
+	nil,                           // 22: kubeport.v1.MappingsResponse.AddrsEntry
+	(*timestamppb.Timestamp)(nil), // 23: google.protobuf.Timestamp
 }
 var file_kubeport_v1_daemon_proto_depIdxs = []int32{
-	1,  // 0: kubeport.v1.ForwardStatusProto.service:type_name -> kubeport.v1.ServiceInfo
+	2,  // 0: kubeport.v1.ForwardStatusProto.service:type_name -> kubeport.v1.ServiceInfo
 	0,  // 1: kubeport.v1.ForwardStatusProto.state:type_name -> kubeport.v1.ForwardState
-	20, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
-	20, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
-	3,  // 4: kubeport.v1.StatusResponse.forwards:type_name -> kubeport.v1.ForwardStatusProto
-	1,  // 5: kubeport.v1.AddServiceRequest.service:type_name -> kubeport.v1.ServiceInfo
-	2,  // 6: kubeport.v1.AddServiceRequest.ports:type_name -> kubeport.v1.PortSpec
-	1,  // 7: kubeport.v1.ApplyRequest.services:type_name -> kubeport.v1.ServiceInfo
-	19, // 8: kubeport.v1.MappingsResponse.addrs:type_name -> kubeport.v1.MappingsResponse.AddrsEntry
-	16, // 9: kubeport.v1.MappingsResponse.mappings:type_name -> kubeport.v1.AddressMapping
-	4,  // 10: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
-	6,  // 11: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
-	8,  // 12: kubeport.v1.DaemonService.AddService:input_type -> kubeport.v1.AddServiceRequest
-	10, // 13: kubeport.v1.DaemonService.RemoveService:input_type -> kubeport.v1.RemoveServiceRequest
-	12, // 14: kubeport.v1.DaemonService.Reload:input_type -> kubeport.v1.ReloadRequest
-	14, // 15: kubeport.v1.DaemonService.Apply:input_type -> kubeport.v1.ApplyRequest
-	17, // 16: kubeport.v1.DaemonService.Mappings:input_type -> kubeport.v1.MappingsRequest
-	5,  // 17: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
-	7,  // 18: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
-	9,  // 19: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
-	11, // 20: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
-	13, // 21: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
-	15, // 22: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
-	18, // 23: kubeport.v1.DaemonService.Mappings:output_type -> kubeport.v1.MappingsResponse
-	17, // [17:24] is the sub-list for method output_type
-	10, // [10:17] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	23, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
+	23, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
+	4,  // 4: kubeport.v1.StatusResponse.forwards:type_name -> kubeport.v1.ForwardStatusProto
+	2,  // 5: kubeport.v1.AddServiceRequest.service:type_name -> kubeport.v1.ServiceInfo
+	3,  // 6: kubeport.v1.AddServiceRequest.ports:type_name -> kubeport.v1.PortSpec
+	2,  // 7: kubeport.v1.ApplyRequest.services:type_name -> kubeport.v1.ServiceInfo
+	1,  // 8: kubeport.v1.UpdateChaosRequest.preset:type_name -> kubeport.v1.ChaosPreset
+	22, // 9: kubeport.v1.MappingsResponse.addrs:type_name -> kubeport.v1.MappingsResponse.AddrsEntry
+	17, // 10: kubeport.v1.MappingsResponse.mappings:type_name -> kubeport.v1.AddressMapping
+	5,  // 11: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
+	7,  // 12: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
+	9,  // 13: kubeport.v1.DaemonService.AddService:input_type -> kubeport.v1.AddServiceRequest
+	11, // 14: kubeport.v1.DaemonService.RemoveService:input_type -> kubeport.v1.RemoveServiceRequest
+	13, // 15: kubeport.v1.DaemonService.Reload:input_type -> kubeport.v1.ReloadRequest
+	15, // 16: kubeport.v1.DaemonService.Apply:input_type -> kubeport.v1.ApplyRequest
+	20, // 17: kubeport.v1.DaemonService.Mappings:input_type -> kubeport.v1.MappingsRequest
+	18, // 18: kubeport.v1.DaemonService.UpdateChaos:input_type -> kubeport.v1.UpdateChaosRequest
+	6,  // 19: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
+	8,  // 20: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
+	10, // 21: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
+	12, // 22: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
+	14, // 23: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
+	16, // 24: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
+	21, // 25: kubeport.v1.DaemonService.Mappings:output_type -> kubeport.v1.MappingsResponse
+	19, // 26: kubeport.v1.DaemonService.UpdateChaos:output_type -> kubeport.v1.UpdateChaosResponse
+	19, // [19:27] is the sub-list for method output_type
+	11, // [11:19] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_kubeport_v1_daemon_proto_init() }
@@ -1492,8 +1717,8 @@ func file_kubeport_v1_daemon_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kubeport_v1_daemon_proto_rawDesc), len(file_kubeport_v1_daemon_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   19,
+			NumEnums:      2,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

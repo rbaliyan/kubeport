@@ -27,7 +27,7 @@ type countingDialer struct {
 	dialer     httpstream.Dialer
 	counter    *byteCounter
 	networkCfg config.ParsedNetworkConfig
-	chaosCfg   config.ParsedChaosConfig
+	chaosPtr   *atomic.Pointer[config.ParsedChaosConfig] // live pointer; always non-nil
 	ctx        context.Context
 }
 
@@ -41,15 +41,12 @@ func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, strin
 	d.counter.connBytesIn.Store(0)
 	d.counter.connBytesOut.Store(0)
 
-	cc := &countingConnection{conn: conn, counter: d.counter, ctx: d.ctx}
+	cc := &countingConnection{conn: conn, counter: d.counter, ctx: d.ctx, chaosPtr: d.chaosPtr}
 	if d.networkCfg.IsEnabled() {
 		cc.networkCfg = d.networkCfg
 		if d.networkCfg.BytesPerSec > 0 {
 			cc.limiter = newRateLimiter(d.networkCfg.BytesPerSec)
 		}
-	}
-	if d.chaosCfg.IsEnabled() {
-		cc.chaosCfg = d.chaosCfg
 	}
 	return cc, proto, nil
 }
@@ -60,8 +57,8 @@ type countingConnection struct {
 	conn       httpstream.Connection
 	counter    *byteCounter
 	networkCfg config.ParsedNetworkConfig
-	chaosCfg   config.ParsedChaosConfig
-	limiter    *rateLimiter // shared across all streams; nil when no bandwidth cap
+	chaosPtr   *atomic.Pointer[config.ParsedChaosConfig] // live pointer shared with portForward
+	limiter    *rateLimiter                               // shared across all streams; nil when no bandwidth cap
 	ctx        context.Context
 }
 
@@ -86,12 +83,13 @@ func (c *countingConnection) CreateStream(headers http.Header) (httpstream.Strea
 			limiter: c.limiter,
 		}
 	}
-	// Wrap with chaos injection if configured.
-	if c.chaosCfg.IsEnabled() {
+	// Always wrap with chaosStream so live mutations (UpdateChaos) take effect
+	// on this connection without a reconnect. The stream no-ops when disabled.
+	if c.chaosPtr != nil {
 		inner = &chaosStream{
 			stream:   inner,
 			ctx:      c.ctx,
-			cfg:      c.chaosCfg,
+			cfgPtr:   c.chaosPtr,
 			counters: &c.counter.chaos,
 		}
 	}

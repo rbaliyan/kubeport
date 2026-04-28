@@ -33,6 +33,7 @@ func (a *app) cmdHelp() {
 	fmt.Println("  watch       Watch proxy status (refreshes periodically)")
 	fmt.Println("  fg          Run in foreground (blocks terminal)")
 	fmt.Println("  instances   List all running kubeport instances")
+	fmt.Println("  chaos       Manage live chaos engineering (set, enable, disable, preset, reset)")
 	fmt.Println("  config      Manage configuration (init, show, validate, set, add, remove, path)")
 	fmt.Println("  update      Check for and apply updates (update check, update)")
 	fmt.Println("  version     Show version information")

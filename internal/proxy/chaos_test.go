@@ -3,21 +3,26 @@ package proxy
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
+// newChaosPtr creates an atomic pointer pre-loaded with cfg.
+func newChaosPtr(cfg config.ParsedChaosConfig) *atomic.Pointer[config.ParsedChaosConfig] {
+	p := &atomic.Pointer[config.ParsedChaosConfig]{}
+	p.Store(&cfg)
+	return p
+}
+
 func TestChaosStream_ErrorInjection_Always(t *testing.T) {
 	counters := &chaosCounters{}
 	s := &chaosStream{
-		stream: &mockStream{},
-		ctx:    context.Background(),
-		cfg: config.ParsedChaosConfig{
-			Enabled:   true,
-			ErrorRate: 1.0, // always fail
-		},
+		stream:   &mockStream{},
+		ctx:      context.Background(),
+		cfgPtr:   newChaosPtr(config.ParsedChaosConfig{Enabled: true, ErrorRate: 1.0}),
 		counters: counters,
 	}
 
@@ -34,12 +39,9 @@ func TestChaosStream_ErrorInjection_Never(t *testing.T) {
 	counters := &chaosCounters{}
 	ms := &mockStream{}
 	s := &chaosStream{
-		stream: ms,
-		ctx:    context.Background(),
-		cfg: config.ParsedChaosConfig{
-			Enabled:   true,
-			ErrorRate: 0.0, // never fail
-		},
+		stream:   ms,
+		ctx:      context.Background(),
+		cfgPtr:   newChaosPtr(config.ParsedChaosConfig{Enabled: true, ErrorRate: 0.0}),
 		counters: counters,
 	}
 
@@ -60,11 +62,11 @@ func TestChaosStream_LatencySpike(t *testing.T) {
 	s := &chaosStream{
 		stream: ms,
 		ctx:    context.Background(),
-		cfg: config.ParsedChaosConfig{
+		cfgPtr: newChaosPtr(config.ParsedChaosConfig{
 			Enabled:                 true,
-			LatencySpikeProbability: 1.0, // always spike
+			LatencySpikeProbability: 1.0,
 			LatencySpikeDuration:    50 * time.Millisecond,
-		},
+		}),
 		counters: counters,
 	}
 
@@ -85,17 +87,17 @@ func TestChaosStream_LatencySpike(t *testing.T) {
 
 func TestChaosStream_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // cancel immediately
+	cancel()
 
 	counters := &chaosCounters{}
 	s := &chaosStream{
 		stream: &mockStream{},
 		ctx:    ctx,
-		cfg: config.ParsedChaosConfig{
+		cfgPtr: newChaosPtr(config.ParsedChaosConfig{
 			Enabled:                 true,
 			LatencySpikeProbability: 1.0,
 			LatencySpikeDuration:    10 * time.Second,
-		},
+		}),
 		counters: counters,
 	}
 
@@ -109,12 +111,9 @@ func TestChaosStream_ReadPassthrough(t *testing.T) {
 	ms := &mockStream{readData: []byte("hello")}
 	counters := &chaosCounters{}
 	s := &chaosStream{
-		stream: ms,
-		ctx:    context.Background(),
-		cfg: config.ParsedChaosConfig{
-			Enabled:   true,
-			ErrorRate: 1.0, // errors only on write, not read
-		},
+		stream:   ms,
+		ctx:      context.Background(),
+		cfgPtr:   newChaosPtr(config.ParsedChaosConfig{Enabled: true, ErrorRate: 1.0}),
 		counters: counters,
 	}
 
@@ -129,18 +128,16 @@ func TestChaosStream_ReadPassthrough(t *testing.T) {
 }
 
 func TestChaosStream_ErrorPrecedesSpike(t *testing.T) {
-	// When both error_rate=1.0 and spike probability=1.0,
-	// the error check fires first and the spike is never reached.
 	counters := &chaosCounters{}
 	s := &chaosStream{
 		stream: &mockStream{},
 		ctx:    context.Background(),
-		cfg: config.ParsedChaosConfig{
+		cfgPtr: newChaosPtr(config.ParsedChaosConfig{
 			Enabled:                 true,
 			ErrorRate:               1.0,
 			LatencySpikeProbability: 1.0,
 			LatencySpikeDuration:    10 * time.Second,
-		},
+		}),
 		counters: counters,
 	}
 
@@ -151,14 +148,44 @@ func TestChaosStream_ErrorPrecedesSpike(t *testing.T) {
 	if !errors.Is(err, errChaosInjected) {
 		t.Fatalf("expected errChaosInjected, got %v", err)
 	}
-	// Should return immediately — no spike delay.
 	if elapsed > 100*time.Millisecond {
-		t.Fatalf("expected immediate error, but took %v (spike should not fire)", elapsed)
+		t.Fatalf("expected immediate error, but took %v", elapsed)
 	}
 	if counters.errorsInjected.Load() != 1 {
 		t.Fatalf("expected 1 error, got %d", counters.errorsInjected.Load())
 	}
 	if counters.spikesInjected.Load() != 0 {
 		t.Fatalf("expected 0 spikes, got %d", counters.spikesInjected.Load())
+	}
+}
+
+func TestChaosStream_LiveUpdate(t *testing.T) {
+	counters := &chaosCounters{}
+	cfgPtr := newChaosPtr(config.ParsedChaosConfig{Enabled: false})
+	s := &chaosStream{
+		stream:   &mockStream{},
+		ctx:      context.Background(),
+		cfgPtr:   cfgPtr,
+		counters: counters,
+	}
+
+	// Disabled — writes should pass through.
+	if _, err := s.Write([]byte("hello")); err != nil {
+		t.Fatalf("unexpected error when disabled: %v", err)
+	}
+	if counters.errorsInjected.Load() != 0 {
+		t.Fatal("should not have injected error while disabled")
+	}
+
+	// Enable chaos at runtime.
+	enabled := config.ParsedChaosConfig{Enabled: true, ErrorRate: 1.0}
+	cfgPtr.Store(&enabled)
+
+	_, err := s.Write([]byte("hello"))
+	if !errors.Is(err, errChaosInjected) {
+		t.Fatalf("expected errChaosInjected after live enable, got %v", err)
+	}
+	if counters.errorsInjected.Load() != 1 {
+		t.Fatalf("expected 1 error after live enable, got %d", counters.errorsInjected.Load())
 	}
 }

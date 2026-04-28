@@ -68,6 +68,14 @@ func (m *mockSupervisor) Mappings(_ string) []proxy.AddressMapping {
 	return nil
 }
 
+func (m *mockSupervisor) UpdateChaos(_ []string, _ config.ParsedChaosConfig) ([]string, []string) {
+	return nil, nil
+}
+
+func (m *mockSupervisor) ResetChaos(_ []string) ([]string, []string) {
+	return nil, nil
+}
+
 func TestServer_Status(t *testing.T) {
 	mgr := &mockSupervisor{
 		statuses: []proxy.ForwardStatus{
