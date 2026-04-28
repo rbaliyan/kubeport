@@ -22,25 +22,32 @@ type chaosCounters struct {
 }
 
 // chaosStream wraps an httpstream.Stream to inject random errors and latency
-// spikes on writes for chaos engineering testing.
+// spikes on writes. It reads the live config from cfgPtr on every Write so
+// that runtime mutations (via UpdateChaos) take effect immediately without
+// reconnecting the tunnel.
 type chaosStream struct {
 	stream   httpstream.Stream
 	ctx      context.Context
-	cfg      config.ParsedChaosConfig
+	cfgPtr   *atomic.Pointer[config.ParsedChaosConfig]
 	counters *chaosCounters
 }
 
 func (s *chaosStream) Write(p []byte) (int, error) {
+	cfg := s.cfgPtr.Load()
+	if cfg == nil || !cfg.Enabled {
+		return s.stream.Write(p)
+	}
+
 	// Check for error injection first.
-	if s.cfg.ErrorRate > 0 && rand.Float64() < s.cfg.ErrorRate { // #nosec G404 -- math/rand is fine for chaos testing
+	if cfg.ErrorRate > 0 && rand.Float64() < cfg.ErrorRate { // #nosec G404 -- math/rand is fine for chaos testing
 		s.counters.errorsInjected.Add(1)
 		return 0, errChaosInjected
 	}
 
 	// Check for latency spike injection.
-	if s.cfg.LatencySpikeProbability > 0 && rand.Float64() < s.cfg.LatencySpikeProbability { // #nosec G404 -- math/rand is fine for chaos testing
+	if cfg.LatencySpikeProbability > 0 && rand.Float64() < cfg.LatencySpikeProbability { // #nosec G404 -- math/rand is fine for chaos testing
 		s.counters.spikesInjected.Add(1)
-		if err := sleepWithContext(s.ctx, s.cfg.LatencySpikeDuration); err != nil {
+		if err := sleepWithContext(s.ctx, cfg.LatencySpikeDuration); err != nil {
 			return 0, err
 		}
 	}

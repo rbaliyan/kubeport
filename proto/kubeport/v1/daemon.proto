@@ -12,6 +12,7 @@ service DaemonService {
   rpc Reload(ReloadRequest) returns (ReloadResponse);
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   rpc Mappings(MappingsRequest) returns (MappingsResponse);
+  rpc UpdateChaos(UpdateChaosRequest) returns (UpdateChaosResponse);
 }
 
 enum ForwardState {
@@ -123,6 +124,33 @@ message AddressMapping {
   string internal_addr = 1;  // K8s internal address (e.g., "web-api.demo.svc.cluster.local:80")
   string local_addr = 2;     // Local address (e.g., "localhost:8080")
   string service_name = 3;   // kubeport service name
+}
+
+// ChaosPreset selects a named chaos profile. When set, preset params
+// override any inline fields in UpdateChaosRequest.
+enum ChaosPreset {
+  CHAOS_PRESET_UNSPECIFIED = 0;
+  CHAOS_PRESET_SLOW_NETWORK = 1;     // 200 ms spikes, 10% probability
+  CHAOS_PRESET_UNSTABLE_CLUSTER = 2; // 5% errors, 5% spike prob, 2 s spikes
+  CHAOS_PRESET_PACKET_LOSS = 3;      // 15% error rate
+}
+
+// UpdateChaosRequest mutates live chaos parameters for one or more services
+// without requiring a config reload or reconnect.
+message UpdateChaosRequest {
+  repeated string services = 1;  // service names to update; empty = all forwards
+  ChaosPreset preset = 2;        // named preset (takes precedence when non-zero)
+  // Inline params — used when preset = UNSPECIFIED.
+  bool enabled = 3;
+  double error_rate = 4;
+  double spike_probability = 5;
+  int64 spike_duration_ms = 6;
+  bool reset = 7;  // true = revert to config-defined chaos for named services
+}
+
+message UpdateChaosResponse {
+  repeated string updated = 1;    // names of services successfully updated
+  repeated string not_found = 2;  // names that were not recognised
 }
 
 message MappingsRequest {

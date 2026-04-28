@@ -26,6 +26,7 @@ const (
 	DaemonService_Reload_FullMethodName        = "/kubeport.v1.DaemonService/Reload"
 	DaemonService_Apply_FullMethodName         = "/kubeport.v1.DaemonService/Apply"
 	DaemonService_Mappings_FullMethodName      = "/kubeport.v1.DaemonService/Mappings"
+	DaemonService_UpdateChaos_FullMethodName   = "/kubeport.v1.DaemonService/UpdateChaos"
 )
 
 // DaemonServiceClient is the client API for DaemonService service.
@@ -39,6 +40,7 @@ type DaemonServiceClient interface {
 	Reload(ctx context.Context, in *ReloadRequest, opts ...grpc.CallOption) (*ReloadResponse, error)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	Mappings(ctx context.Context, in *MappingsRequest, opts ...grpc.CallOption) (*MappingsResponse, error)
+	UpdateChaos(ctx context.Context, in *UpdateChaosRequest, opts ...grpc.CallOption) (*UpdateChaosResponse, error)
 }
 
 type daemonServiceClient struct {
@@ -119,6 +121,16 @@ func (c *daemonServiceClient) Mappings(ctx context.Context, in *MappingsRequest,
 	return out, nil
 }
 
+func (c *daemonServiceClient) UpdateChaos(ctx context.Context, in *UpdateChaosRequest, opts ...grpc.CallOption) (*UpdateChaosResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateChaosResponse)
+	err := c.cc.Invoke(ctx, DaemonService_UpdateChaos_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DaemonServiceServer is the server API for DaemonService service.
 // All implementations must embed UnimplementedDaemonServiceServer
 // for forward compatibility.
@@ -130,6 +142,7 @@ type DaemonServiceServer interface {
 	Reload(context.Context, *ReloadRequest) (*ReloadResponse, error)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	Mappings(context.Context, *MappingsRequest) (*MappingsResponse, error)
+	UpdateChaos(context.Context, *UpdateChaosRequest) (*UpdateChaosResponse, error)
 	mustEmbedUnimplementedDaemonServiceServer()
 }
 
@@ -160,6 +173,9 @@ func (UnimplementedDaemonServiceServer) Apply(context.Context, *ApplyRequest) (*
 }
 func (UnimplementedDaemonServiceServer) Mappings(context.Context, *MappingsRequest) (*MappingsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Mappings not implemented")
+}
+func (UnimplementedDaemonServiceServer) UpdateChaos(context.Context, *UpdateChaosRequest) (*UpdateChaosResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateChaos not implemented")
 }
 func (UnimplementedDaemonServiceServer) mustEmbedUnimplementedDaemonServiceServer() {}
 func (UnimplementedDaemonServiceServer) testEmbeddedByValue()                       {}
@@ -308,6 +324,24 @@ func _DaemonService_Mappings_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DaemonService_UpdateChaos_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateChaosRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DaemonServiceServer).UpdateChaos(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DaemonService_UpdateChaos_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DaemonServiceServer).UpdateChaos(ctx, req.(*UpdateChaosRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DaemonService_ServiceDesc is the grpc.ServiceDesc for DaemonService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -342,6 +376,10 @@ var DaemonService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Mappings",
 			Handler:    _DaemonService_Mappings_Handler,
+		},
+		{
+			MethodName: "UpdateChaos",
+			Handler:    _DaemonService_UpdateChaos_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

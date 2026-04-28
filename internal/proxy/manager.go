@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -100,6 +101,13 @@ type portForward struct {
 	preemptCh  chan string  // carries replacement pod name for predictive reconnection
 	tunnelOpen bool        // lazy mode: true when SPDY tunnel is active
 	mu         sync.Mutex
+
+	// chaosOverride holds the current effective chaos config. It is loaded from
+	// config on each connection attempt (unless hasChaosOverride is true) and
+	// updated atomically by UpdateChaos so live mutations take effect without
+	// reconnecting the tunnel.
+	chaosOverride    atomic.Pointer[config.ParsedChaosConfig]
+	hasChaosOverride atomic.Bool // true once UpdateChaos has been called for this forward
 }
 
 // serviceCmd represents an add or remove command sent to the event loop.
@@ -951,16 +959,19 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	if netErr != nil {
 		m.logger.Warn("invalid network config, simulation disabled", "service", pf.svc.Name, "error", netErr)
 	}
-	// Resolve effective chaos config (global merged with per-service).
-	chaosCfg, chaosErr := config.ResolveChaos(m.cfg.Chaos, pf.svc.Chaos).Parse()
-	if chaosErr != nil {
-		m.logger.Warn("invalid chaos config, injection disabled", "service", pf.svc.Name, "error", chaosErr)
+	// Initialise chaos from config only if no runtime override has been set.
+	if !pf.hasChaosOverride.Load() {
+		chaosCfg, chaosErr := config.ResolveChaos(m.cfg.Chaos, pf.svc.Chaos).Parse()
+		if chaosErr != nil {
+			m.logger.Warn("invalid chaos config, injection disabled", "service", pf.svc.Name, "error", chaosErr)
+		}
+		pf.chaosOverride.Store(&chaosCfg)
 	}
 	dialer := &countingDialer{
 		dialer:     rawDialer,
 		counter:    &pf.counter,
 		networkCfg: netCfg,
-		chaosCfg:   chaosCfg,
+		chaosPtr:   &pf.chaosOverride,
 		ctx:        fwCtx,
 	}
 
@@ -1436,12 +1447,11 @@ func (m *Manager) Status() []ForwardStatus {
 			globalNet = m.cfg.Network
 		}
 		netCfg, _ := config.ResolveNetwork(globalNet, pf.svc.Network).Parse() //nolint:errcheck // validation ran at load time; zero value is safe for display
-		// Resolve effective chaos config for status display.
-		var globalChaos config.ChaosConfig
-		if m.cfg != nil {
-			globalChaos = m.cfg.Chaos
+		// Use the live chaos config (may be a runtime override from UpdateChaos).
+		var chaosCfg config.ParsedChaosConfig
+		if ptr := pf.chaosOverride.Load(); ptr != nil {
+			chaosCfg = *ptr
 		}
-		chaosCfg, _ := config.ResolveChaos(globalChaos, pf.svc.Chaos).Parse() //nolint:errcheck
 		s := ForwardStatus{
 			Service:            pf.svc,
 			State:              pf.state,
@@ -1471,4 +1481,93 @@ func (m *Manager) Status() []ForwardStatus {
 		statuses = append(statuses, s)
 	}
 	return statuses
+}
+
+// UpdateChaos applies a new chaos config to the named services (or all
+// services when services is empty). The change is immediately visible to
+// active tunnels without reconnecting. hasChaosOverride is set so that
+// subsequent reconnects preserve the override instead of re-reading config.
+// Returns the names of services that were updated and any that were not found.
+func (m *Manager) UpdateChaos(services []string, cfg config.ParsedChaosConfig) (updated, notFound []string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	targets := m.resolveChaosTargets(services)
+	for name, found := range targets {
+		if !found {
+			notFound = append(notFound, name)
+			continue
+		}
+		pf := m.forwards[name]
+		c := cfg // copy so each forward gets its own pointer
+		pf.chaosOverride.Store(&c)
+		pf.hasChaosOverride.Store(true)
+		updated = append(updated, name)
+	}
+	return updated, notFound
+}
+
+// ResetChaos reverts named services (or all when empty) back to their
+// config-derived chaos settings. The config values are re-applied on the
+// next connection attempt.
+func (m *Manager) ResetChaos(services []string) (updated, notFound []string) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	targets := m.resolveChaosTargets(services)
+	for name, found := range targets {
+		if !found {
+			notFound = append(notFound, name)
+			continue
+		}
+		pf := m.forwards[name]
+		pf.hasChaosOverride.Store(false)
+		// Derive and store the config-based value now so status reflects it
+		// immediately even before the next reconnect.
+		var globalChaos config.ChaosConfig
+		if m.cfg != nil {
+			globalChaos = m.cfg.Chaos
+		}
+		chaosCfg, _ := config.ResolveChaos(globalChaos, pf.svc.Chaos).Parse() //nolint:errcheck
+		pf.chaosOverride.Store(&chaosCfg)
+		updated = append(updated, name)
+	}
+	return updated, notFound
+}
+
+// resolveChaosTargets returns a map of service-name → found for all targets.
+// When services is empty every known forward is targeted.
+func (m *Manager) resolveChaosTargets(services []string) map[string]bool {
+	if len(services) == 0 {
+		targets := make(map[string]bool, len(m.forwards))
+		for name := range m.forwards {
+			targets[name] = true
+		}
+		return targets
+	}
+	targets := make(map[string]bool, len(services))
+	for _, name := range services {
+		_, ok := m.forwards[name]
+		targets[name] = ok
+	}
+	return targets
+}
+
+// ChaosPresets maps preset names to their ParsedChaosConfig values.
+var ChaosPresets = map[string]config.ParsedChaosConfig{
+	"slow-network": {
+		Enabled:                 true,
+		LatencySpikeProbability: 0.10,
+		LatencySpikeDuration:    200 * time.Millisecond,
+	},
+	"unstable-cluster": {
+		Enabled:                 true,
+		ErrorRate:               0.05,
+		LatencySpikeProbability: 0.05,
+		LatencySpikeDuration:    2 * time.Second,
+	},
+	"packet-loss": {
+		Enabled:   true,
+		ErrorRate: 0.15,
+	},
 }

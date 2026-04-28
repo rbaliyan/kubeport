@@ -37,6 +37,7 @@ complete -c kubeport -n "__fish_use_subcommand" -a "watch" -d "Watch proxy statu
 complete -c kubeport -n "__fish_use_subcommand" -a "fg" -d "Run proxy in foreground"
 complete -c kubeport -n "__fish_use_subcommand" -a "foreground" -d "Run proxy in foreground"
 complete -c kubeport -n "__fish_use_subcommand" -a "instances" -d "List all running kubeport daemon instances"
+complete -c kubeport -n "__fish_use_subcommand" -a "chaos" -d "Manage live chaos engineering settings"
 complete -c kubeport -n "__fish_use_subcommand" -a "socks" -d "Start SOCKS5 proxy for Kubernetes DNS translation"
 complete -c kubeport -n "__fish_use_subcommand" -a "http-proxy" -d "Start HTTP/HTTPS proxy for Kubernetes DNS translation"
 complete -c kubeport -n "__fish_use_subcommand" -a "config" -d "Configuration management"
@@ -52,6 +53,24 @@ complete -c kubeport -n "__fish_seen_subcommand_from config" -a "set" -d "Set co
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "add" -d "Add a service to forward"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "remove" -d "Remove a service"
 complete -c kubeport -n "__fish_seen_subcommand_from config" -a "path" -d "Print configuration file path"
+
+# Chaos subcommands
+complete -c kubeport -n "__fish_seen_subcommand_from chaos" -a "set" -d "Apply explicit chaos params to services"
+complete -c kubeport -n "__fish_seen_subcommand_from chaos" -a "enable" -d "Enable chaos for services"
+complete -c kubeport -n "__fish_seen_subcommand_from chaos" -a "disable" -d "Disable chaos for services"
+complete -c kubeport -n "__fish_seen_subcommand_from chaos" -a "preset" -d "Apply a named chaos preset"
+complete -c kubeport -n "__fish_seen_subcommand_from chaos" -a "reset" -d "Revert to config-defined chaos settings"
+
+# Chaos preset names
+complete -c kubeport -n "__fish_seen_subcommand_from preset" -a "slow-network" -d "200ms latency spikes at 10% probability"
+complete -c kubeport -n "__fish_seen_subcommand_from preset" -a "unstable-cluster" -d "5% errors + 5% 2s latency spikes"
+complete -c kubeport -n "__fish_seen_subcommand_from preset" -a "packet-loss" -d "15% connection errors"
+
+# Chaos set/enable/disable/reset flags
+complete -c kubeport -n "__fish_seen_subcommand_from set enable disable reset" -l all -d "Target all services"
+complete -c kubeport -n "__fish_seen_subcommand_from set" -s e -l error-rate -d "Error rate (0.0-1.0)" -r
+complete -c kubeport -n "__fish_seen_subcommand_from set" -s l -l latency -d "Latency spike duration" -r
+complete -c kubeport -n "__fish_seen_subcommand_from set" -s p -l spike-prob -d "Spike probability (0.0-1.0)" -r
 
 # Update subcommands
 complete -c kubeport -n "__fish_seen_subcommand_from update" -a "check" -d "Check if a newer version is available"

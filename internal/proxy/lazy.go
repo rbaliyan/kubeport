@@ -93,16 +93,20 @@ func (m *Manager) runLazyPortForward(ctx context.Context, pf *portForward) error
 		if netErr != nil {
 			m.logger.Warn("invalid network config, simulation disabled", "service", pf.svc.Name, "error", netErr)
 		}
-		chaosCfg, chaosErr := config.ResolveChaos(m.cfg.Chaos, pf.svc.Chaos).Parse()
-		if chaosErr != nil {
-			m.logger.Warn("invalid chaos config, injection disabled", "service", pf.svc.Name, "error", chaosErr)
+		// Initialise chaos from config only if no runtime override has been set.
+		if !pf.hasChaosOverride.Load() {
+			chaosCfg, chaosErr := config.ResolveChaos(m.cfg.Chaos, pf.svc.Chaos).Parse()
+			if chaosErr != nil {
+				m.logger.Warn("invalid chaos config, injection disabled", "service", pf.svc.Name, "error", chaosErr)
+			}
+			pf.chaosOverride.Store(&chaosCfg)
 		}
 
 		dialer := &countingDialer{
 			dialer:     rawDialer,
 			counter:    &pf.counter,
 			networkCfg: netCfg,
-			chaosCfg:   chaosCfg,
+			chaosPtr:   &pf.chaosOverride,
 			ctx:        fwCtx,
 		}
 

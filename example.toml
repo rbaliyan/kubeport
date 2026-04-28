@@ -40,6 +40,8 @@ namespace = "default"
 
 # Chaos engineering (global defaults — applied to all services)
 # Injects random faults for resilience testing.
+# These are the config-file defaults. Use `kubeport chaos` to mutate
+# settings on live tunnels without restarting (e.g. `kubeport chaos preset slow-network`).
 # [chaos]
 # enabled = true
 # error_rate = 0.02              # 2% of writes fail with a connection error

@@ -163,6 +163,12 @@ func (a *app) dispatch(ctx context.Context, command string, remaining []string) 
 		return
 	}
 
+	// Chaos subcommands connect directly to a running daemon; config optional
+	if command == "chaos" {
+		a.handleChaosCommand(remaining)
+		return
+	}
+
 	// Version doesn't need config
 	if command == "version" || command == "--version" {
 		a.cmdVersion()

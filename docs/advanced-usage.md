@@ -203,6 +203,37 @@ kubeport remove "Debug Service"
 
 This is useful for team workflows where the base config is checked into the repo and individuals add their own services on top.
 
+## Live Chaos Mutation
+
+Chaos settings can be changed on running tunnels without restarting the daemon or reloading config. Changes take effect immediately via atomic pointer swap — active connections continue uninterrupted.
+
+```bash
+# Inject 5% errors on the postgres tunnel
+kubeport chaos set postgres --error-rate 0.05
+
+# Add 200ms latency spikes at 10% probability
+kubeport chaos set postgres --latency 200ms --spike-prob 0.1
+
+# Apply a preset to multiple services at once
+kubeport chaos preset slow-network postgres redis
+
+# Disable chaos injection without changing the underlying config
+kubeport chaos disable --all
+
+# Revert to config-defined settings
+kubeport chaos reset postgres
+```
+
+### Built-in Presets
+
+| Preset | Error rate | Latency spike | Probability |
+|--------|-----------|---------------|-------------|
+| `slow-network` | — | 200 ms | 10% |
+| `unstable-cluster` | 5% | 2 s | 5% |
+| `packet-loss` | 15% | — | — |
+
+Presets are applied with `kubeport chaos preset <name> [<service>...] [--all]`. Runtime overrides do not persist across daemon restarts — the daemon always starts from the config-defined chaos settings. Use `kubeport chaos reset` to restore config-defined settings while the daemon is running.
+
 ## JSON Output for Scripting
 
 ```bash

@@ -39,6 +39,8 @@ type Supervisor interface {
 	Reload(cfg *config.Config) (added, removed int, err error)
 	Apply(services []config.ServiceConfig) (added, skipped int, warnings []string)
 	Mappings(clusterDomain string) []proxy.AddressMapping
+	UpdateChaos(services []string, cfg config.ParsedChaosConfig) (updated, notFound []string)
+	ResetChaos(services []string) (updated, notFound []string)
 }
 
 // Server wraps a gRPC server that exposes the DaemonService over a Unix domain socket or TCP.
@@ -392,4 +394,51 @@ func (s *Server) Apply(_ context.Context, req *kubeportv1.ApplyRequest) (*kubepo
 		Skipped:  int32(skipped), // #nosec G115 -- service counts fit int32
 		Warnings: warnings,
 	}, nil
+}
+
+// UpdateChaos implements DaemonService.UpdateChaos.
+func (s *Server) UpdateChaos(_ context.Context, req *kubeportv1.UpdateChaosRequest) (*kubeportv1.UpdateChaosResponse, error) {
+	if req.Reset_ {
+		updated, notFound := s.mgr.ResetChaos(req.Services)
+		return &kubeportv1.UpdateChaosResponse{Updated: updated, NotFound: notFound}, nil
+	}
+
+	cfg, err := chaosParamsFromProto(req)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	updated, notFound := s.mgr.UpdateChaos(req.Services, cfg)
+	return &kubeportv1.UpdateChaosResponse{Updated: updated, NotFound: notFound}, nil
+}
+
+// chaosParamsFromProto resolves the effective ParsedChaosConfig from the request.
+// Preset params take precedence over inline params.
+func chaosParamsFromProto(req *kubeportv1.UpdateChaosRequest) (config.ParsedChaosConfig, error) {
+	switch req.Preset {
+	case kubeportv1.ChaosPreset_CHAOS_PRESET_SLOW_NETWORK:
+		return proxy.ChaosPresets["slow-network"], nil
+	case kubeportv1.ChaosPreset_CHAOS_PRESET_UNSTABLE_CLUSTER:
+		return proxy.ChaosPresets["unstable-cluster"], nil
+	case kubeportv1.ChaosPreset_CHAOS_PRESET_PACKET_LOSS:
+		return proxy.ChaosPresets["packet-loss"], nil
+	}
+
+	// Inline params.
+	cfg := config.ParsedChaosConfig{
+		Enabled:                 req.Enabled,
+		ErrorRate:               req.ErrorRate,
+		LatencySpikeProbability: req.SpikeProbability,
+		LatencySpikeDuration:    time.Duration(req.SpikeDurationMs) * time.Millisecond,
+	}
+	if cfg.ErrorRate < 0 || cfg.ErrorRate > 1 {
+		return cfg, fmt.Errorf("error_rate must be between 0.0 and 1.0")
+	}
+	if cfg.LatencySpikeProbability < 0 || cfg.LatencySpikeProbability > 1 {
+		return cfg, fmt.Errorf("spike_probability must be between 0.0 and 1.0")
+	}
+	if cfg.LatencySpikeProbability > 0 && cfg.LatencySpikeDuration <= 0 {
+		return cfg, fmt.Errorf("spike_duration_ms must be > 0 when spike_probability > 0")
+	}
+	return cfg, nil
 }

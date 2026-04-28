@@ -242,6 +242,9 @@ kubeport mappings           # Show K8s DNS → localhost address mappings
 kubeport socks              # Start SOCKS5 proxy for address translation (default: 127.0.0.1:1080)
 kubeport http-proxy         # Start HTTP/HTTPS proxy for address translation (default: 127.0.0.1:3128)
 kubeport instances          # List all running kubeport daemons (useful for diagnosing port conflicts)
+kubeport chaos preset slow-network postgres   # Inject latency on a live tunnel without restarting
+kubeport chaos set postgres --error-rate 0.05 # Apply 5% error injection to a running service
+kubeport chaos disable --all                  # Turn off chaos injection across all services
 ```
 
 ### Managing Multiple Daemons
