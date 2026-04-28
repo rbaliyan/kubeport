@@ -32,6 +32,34 @@ services:
 
 Each project gets its own daemon instance, identified by a stable `InstanceID` derived from the absolute path of its config file (parent directory name + SHA-256 hash prefix). Runtime files — socket, PID file, and log — are stored in the central directory (`~/.config/kubeport/`) under that `InstanceID`, so the instances run independently without file conflicts. Use `kubeport instances` to see all running daemons across all configs.
 
+### Sharing a Global Config with `extends`
+
+Keep `api_key`, `listen`, `context`, and supervisor tuning in one place and inherit them in every project config:
+
+```yaml
+# ~/.config/kubeport/global.yaml
+api_key: sk-secret
+listen: tcp://0.0.0.0:50500
+context: prod-cluster
+supervisor:
+  health_check_interval: 10s
+  max_restarts: 10
+```
+
+```yaml
+# ~/projects/myapp/kubeport.yaml
+extends: ~/.config/kubeport/global.yaml
+namespace: myapp
+
+services:
+  - name: postgres
+    service: postgres
+    local_port: 5432
+    remote_port: 5432
+```
+
+The child config overrides only the fields it sets; everything else is inherited from the parent. Chains are supported (A extends B extends C). See [Config Inheritance](configuration.md#config-inheritance) for full merge semantics.
+
 ### Multiple kubeconfig files
 
 ```bash

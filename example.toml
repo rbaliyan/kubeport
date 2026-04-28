@@ -10,8 +10,13 @@
 #   kubeport config show      # View configuration
 #
 # Environment overrides:
-#   K8S_CONTEXT   - Override the context below
-#   K8S_NAMESPACE - Override the namespace below
+#   K8S_CONTEXT      - Override the context below
+#   K8S_NAMESPACE    - Override the namespace below
+#   KUBEPORT_API_KEY - Override the api_key below (applied after extends inheritance)
+
+# Inherit common settings from a parent config (optional).
+# Supports ~ expansion and relative paths.
+# extends = "~/.config/kubeport/global.toml"
 
 # Kubernetes context from ~/.kube/config
 context = "my-cluster-context"

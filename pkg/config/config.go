@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -258,13 +259,18 @@ type SupervisorConfig struct {
 
 // ProxyServerConfig holds optional proxy server configuration shared by SOCKS5
 // and HTTP proxy modes.
+// Enabled uses *bool so that nil ("not set") can be distinguished from an
+// explicit false, enabling a child config to disable a parent's proxy settings.
 type ProxyServerConfig struct {
-	Enabled    bool   `yaml:"enabled,omitempty" toml:"enabled,omitempty"`         // auto-start with daemon
+	Enabled    *bool  `yaml:"enabled,omitempty" toml:"enabled,omitempty"`         // auto-start with daemon
 	Listen     string `yaml:"listen,omitempty" toml:"listen,omitempty"`           // listen address
 	Username   string `yaml:"username,omitempty" toml:"username,omitempty"`       // auth username
 	Password   string `yaml:"password,omitempty" toml:"password,omitempty"`       // auth password
 	FuzzyMatch *bool  `yaml:"fuzzy_match,omitempty" toml:"fuzzy_match,omitempty"` // nil=true; headless FQDN resolution
 }
+
+// IsEnabled reports whether this proxy server is configured to auto-start.
+func (p ProxyServerConfig) IsEnabled() bool { return boolVal(p.Enabled) }
 
 // NetworkConfig holds optional network simulation settings for latency injection
 // and bandwidth throttling. A zero value means simulation is disabled.
@@ -340,16 +346,18 @@ type LatencySpikeConfig struct {
 }
 
 // ChaosConfig holds optional chaos engineering settings for fault injection.
-// A zero value (or Enabled=false) means chaos is disabled.
+// Enabled uses *bool so that nil ("not set") can be distinguished from an
+// explicit false, enabling a child config to disable a parent's chaos settings.
 type ChaosConfig struct {
-	Enabled      bool               `yaml:"enabled,omitempty" toml:"enabled,omitempty"`
+	Enabled      *bool              `yaml:"enabled,omitempty" toml:"enabled,omitempty"`
 	ErrorRate    float64            `yaml:"error_rate,omitempty" toml:"error_rate,omitempty"`         // 0.0-1.0, fraction of writes that fail
 	LatencySpike LatencySpikeConfig `yaml:"latency_spike,omitempty" toml:"latency_spike,omitempty"`
 }
 
-// IsSet returns true if chaos injection is configured and enabled.
+// IsSet returns true if Enabled is explicitly set to true (&true).
+// nil (field omitted in config) and &false both return false.
 func (c ChaosConfig) IsSet() bool {
-	return c.Enabled
+	return boolVal(c.Enabled)
 }
 
 // ParsedChaosConfig holds parsed, ready-to-use chaos engineering settings.
@@ -368,7 +376,7 @@ func (p ParsedChaosConfig) IsEnabled() bool {
 // Parse validates and parses the ChaosConfig into a ParsedChaosConfig.
 func (c ChaosConfig) Parse() (ParsedChaosConfig, error) {
 	var p ParsedChaosConfig
-	if !c.Enabled {
+	if !boolVal(c.Enabled) {
 		return p, nil
 	}
 	p.Enabled = true
@@ -402,19 +410,26 @@ func (c ChaosConfig) Parse() (ParsedChaosConfig, error) {
 }
 
 // ResolveChaos merges global and per-service chaos configs.
-// Per-service fully overrides global when enabled. The global enabled flag
-// acts as a master switch.
+// If per-service Enabled is set (non-nil), it takes full control: &false
+// disables chaos for the service regardless of the global setting, &true uses
+// the per-service config. If per-service Enabled is nil (not set), the global
+// config is used.
 func ResolveChaos(global, perService ChaosConfig) ChaosConfig {
-	// If neither is enabled, return zero.
-	if !global.Enabled && !perService.Enabled {
-		return ChaosConfig{}
-	}
-	// Per-service fully overrides when set.
-	if perService.Enabled {
+	if perService.Enabled != nil {
+		if !*perService.Enabled {
+			return ChaosConfig{} // explicitly disabled for this service
+		}
 		return perService
+	}
+	// Per-service not set: fall through to global.
+	if !boolVal(global.Enabled) {
+		return ChaosConfig{}
 	}
 	return global
 }
+
+// boolVal safely dereferences a *bool; nil is treated as false.
+func boolVal(b *bool) bool { return b != nil && *b }
 
 // ResolveNetwork merges global and per-service network configs.
 // Per-service fields override global when non-empty (field-by-field merge).
@@ -470,6 +485,7 @@ func parseBandwidth(s string) (int64, error) {
 
 // Config holds the full proxy configuration.
 type Config struct {
+	Extends     string           `yaml:"extends,omitempty" toml:"extends,omitempty"`
 	Context     string           `yaml:"context" toml:"context"`
 	Namespace   string           `yaml:"namespace" toml:"namespace"`
 	LogFilePath string           `yaml:"log_file,omitempty" toml:"log_file,omitempty"`
@@ -650,14 +666,16 @@ func detectFormat(path string) Format {
 	}
 }
 
-// Load reads and parses a config file (YAML or TOML), applying environment variable overrides.
+// Load reads and parses a config file (YAML or TOML), resolving any extends
+// chain and then applying environment variable overrides to the final merged
+// config.
 func Load(path string) (*Config, error) {
-	cfg, err := loadRaw(path)
+	cfg, err := loadWithInheritance(path, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Apply environment overrides
+	// Apply environment overrides to the fully-merged config.
 	if v := os.Getenv("K8S_CONTEXT"); v != "" {
 		cfg.Context = v
 	}
@@ -669,6 +687,36 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// loadWithInheritance loads a config file and recursively resolves its extends
+// chain. visiting tracks the files already in the current chain for cycle
+// detection; pass nil on the initial call.
+func loadWithInheritance(path string, visiting []string) (*Config, error) {
+	if slices.Contains(visiting, path) {
+		return nil, fmt.Errorf("circular extends detected: %s", path)
+	}
+
+	child, err := loadRaw(path)
+	if err != nil {
+		return nil, err
+	}
+
+	if child.Extends == "" {
+		return child, nil
+	}
+
+	parentPath, err := resolveExtendsPath(child.Extends, path)
+	if err != nil {
+		return nil, fmt.Errorf("extends: %w", err)
+	}
+
+	parent, err := loadWithInheritance(parentPath, append(visiting, path))
+	if err != nil {
+		return nil, fmt.Errorf("extends %q: %w", parentPath, err)
+	}
+
+	return mergeConfigs(parent, child), nil
 }
 
 // LoadForEdit reads and parses a config file without applying environment variable overrides.
@@ -762,6 +810,7 @@ type serviceConfigTOML struct {
 
 // configTOML is a TOML-specific intermediate struct for decoding.
 type configTOML struct {
+	Extends     string              `toml:"extends,omitempty"`
 	Context     string              `toml:"context"`
 	Namespace   string              `toml:"namespace"`
 	LogFilePath string              `toml:"log_file,omitempty"`
@@ -785,6 +834,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 		return err
 	}
 
+	cfg.Extends = raw.Extends
 	cfg.Context = raw.Context
 	cfg.Namespace = raw.Namespace
 	cfg.LogFilePath = raw.LogFilePath
@@ -827,6 +877,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 // marshalTOML converts a Config to TOML bytes, handling the polymorphic ports field.
 func marshalTOML(c *Config) ([]byte, error) {
 	raw := configTOML{
+		Extends:     c.Extends,
 		Context:     c.Context,
 		Namespace:   c.Namespace,
 		LogFilePath: c.LogFilePath,
@@ -1087,7 +1138,8 @@ func ValidateService(svc ServiceConfig) error {
 	return nil
 }
 
-// Validate checks the config for errors.
+// Validate checks the config for structural errors. It should be called on the
+// fully-merged config (after extends resolution) so inherited fields are visible.
 func (c *Config) Validate() error {
 	if len(c.Services) == 0 {
 		return ErrNoServices

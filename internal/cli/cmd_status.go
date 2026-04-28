@@ -263,19 +263,19 @@ func (a *app) proxyStatusFromConfig() (socks, httpProxy *proxyStatusOutput) {
 	if a.cfg == nil {
 		return nil, nil
 	}
-	if a.cfg.SOCKS.Enabled || a.cfg.SOCKS.Listen != "" {
+	if a.cfg.SOCKS.IsEnabled() || a.cfg.SOCKS.Listen != "" {
 		addr := a.cfg.SOCKS.Listen
 		if addr == "" {
 			addr = "127.0.0.1:1080"
 		}
-		socks = &proxyStatusOutput{Enabled: a.cfg.SOCKS.Enabled, Listen: addr}
+		socks = &proxyStatusOutput{Enabled: a.cfg.SOCKS.IsEnabled(), Listen: addr}
 	}
-	if a.cfg.HTTPProxy.Enabled || a.cfg.HTTPProxy.Listen != "" {
+	if a.cfg.HTTPProxy.IsEnabled() || a.cfg.HTTPProxy.Listen != "" {
 		addr := a.cfg.HTTPProxy.Listen
 		if addr == "" {
 			addr = "127.0.0.1:3128"
 		}
-		httpProxy = &proxyStatusOutput{Enabled: a.cfg.HTTPProxy.Enabled, Listen: addr}
+		httpProxy = &proxyStatusOutput{Enabled: a.cfg.HTTPProxy.IsEnabled(), Listen: addr}
 	}
 	return socks, httpProxy
 }
