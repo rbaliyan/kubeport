@@ -5,6 +5,9 @@ All notable changes to kubeport are documented here. This project uses [semantic
 ## [Unreleased]
 
 ### Added
+- `kubeport chaos` command for live chaos mutation without reload: `set`, `enable`, `disable`, `preset`, and `reset` subcommands
+- Built-in chaos presets: `slow-network` (200ms latency spikes, 10% probability), `unstable-cluster` (5% errors + 5% 2s spikes), `packet-loss` (15% connection errors)
+- `UpdateChaos` gRPC RPC — chaos overrides take effect on active tunnels via atomic pointer swap; no reconnect needed
 - Fuzz tests and ClusterFuzzLite CI workflows
 - Build provenance attestation to release workflow
 - `pkg/proxy.GRPCDialOption()` method for per-client gRPC resolver registration

@@ -2,14 +2,15 @@
 # bash completion for kubeport
 
 _kubeport() {
-    local cur prev commands config_commands
+    local cur prev commands config_commands chaos_commands
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
 
-    commands="start stop status logs restart add remove reload apply mappings watch fg foreground instances socks http-proxy config update version help"
+    commands="start stop status logs restart add remove reload apply mappings watch fg foreground instances socks http-proxy chaos config update version help"
     config_commands="init show validate set add remove path"
     update_commands="check"
+    chaos_commands="set enable disable preset reset help"
 
     case "${prev}" in
         kubeport)
@@ -22,6 +23,14 @@ _kubeport() {
             ;;
         update)
             COMPREPLY=( $(compgen -W "${update_commands}" -- "${cur}") )
+            return 0
+            ;;
+        chaos)
+            COMPREPLY=( $(compgen -W "${chaos_commands}" -- "${cur}") )
+            return 0
+            ;;
+        preset)
+            COMPREPLY=( $(compgen -W "slow-network unstable-cluster packet-loss" -- "${cur}") )
             return 0
             ;;
         -c|--config)

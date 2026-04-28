@@ -19,10 +19,28 @@ _kubeport() {
         'instances:List all running kubeport daemon instances'
         'socks:Start SOCKS5 proxy for Kubernetes DNS translation'
         'http-proxy:Start HTTP/HTTPS proxy for Kubernetes DNS translation'
+        'chaos:Manage live chaos engineering settings'
         'config:Configuration management'
         'update:Check for and apply updates'
         'version:Show version information'
         'help:Show help'
+    )
+
+    local -a chaos_commands
+    chaos_commands=(
+        'set:Apply explicit chaos params to services'
+        'enable:Enable chaos for services'
+        'disable:Disable chaos for services'
+        'preset:Apply a named chaos preset'
+        'reset:Revert to config-defined chaos settings'
+        'help:Show chaos help'
+    )
+
+    local -a chaos_presets
+    chaos_presets=(
+        'slow-network:200ms latency spikes at 10% probability'
+        'unstable-cluster:5% errors + 5% 2s latency spikes'
+        'packet-loss:15% connection errors'
     )
 
     local -a config_commands
@@ -93,6 +111,28 @@ _kubeport() {
                                 ;;
                             remove)
                                 # Could complete with service names from config
+                                ;;
+                        esac
+                    fi
+                    ;;
+                chaos)
+                    if (( CURRENT == 3 )); then
+                        _describe -t commands 'chaos subcommands' chaos_commands
+                    else
+                        case $words[3] in
+                            set|enable|disable|reset)
+                                _arguments \
+                                    '--all[Target all services]' \
+                                    '--error-rate[Error rate (0.0-1.0)]:rate:' \
+                                    '--latency[Latency spike duration]:duration:' \
+                                    '--spike-prob[Spike probability (0.0-1.0)]:prob:'
+                                ;;
+                            preset)
+                                if (( CURRENT == 4 )); then
+                                    _describe -t presets 'chaos presets' chaos_presets
+                                else
+                                    _arguments '--all[Target all services]'
+                                fi
                                 ;;
                         esac
                     fi

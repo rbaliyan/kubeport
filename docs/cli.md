@@ -211,6 +211,57 @@ kubeport instances --json    # JSON output
 
 Each row shows the PID, uptime, version, gRPC endpoint (Unix socket or TCP address), API key hint, and config file path. A detail block below the table includes the full paths to the PID file and log file for each instance.
 
+### `kubeport chaos`
+
+Mutate chaos engineering settings on live tunnels without restarting or reloading the daemon. Changes apply immediately via an atomic pointer swap — active connections are not interrupted.
+
+```bash
+# Apply explicit params to one or more services
+kubeport chaos set postgres --error-rate 0.05
+kubeport chaos set postgres --latency 200ms --spike-prob 0.1
+
+# Apply a named preset
+kubeport chaos preset slow-network postgres redis
+kubeport chaos preset unstable-cluster --all
+
+# Enable / disable without changing params
+kubeport chaos enable postgres
+kubeport chaos disable --all
+
+# Revert to config-defined settings
+kubeport chaos reset postgres
+kubeport chaos reset --all
+```
+
+#### `chaos set`
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--error-rate` | `-e` | Fraction of writes that fail (0.0–1.0) |
+| `--latency` | `-l` | Latency spike duration (Go duration, e.g. `500ms`) |
+| `--spike-prob` | `-p` | Probability of a latency spike per write (0.0–1.0); defaults to `1.0` when `--latency` is given without an explicit probability |
+| `--all` | | Target all forwarded services |
+
+#### `chaos preset`
+
+```bash
+kubeport chaos preset <name> [<service>...] [--all]
+```
+
+| Preset | Effect |
+|--------|--------|
+| `slow-network` | 200 ms latency spikes at 10% probability |
+| `unstable-cluster` | 5% errors + 5% probability of 2 s latency spikes |
+| `packet-loss` | 15% connection errors |
+
+#### `chaos enable` / `chaos disable`
+
+Enable or disable chaos injection for the given services using their current parameters. Does not change the underlying config or override values.
+
+#### `chaos reset`
+
+Revert to the chaos settings defined in the config file (discards any runtime override set via `chaos set` or `chaos preset`).
+
 ### `kubeport version`
 
 Print the version.

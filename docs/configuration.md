@@ -140,6 +140,8 @@ The `chaos` section configures fault injection for testing resilience. Can be se
 
 Per-service `chaos` settings fully override the global settings when `enabled` is set. When `enabled` is omitted, the global settings are used. Unlike `network`, chaos does not field-by-field merge.
 
+**Runtime mutations:** Use `kubeport chaos` to change chaos settings on live tunnels without restarting the daemon. Overrides apply via atomic pointer swap — no reconnect needed. Use `kubeport chaos reset` to revert to the config-defined settings.
+
 ### Proxy Server Fields
 
 The `socks` and `http_proxy` sections configure the built-in proxy servers. See [Proxy Servers](proxy.md) for usage details.
