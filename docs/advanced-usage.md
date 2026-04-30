@@ -203,6 +203,34 @@ kubeport remove "Debug Service"
 
 This is useful for team workflows where the base config is checked into the repo and individuals add their own services on top.
 
+## High-Concurrency Forwards
+
+By default, kubeport uses `mux` mode: one shared SPDY connection per port-forward, with all client TCP connections multiplexed over it. Because the Kubernetes API server caps SPDY at 256 streams and each client uses two streams, this limits you to roughly 128 simultaneous clients per forward.
+
+For workloads that exceed this limit — Redis Sentinel (pub/sub + polling + pooled connections to every sentinel), database connection pools, or heavily parallelised test suites — switch to `isolated` mode:
+
+```yaml
+services:
+  - name: Redis Sentinel
+    service: redis-sentinel
+    local_port: 26379
+    remote_port: 26379
+    connection_mode: isolated
+```
+
+In `isolated` mode each client TCP connection gets its own dedicated SPDY tunnel. There is no shared stream cap; concurrency is bounded only by available file descriptors and API server capacity. The only extra cost is one additional TLS handshake per client connection, which is typically negligible compared to the connection setup overhead.
+
+To apply `isolated` mode globally as the default for every service in a config:
+
+```yaml
+supervisor:
+  connection_mode: isolated
+```
+
+A per-service `connection_mode` always overrides the supervisor-level default.
+
+`isolated` mode is not compatible with `ports: all` / multi-port forwards. See [Connection Modes](configuration.md#connection-modes) for the full comparison.
+
 ## Live Chaos Mutation
 
 Chaos settings can be changed on running tunnels without restarting the daemon or reloading config. Changes take effect immediately via atomic pointer swap — active connections continue uninterrupted.

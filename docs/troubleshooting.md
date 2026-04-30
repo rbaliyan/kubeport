@@ -30,6 +30,32 @@ Common issues and their solutions when using kubeport.
          manager:starting: ping -c1 -W2 your-cluster-api-host
    ```
 
+### Connections stall or fail above ~100 simultaneous clients
+
+**Symptoms:** More than ~100 concurrent connections to the same forward start stalling or failing. The daemon log shows `create stream` errors or `stream limit reached`. The forward itself stays up.
+
+**Cause:** The default `mux` mode multiplexes all client connections over a single SPDY tunnel. The Kubernetes API server enforces a hard cap of 256 streams per SPDY connection, which translates to approximately 128 simultaneous clients (each client uses two streams: one data, one error). Workloads like Redis Sentinel — which hold pub/sub connections, polling connections, and connection pools to every sentinel at once — can easily exceed this cap.
+
+**Fix:** Set `connection_mode: isolated` on the affected service. This gives each client its own SPDY tunnel, removing the cap entirely at the cost of one extra TLS handshake per client:
+
+```yaml
+services:
+  - name: Redis Sentinel
+    service: redis-sentinel
+    local_port: 26379
+    remote_port: 26379
+    connection_mode: isolated
+```
+
+To apply this globally to all services, set it in the supervisor section:
+
+```yaml
+supervisor:
+  connection_mode: isolated
+```
+
+See [Connection Modes](configuration.md#connection-modes) for a full comparison.
+
 ### "unable to create SPDY connection" or transport errors
 
 The Kubernetes API server must be reachable and your kubeconfig credentials must be valid.

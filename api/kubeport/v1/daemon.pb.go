@@ -327,6 +327,7 @@ type ForwardStatusProto struct {
 	ConnBytesOut          int64                  `protobuf:"varint,21,opt,name=conn_bytes_out,json=connBytesOut,proto3" json:"conn_bytes_out,omitempty"`                             // Bytes sent since last reconnect
 	Lazy                  bool                   `protobuf:"varint,22,opt,name=lazy,proto3" json:"lazy,omitempty"`                                                                   // true when service is configured in lazy mode
 	TunnelOpen            bool                   `protobuf:"varint,23,opt,name=tunnel_open,json=tunnelOpen,proto3" json:"tunnel_open,omitempty"`                                     // lazy mode: true when the SPDY tunnel is currently open
+	ConnectionMode        string                 `protobuf:"bytes,24,opt,name=connection_mode,json=connectionMode,proto3" json:"connection_mode,omitempty"`                          // "mux" or "isolated"
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -520,6 +521,13 @@ func (x *ForwardStatusProto) GetTunnelOpen() bool {
 		return x.TunnelOpen
 	}
 	return false
+}
+
+func (x *ForwardStatusProto) GetConnectionMode() string {
+	if x != nil {
+		return x.ConnectionMode
+	}
+	return ""
 }
 
 type StatusRequest struct {
@@ -1511,7 +1519,7 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"port_names\x18\x02 \x03(\tR\tportNames\x12#\n" +
 	"\rexclude_ports\x18\x03 \x03(\tR\fexcludePorts\x12*\n" +
-	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xd0\a\n" +
+	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xf9\a\n" +
 	"\x12ForwardStatusProto\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.kubeport.v1.ForwardStateR\x05state\x12\x14\n" +
@@ -1540,7 +1548,8 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x0econn_bytes_out\x18\x15 \x01(\x03R\fconnBytesOut\x12\x12\n" +
 	"\x04lazy\x18\x16 \x01(\bR\x04lazy\x12\x1f\n" +
 	"\vtunnel_open\x18\x17 \x01(\bR\n" +
-	"tunnelOpen\"\x0f\n" +
+	"tunnelOpen\x12'\n" +
+	"\x0fconnection_mode\x18\x18 \x01(\tR\x0econnectionMode\"\x0f\n" +
 	"\rStatusRequest\"\x9f\x01\n" +
 	"\x0eStatusResponse\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12\x1c\n" +

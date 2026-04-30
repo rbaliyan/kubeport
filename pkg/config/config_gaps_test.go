@@ -630,3 +630,79 @@ services:
 		t.Errorf("LocalPort: want 18080, got %d", sels[0].LocalPort)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ValidateService — connection_mode
+// ---------------------------------------------------------------------------
+
+func TestValidateService_ConnectionMode_Empty(t *testing.T) {
+	svc := ServiceConfig{Name: "api", Service: "api-svc", RemotePort: 80}
+	if err := ValidateService(svc); err != nil {
+		t.Fatalf("empty connection_mode should be valid: %v", err)
+	}
+}
+
+func TestValidateService_ConnectionMode_Mux(t *testing.T) {
+	svc := ServiceConfig{Name: "api", Service: "api-svc", RemotePort: 80, ConnectionMode: "mux"}
+	if err := ValidateService(svc); err != nil {
+		t.Fatalf("connection_mode=mux should be valid: %v", err)
+	}
+}
+
+func TestValidateService_ConnectionMode_Isolated(t *testing.T) {
+	svc := ServiceConfig{Name: "api", Service: "api-svc", RemotePort: 80, ConnectionMode: "isolated"}
+	if err := ValidateService(svc); err != nil {
+		t.Fatalf("connection_mode=isolated should be valid: %v", err)
+	}
+}
+
+func TestValidateService_ConnectionMode_Invalid(t *testing.T) {
+	svc := ServiceConfig{Name: "api", Service: "api-svc", RemotePort: 80, ConnectionMode: "streaming"}
+	err := ValidateService(svc)
+	if err == nil {
+		t.Fatal("expected error for unknown connection_mode")
+	}
+	if !strings.Contains(err.Error(), "invalid connection_mode") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestValidateService_ConnectionMode_IsolatedWithMultiPort(t *testing.T) {
+	svc := ServiceConfig{
+		Name:           "api",
+		Service:        "api-svc",
+		ConnectionMode: "isolated",
+		Ports:          PortsConfig{All: true},
+	}
+	err := ValidateService(svc)
+	if err == nil {
+		t.Fatal("expected error for isolated mode with multi-port")
+	}
+	if !strings.Contains(err.Error(), "not supported with multi-port") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// connection_mode TOML round-trip
+// ---------------------------------------------------------------------------
+
+func TestTOML_ConnectionMode_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "kubeport.toml")
+	cfg := &Config{
+		Services: []ServiceConfig{
+			{Name: "redis", Service: "redis-svc", RemotePort: 6379, ConnectionMode: "isolated"},
+		},
+	}
+	if err := cfg.SaveTo(path, FormatTOML); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	loaded, err := Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.Services[0].ConnectionMode != "isolated" {
+		t.Errorf("ConnectionMode: want isolated, got %q", loaded.Services[0].ConnectionMode)
+	}
+}

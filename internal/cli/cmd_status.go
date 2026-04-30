@@ -56,6 +56,7 @@ type forwardStatusOutput struct {
 	ChaosSpikesInjected int64  `json:"chaos_spikes_injected,omitempty"`
 	Lazy               bool   `json:"lazy,omitempty"`
 	TunnelOpen         bool   `json:"tunnel_open,omitempty"`
+	ConnectionMode     string `json:"connection_mode,omitempty"`
 }
 
 func (a *app) cmdStatus() {
@@ -254,6 +255,7 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 	}
 	out.Lazy = fw.Lazy
 	out.TunnelOpen = fw.TunnelOpen
+	out.ConnectionMode = fw.ConnectionMode
 	return out
 }
 

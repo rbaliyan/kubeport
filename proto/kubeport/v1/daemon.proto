@@ -66,6 +66,7 @@ message ForwardStatusProto {
   int64 conn_bytes_out = 21;             // Bytes sent since last reconnect
   bool lazy = 22;                        // true when service is configured in lazy mode
   bool tunnel_open = 23;                 // lazy mode: true when the SPDY tunnel is currently open
+  string connection_mode = 24;           // effective connection mode: "mux" (one shared SPDY tunnel, ~128 client cap) or "isolated" (per-client SPDY tunnel, no cap)
 }
 
 message StatusRequest {}

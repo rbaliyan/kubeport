@@ -5,6 +5,7 @@ All notable changes to kubeport are documented here. This project uses [semantic
 ## [Unreleased]
 
 ### Added
+- `connection_mode` service and supervisor field (`"mux"` default, `"isolated"`): in `isolated` mode each incoming TCP connection gets its own dedicated SPDY tunnel to the API server, removing the ~128-concurrent-client limit imposed by the SPDY 256-stream cap. Can be set per-service or globally via `supervisor.connection_mode`; per-service setting takes precedence. Not supported with `ports: all` / multi-port mode.
 - `kubeport chaos` command for live chaos mutation without reload: `set`, `enable`, `disable`, `preset`, and `reset` subcommands
 - Built-in chaos presets: `slow-network` (200ms latency spikes, 10% probability), `unstable-cluster` (5% errors + 5% 2s spikes), `packet-loss` (15% connection errors)
 - `UpdateChaos` gRPC RPC — chaos overrides take effect on active tunnels via atomic pointer swap; no reconnect needed

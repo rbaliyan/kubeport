@@ -88,7 +88,22 @@ func mergeSupervisor(base, override SupervisorConfig) SupervisorConfig {
 	if override.MaxConnectionAge != "" {
 		result.MaxConnectionAge = override.MaxConnectionAge
 	}
+	if override.ConnectionMode != "" {
+		result.ConnectionMode = override.ConnectionMode
+	}
 	return result
+}
+
+// ResolveConnectionMode returns the effective connection mode for a service.
+// Per-service setting overrides the global supervisor default; falls back to "mux".
+func ResolveConnectionMode(globalSupervisor SupervisorConfig, perService ServiceConfig) string {
+	if perService.ConnectionMode != "" {
+		return perService.ConnectionMode
+	}
+	if globalSupervisor.ConnectionMode != "" {
+		return globalSupervisor.ConnectionMode
+	}
+	return "mux"
 }
 
 // mergeServices merges two service lists. For services with the same name,

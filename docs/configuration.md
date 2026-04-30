@@ -82,6 +82,7 @@ Each entry in `services` defines one or more port-forwards. There are two modes:
 | `remote_port` | int | yes | Port on the pod to forward to |
 | `namespace` | string | no | Override the top-level namespace for this service |
 | `lazy` | bool | no | Defer opening the tunnel until the first client connection arrives |
+| `connection_mode` | string | no | `"mux"` (default) or `"isolated"` — see [Connection Modes](#connection-modes). Inherits from `supervisor.connection_mode`. Not compatible with multi-port mode. |
 | `network` | object | no | Per-service network simulation (overrides global `network`) |
 | `chaos` | object | no | Per-service chaos injection (overrides global `chaos`) |
 
@@ -114,6 +115,34 @@ The `supervisor` section tunes restart and health-check behavior. All fields are
 | `backoff_initial` | `1s` | Initial delay between restarts |
 | `backoff_max` | `30s` | Maximum delay between restarts |
 | `max_connection_age` | `0` (disabled) | Maximum lifetime of a port-forward before proactive reconnect |
+| `connection_mode` | `"mux"` | Default connection mode for all services. Per-service `connection_mode` overrides this. See [Connection Modes](#connection-modes). |
+
+### Connection Modes
+
+The `connection_mode` field controls how client TCP connections are multiplexed over SPDY tunnels to the Kubernetes API server.
+
+| Mode | SPDY tunnels | Concurrent client cap | Extra cost |
+|------|-------------|----------------------|------------|
+| `mux` (default) | One shared tunnel per forward | ~128 (SPDY 256-stream hard limit ÷ 2 streams per client) | None |
+| `isolated` | One tunnel per client connection | Unlimited | One extra TLS handshake per client |
+
+**When to use `isolated`:** If your workload sends more than ~100 simultaneous connections through a single forward (for example, a Redis Sentinel setup that maintains pub/sub connections, polling connections, and connection pools to multiple sentinels), the default `mux` mode will eventually hit the SPDY 256-stream cap and start dropping connections with `create stream` errors. Switch that forward to `isolated` mode to remove the cap entirely.
+
+`isolated` mode is not compatible with `ports: all` / multi-port mode.
+
+```yaml
+# Per-service: isolate a high-concurrency forward
+services:
+  - name: Redis Sentinel
+    service: redis-sentinel
+    local_port: 26379
+    remote_port: 26379
+    connection_mode: isolated
+
+# Global default: all services use isolated unless overridden
+supervisor:
+  connection_mode: isolated
+```
 
 ### Network Simulation Fields
 
