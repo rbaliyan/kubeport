@@ -693,3 +693,57 @@ namespace: cross-format
 		t.Errorf("Namespace: want cross-format, got %q", cfg.Namespace)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ResolveConnectionMode
+// ---------------------------------------------------------------------------
+
+func TestResolveConnectionMode_DefaultsMux(t *testing.T) {
+	got := ResolveConnectionMode(SupervisorConfig{}, ServiceConfig{})
+	if got != "mux" {
+		t.Fatalf("want mux, got %q", got)
+	}
+}
+
+func TestResolveConnectionMode_PerServiceOverridesGlobal(t *testing.T) {
+	global := SupervisorConfig{ConnectionMode: "mux"}
+	svc := ServiceConfig{ConnectionMode: "isolated"}
+	got := ResolveConnectionMode(global, svc)
+	if got != "isolated" {
+		t.Fatalf("want isolated, got %q", got)
+	}
+}
+
+func TestResolveConnectionMode_GlobalUsedWhenPerServiceEmpty(t *testing.T) {
+	global := SupervisorConfig{ConnectionMode: "isolated"}
+	got := ResolveConnectionMode(global, ServiceConfig{})
+	if got != "isolated" {
+		t.Fatalf("want isolated, got %q", got)
+	}
+}
+
+func TestResolveConnectionMode_PerServiceMuxOverridesGlobalIsolated(t *testing.T) {
+	global := SupervisorConfig{ConnectionMode: "isolated"}
+	svc := ServiceConfig{ConnectionMode: "mux"}
+	got := ResolveConnectionMode(global, svc)
+	if got != "mux" {
+		t.Fatalf("want mux, got %q", got)
+	}
+}
+
+func TestMergeSupervisor_ConnectionMode(t *testing.T) {
+	base := SupervisorConfig{ConnectionMode: "mux"}
+	override := SupervisorConfig{ConnectionMode: "isolated"}
+	got := mergeSupervisor(base, override)
+	if got.ConnectionMode != "isolated" {
+		t.Fatalf("want isolated, got %q", got.ConnectionMode)
+	}
+}
+
+func TestMergeSupervisor_ConnectionMode_InheritedFromBase(t *testing.T) {
+	base := SupervisorConfig{ConnectionMode: "isolated"}
+	got := mergeSupervisor(base, SupervisorConfig{})
+	if got.ConnectionMode != "isolated" {
+		t.Fatalf("want isolated inherited from base, got %q", got.ConnectionMode)
+	}
+}

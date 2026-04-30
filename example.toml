@@ -114,6 +114,17 @@ remote_port = 9090
 # probability = 0.05
 # duration = "3s"
 
+# High-concurrency forward — isolated mode gives each client its own SPDY tunnel,
+# removing the ~128-client cap of the default mux mode.
+# Use for services like Redis Sentinel that hold many simultaneous connections.
+# Not compatible with ports = "all" / multi-port mode.
+# [[services]]
+# name = "Redis Sentinel"
+# service = "redis-sentinel"
+# local_port = 26379
+# remote_port = 26379
+# connection_mode = "isolated"
+
 # Multi-port: all except metrics, with offset
 # [[services]]
 # name = "Platform"
@@ -131,6 +142,7 @@ remote_port = 9090
 # backoff_initial = "1s"
 # backoff_max = "30s"
 # max_connection_age = "30m"
+# connection_mode = "mux"    # "mux" (default) or "isolated"; per-service connection_mode overrides this
 
 # Lifecycle hooks — run actions on port-forward events
 # [[hooks]]

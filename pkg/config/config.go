@@ -199,6 +199,13 @@ type ServiceConfig struct {
 	Network         NetworkConfig `yaml:"network,omitempty" toml:"network,omitempty"`
 	Chaos           ChaosConfig   `yaml:"chaos,omitempty" toml:"chaos,omitempty"`
 	Lazy            bool          `yaml:"lazy,omitempty" toml:"lazy,omitempty"`
+	// ConnectionMode controls SPDY tunnel sharing per forward.
+	// "mux" (default): one shared SPDY tunnel per forward; all client connections
+	// are multiplexed over it, capped at ~128 concurrent clients (SPDY 256-stream limit).
+	// "isolated": each client TCP connection gets its own SPDY tunnel; no concurrency cap,
+	// at the cost of one extra TLS handshake per client. Not supported with multi-port mode.
+	// If empty, inherits from supervisor.connection_mode.
+	ConnectionMode string `yaml:"connection_mode,omitempty" toml:"connection_mode,omitempty"`
 	ParentName      string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 	PortName        string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 }
@@ -255,6 +262,7 @@ type SupervisorConfig struct {
 	BackoffInitial       string `yaml:"backoff_initial,omitempty" toml:"backoff_initial,omitempty"`               // e.g., "1s"
 	BackoffMax           string `yaml:"backoff_max,omitempty" toml:"backoff_max,omitempty"`                       // e.g., "30s"
 	MaxConnectionAge     string `yaml:"max_connection_age,omitempty" toml:"max_connection_age,omitempty"`         // e.g., "30m"; 0 = disabled
+	ConnectionMode       string `yaml:"connection_mode,omitempty" toml:"connection_mode,omitempty"`               // Default connection mode for all services: "mux" (default) or "isolated". Per-service connection_mode overrides this.
 }
 
 // ProxyServerConfig holds optional proxy server configuration shared by SOCKS5
@@ -806,6 +814,8 @@ type serviceConfigTOML struct {
 	LocalPortOffset int           `toml:"local_port_offset,omitempty"`
 	Network         NetworkConfig `toml:"network,omitempty"`
 	Chaos           ChaosConfig   `toml:"chaos,omitempty"`
+	Lazy            bool          `toml:"lazy,omitempty"`
+	ConnectionMode  string        `toml:"connection_mode,omitempty"`
 }
 
 // configTOML is a TOML-specific intermediate struct for decoding.
@@ -862,6 +872,8 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 			LocalPortOffset: rs.LocalPortOffset,
 			Network:         rs.Network,
 			Chaos:           rs.Chaos,
+			Lazy:            rs.Lazy,
+			ConnectionMode:  rs.ConnectionMode,
 		}
 		if rs.Ports != nil {
 			ports, err := parsePortsFromRaw(rs.Ports)
@@ -905,6 +917,8 @@ func marshalTOML(c *Config) ([]byte, error) {
 			LocalPortOffset: svc.LocalPortOffset,
 			Network:         svc.Network,
 			Chaos:           svc.Chaos,
+			Lazy:            svc.Lazy,
+			ConnectionMode:  svc.ConnectionMode,
 		}
 		if svc.Ports.All {
 			raw.Services[i].Ports = "all"
@@ -1133,6 +1147,13 @@ func ValidateService(svc ServiceConfig) error {
 		if _, err := svc.Chaos.Parse(); err != nil {
 			return fmt.Errorf("service %q: chaos: %w", svc.Name, err)
 		}
+	}
+
+	if svc.ConnectionMode != "" && svc.ConnectionMode != "mux" && svc.ConnectionMode != "isolated" {
+		return fmt.Errorf("service %q: invalid connection_mode %q (use \"mux\" or \"isolated\")", svc.Name, svc.ConnectionMode)
+	}
+	if svc.ConnectionMode == "isolated" && svc.IsMultiPort() {
+		return fmt.Errorf("service %q: connection_mode \"isolated\" is not supported with multi-port mode", svc.Name)
 	}
 
 	return nil

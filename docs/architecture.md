@@ -36,7 +36,7 @@ The core engine. Manages one goroutine per port-forward with:
 
 - **Service resolution** — translates Kubernetes Service names into running pods using label selectors. Handles named `targetPort` resolution from pod container specs.
 - **Multi-port expansion** — when a service is configured with `ports: all` or a list of port names, the manager queries the Kubernetes API for the service's ports and spawns an independent supervised goroutine for each. Each expanded forward is named `parent/portname` (e.g., `my-api/http`) and has its own health checks, restart tracking, and status entry. A parent-child map tracks the relationship for removal and reload.
-- **Port-forward lifecycle** — creates SPDY connections via client-go (the same library kubectl uses), waits for readiness, and extracts the actual local port.
+- **Port-forward lifecycle** — creates SPDY connections via client-go (the same library kubectl uses), waits for readiness, and extracts the actual local port. The connection mode (see below) determines whether SPDY connections are shared or per-client.
 - **Health checks** — periodic TCP probes to verify the forward is alive. After a configurable number of consecutive failures, the forward is restarted.
 - **Auto-restart with backoff** — exponential backoff from 1s to 30s with 25% jitter. Backoff resets if a connection stays healthy for more than 30 seconds.
 - **Thread-safe status reporting** — all forward states are tracked and queryable at any time.
@@ -84,14 +84,24 @@ Each entry is keyed by process PID. Stale entries (whose process is no longer al
 
 Provides gRPC unary interceptors for API key authentication (Bearer token). Used by both the daemon server (server interceptor) and clients connecting over TCP (client interceptor).
 
+## Connection Modes
+
+kubeport supports two SPDY tunnel strategies, selected per-service via `connection_mode` (or globally via `supervisor.connection_mode`):
+
+**`mux` (default)** — a single SPDY connection is opened per port-forward and shared across all client TCP connections. Each client multiplexes over that connection using two SPDY streams (one data, one error). The Kubernetes API server enforces a hard cap of 256 streams per SPDY connection, which limits this mode to approximately 128 simultaneous clients per forward. This is sufficient for most use cases.
+
+**`isolated`** — each incoming client TCP connection gets its own dedicated SPDY connection to the API server. There is no shared stream cap, so concurrency is bounded only by available file descriptors and API server resources. The trade-off is one extra TLS handshake per client connection. This mode is not compatible with `ports: all` / multi-port forwards.
+
+Use `isolated` mode for services that sustain more than ~100 concurrent connections (for example, Redis Sentinel, which opens pub/sub connections, polling connections, and connection pools to every sentinel simultaneously).
+
 ## How a Port-Forward Works
 
 1. **Resolve target** — If a Service is specified, kubeport fetches the Service object, extracts its pod selector, lists matching Running pods, and resolves the service port to a container port (including named targetPort lookup). For multi-port services, this step also queries all service ports and expands each into a separate forward.
-2. **Establish connection** — Creates an SPDY transport and dials the Kubernetes API server to set up a port-forward tunnel to the target pod.
+2. **Establish connection** — Creates an SPDY transport and dials the Kubernetes API server to set up a port-forward tunnel to the target pod. In `mux` mode this tunnel is shared; in `isolated` mode a fresh tunnel is dialed per client.
 3. **Wait for ready** — Blocks until the tunnel is established or the ready timeout expires. Extracts the actual local port (important when using dynamic port `0`).
-4. **Health-check loop** — Periodically opens a TCP connection to `localhost:<port>` to verify the tunnel is alive.
-5. **Handle failure** — If health checks fail or the tunnel drops, increments the restart counter, applies backoff delay (with jitter), and loops back to step 1.
-6. **Backoff reset** — If a connection stays healthy for 30+ seconds, the backoff resets to the initial value.
+4. **Health-check loop** — Periodically opens a TCP connection to `localhost:<port>` to verify the tunnel is alive. In `mux` mode, stream creation failures on the shared SPDY connection also count as health-check failures; in `isolated` mode each client handles its own failure without affecting others.
+5. **Handle failure** — If health checks fail or the tunnel drops, increments the restart counter, applies backoff delay (with jitter), and loops back to step 1. In `isolated` mode, individual client failures cause that client's connection to be dropped rather than triggering a full restart.
+6. **Backoff reset** — If a connection stays healthy for 30+ seconds with no SPDY stream errors, the backoff resets to the initial value.
 
 ## Design Decisions
 

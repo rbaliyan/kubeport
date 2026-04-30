@@ -171,13 +171,14 @@ func (m *Manager) runLazyPortForward(ctx context.Context, pf *portForward) error
 		}
 
 		id := int(requestID.Add(1))
-		go lazyForwardConn(fwCtx, tcpConn, spdyConn, targetPort, id, m.logger, pf.svc.Name)
+		go spdyForwardConn(fwCtx, tcpConn, spdyConn, targetPort, id, m.logger, pf.svc.Name)
 	}
 }
 
-// lazyForwardConn forwards one TCP connection through an existing SPDY connection,
+// spdyForwardConn forwards one TCP connection through an existing SPDY connection,
 // following the k8s port-forward protocol: one data stream + one error stream per connection.
-func lazyForwardConn(ctx context.Context, tcpConn net.Conn, spdyConn httpstream.Connection, remotePort, requestID int, logger *slog.Logger, svcName string) {
+// Used by both lazy mode (shared SPDY connection) and isolated mode (per-client SPDY connection).
+func spdyForwardConn(ctx context.Context, tcpConn net.Conn, spdyConn httpstream.Connection, remotePort, requestID int, logger *slog.Logger, svcName string) {
 	defer func() { _ = tcpConn.Close() }()
 
 	portStr := strconv.Itoa(remotePort)
@@ -190,7 +191,7 @@ func lazyForwardConn(ctx context.Context, tcpConn net.Conn, spdyConn httpstream.
 	errHeaders.Set(corev1.PortForwardRequestIDHeader, idStr)
 	errorStream, err := spdyConn.CreateStream(errHeaders)
 	if err != nil {
-		logger.Warn("lazy: create error stream failed", "service", svcName, "error", err)
+		logger.Warn("spdy: create error stream failed", "service", svcName, "error", err)
 		return
 	}
 	_ = errorStream.Close() // signal to server: we won't write here
@@ -214,7 +215,7 @@ func lazyForwardConn(ctx context.Context, tcpConn net.Conn, spdyConn httpstream.
 	dataHeaders.Set(corev1.PortForwardRequestIDHeader, idStr)
 	dataStream, err := spdyConn.CreateStream(dataHeaders)
 	if err != nil {
-		logger.Warn("lazy: create data stream failed", "service", svcName, "error", err)
+		logger.Warn("spdy: create data stream failed", "service", svcName, "error", err)
 		return
 	}
 	defer spdyConn.RemoveStreams(dataStream)
@@ -238,7 +239,7 @@ func lazyForwardConn(ctx context.Context, tcpConn net.Conn, spdyConn httpstream.
 	case <-ctx.Done():
 	case remoteErr := <-remoteErrCh:
 		if remoteErr != nil {
-			logger.Warn("lazy: remote forwarding error", "service", svcName, "error", remoteErr)
+			logger.Warn("spdy: remote forwarding error", "service", svcName, "error", remoteErr)
 		}
 	}
 }

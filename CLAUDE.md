@@ -47,7 +47,9 @@ The daemon listens on a Unix socket at `~/.config/kubeport/<instance-id>.sock`. 
 
 `ports: all` in config expands into separate supervised `portForward` instances named `parent/portname`, tracked via `children` map.
 
-**Lazy mode** (`lazy.go`): binds the local port but defers opening the SPDY tunnel until the first client connection arrives.
+**Connection mode dispatch** (`superviseSingle` in `manager.go`): the per-forward runner is selected in priority order — `isolated > lazy > mux`. `connection_mode: isolated` (`isolated.go`) is checked first; if set, `runIsolatedPortForward` is called regardless of `lazy`. Each client TCP connection gets its own SPDY tunnel; no shared stream cap. `ResolveConnectionMode` in `merge.go` is the single resolution point (per-service overrides supervisor default, falls back to `"mux"`). Isolated mode is incompatible with multi-port mode and is validated in `ValidateService`.
+
+**Lazy mode** (`lazy.go`): binds the local port but defers opening the SPDY tunnel until the first client connection arrives. Shares `spdyForwardConn` with isolated mode.
 
 **Network/chaos simulation** (`throttle.go`, `chaos.go`): injected at the TCP relay layer between the local port and the SPDY tunnel.
 

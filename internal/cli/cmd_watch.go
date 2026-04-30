@@ -334,6 +334,9 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 			_, _ = fmt.Fprint(w, " [lazy: no traffic yet]")
 		}
 	}
+	if fw.ConnectionMode == "isolated" {
+		_, _ = fmt.Fprint(w, " [isolated]")
+	}
 
 	if fw.Error != "" {
 		_, _ = fmt.Fprintf(w, "\n         %sERROR: %s%s", colorRed, fw.Error, colorReset)

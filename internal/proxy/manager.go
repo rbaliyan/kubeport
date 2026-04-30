@@ -82,8 +82,9 @@ type ForwardStatus struct {
 	ChaosSpikeDuration        time.Duration // Latency spike duration
 	ChaosErrorsInjected       int64         // Count of errors injected
 	ChaosSpikesInjected       int64         // Count of latency spikes injected
-	Lazy       bool // true when configured in lazy mode
-	TunnelOpen bool // lazy mode: true when the SPDY tunnel to k8s is currently open
+	Lazy           bool   // true when configured in lazy mode
+	TunnelOpen     bool   // lazy mode: true when the SPDY tunnel to k8s is currently open
+	ConnectionMode string // effective connection mode: "mux" (shared SPDY tunnel) or "isolated" (per-client SPDY tunnel)
 }
 
 type portForward struct {
@@ -97,9 +98,10 @@ type portForward struct {
 	actualPort int // Actual port assigned by OS (relevant when local_port is 0)
 	nextRetry  time.Time
 	counter    byteCounter // cumulative bytes across all connection attempts
-	currentPod string      // name of the pod currently being forwarded to
-	preemptCh  chan string  // carries replacement pod name for predictive reconnection
-	tunnelOpen bool        // lazy mode: true when SPDY tunnel is active
+	currentPod        string     // name of the pod currently being forwarded to
+	currentTargetPort int        // target port for currentPod; used by isolated mode
+	preemptCh         chan string // carries replacement pod name for predictive reconnection
+	tunnelOpen        bool       // lazy mode: true when SPDY tunnel is active
 	mu         sync.Mutex
 
 	// chaosOverride holds the current effective chaos config. It is loaded from
@@ -822,9 +824,12 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 
 		startTime := time.Now()
 		var err error
-		if svc.Lazy {
+		switch {
+		case resolveConnectionMode(m.cfg, svc) == "isolated":
+			err = m.runIsolatedPortForward(ctx, pf)
+		case svc.Lazy:
 			err = m.runLazyPortForward(ctx, pf)
-		} else {
+		default:
 			err = m.runPortForward(ctx, pf)
 		}
 		duration := time.Since(startTime)
@@ -891,8 +896,12 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 			return
 		}
 
-		// Reset backoff if connection lasted long enough
-		if duration > 30*time.Second {
+		// Reset backoff only if the connection was genuinely healthy: lasted long
+		// enough AND had no SPDY stream creation failures. The SPDY stream creation
+		// timeout in client-go is 30s, so a connection that fails due to SPDY
+		// degradation always appears to last ~31s, which would incorrectly reset
+		// the backoff and prevent exponential retry from taking effect.
+		if duration > 30*time.Second && pf.counter.streamErrors.Load() == 0 {
 			backoff = m.backoffInitial
 		}
 
@@ -915,6 +924,12 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 	}
 }
 
+// runPortForward is the default (mux) port-forward runner. It dials one SPDY
+// connection to the k8s API server and multiplexes all client TCP connections
+// over that single connection. Each client consumes two SPDY streams (data +
+// error), so the effective concurrency cap is ~128 simultaneous clients
+// (SPDY hard limit of 256 streams). Use runIsolatedPortForward when you need
+// more than ~128 concurrent client connections.
 func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 	// Create a cancellable context for this specific port-forward attempt.
 	// fwCancel is idempotent and safe to call from multiple goroutines,
@@ -1476,6 +1491,7 @@ func (m *Manager) Status() []ForwardStatus {
 			ChaosSpikesInjected:   pf.counter.chaos.spikesInjected.Load(),
 			Lazy:                  pf.svc.Lazy,
 			TunnelOpen:            pf.tunnelOpen,
+			ConnectionMode:        resolveConnectionMode(m.cfg, pf.svc),
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)
@@ -1533,6 +1549,15 @@ func (m *Manager) ResetChaos(services []string) (updated, notFound []string) {
 		updated = append(updated, name)
 	}
 	return updated, notFound
+}
+
+// resolveConnectionMode returns the effective connection mode for a service,
+// safely handling a nil config (returns "mux").
+func resolveConnectionMode(cfg *config.Config, svc config.ServiceConfig) string {
+	if cfg == nil {
+		return "mux"
+	}
+	return config.ResolveConnectionMode(cfg.Supervisor, svc)
 }
 
 // resolveChaosTargets returns a map of service-name → found for all targets.

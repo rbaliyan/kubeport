@@ -24,11 +24,12 @@ type byteCounter struct {
 // countingDialer wraps an httpstream.Dialer to count bytes on all streams
 // and optionally apply network simulation (latency/jitter/bandwidth) and chaos injection.
 type countingDialer struct {
-	dialer     httpstream.Dialer
-	counter    *byteCounter
-	networkCfg config.ParsedNetworkConfig
-	chaosPtr   *atomic.Pointer[config.ParsedChaosConfig] // live pointer; always non-nil
-	ctx        context.Context
+	dialer         httpstream.Dialer
+	counter        *byteCounter
+	networkCfg     config.ParsedNetworkConfig
+	chaosPtr       *atomic.Pointer[config.ParsedChaosConfig] // live pointer; always non-nil
+	ctx            context.Context
+	skipConnReset  bool // isolated mode: don't reset per-connection counters on each Dial
 }
 
 func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, string, error) {
@@ -36,10 +37,13 @@ func (d *countingDialer) Dial(protocols ...string) (httpstream.Connection, strin
 	if err != nil {
 		return nil, proto, err
 	}
-	// Reset per-connection counters on fresh connection.
-	d.counter.streamErrors.Store(0)
-	d.counter.connBytesIn.Store(0)
-	d.counter.connBytesOut.Store(0)
+	// Reset per-connection counters on fresh connection (skipped in isolated mode
+	// where each client-level Dial would otherwise thrash the shared counter).
+	if !d.skipConnReset {
+		d.counter.streamErrors.Store(0)
+		d.counter.connBytesIn.Store(0)
+		d.counter.connBytesOut.Store(0)
+	}
 
 	cc := &countingConnection{conn: conn, counter: d.counter, ctx: d.ctx, chaosPtr: d.chaosPtr}
 	if d.networkCfg.IsEnabled() {

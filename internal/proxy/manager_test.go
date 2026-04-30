@@ -1128,3 +1128,128 @@ func TestStart_ContextCancellation_Cleanup(t *testing.T) {
 		}
 	}
 }
+
+func TestStatus_ConnectionMode_ReportedCorrectly(t *testing.T) {
+	cfg := &config.Config{
+		Supervisor: config.SupervisorConfig{ConnectionMode: "isolated"},
+	}
+	m := &Manager{
+		cfg: cfg,
+		forwards: map[string]*portForward{
+			"isolated-svc": {
+				svc: config.ServiceConfig{
+					Name:           "isolated-svc",
+					RemotePort:     80,
+					ConnectionMode: "isolated",
+				},
+				state:      StateRunning,
+				actualPort: 9090,
+			},
+			"mux-svc": {
+				svc: config.ServiceConfig{
+					Name:       "mux-svc",
+					RemotePort: 80,
+					// no ConnectionMode set; falls back to global supervisor "isolated"
+				},
+				state:      StateRunning,
+				actualPort: 9091,
+			},
+			"explicit-mux": {
+				svc: config.ServiceConfig{
+					Name:           "explicit-mux",
+					RemotePort:     80,
+					ConnectionMode: "mux",
+				},
+				state:      StateRunning,
+				actualPort: 9092,
+			},
+		},
+		order: []string{"isolated-svc", "mux-svc", "explicit-mux"},
+	}
+
+	byName := make(map[string]ForwardStatus)
+	for _, s := range m.Status() {
+		byName[s.Service.Name] = s
+	}
+
+	if byName["isolated-svc"].ConnectionMode != "isolated" {
+		t.Errorf("isolated-svc ConnectionMode: want isolated, got %q", byName["isolated-svc"].ConnectionMode)
+	}
+	if byName["mux-svc"].ConnectionMode != "isolated" {
+		t.Errorf("mux-svc ConnectionMode: want isolated (inherited from supervisor), got %q", byName["mux-svc"].ConnectionMode)
+	}
+	if byName["explicit-mux"].ConnectionMode != "mux" {
+		t.Errorf("explicit-mux ConnectionMode: want mux, got %q", byName["explicit-mux"].ConnectionMode)
+	}
+}
+
+func TestResolveConnectionMode_NilConfig(t *testing.T) {
+	// resolveConnectionMode must not panic when cfg is nil.
+	got := resolveConnectionMode(nil, config.ServiceConfig{})
+	if got != "mux" {
+		t.Errorf("want mux for nil config, got %q", got)
+	}
+}
+
+func TestSuperviseSingle_IsolatedMode_BindsAndRunsForward(t *testing.T) {
+	// superviseSingle with connection_mode=isolated should start
+	// runIsolatedPortForward and transition the forward to StateRunning.
+	m := &Manager{
+		cfg: &config.Config{
+			Services: []config.ServiceConfig{
+				{Name: "redis", Pod: "test-pod-0", RemotePort: 6379, ConnectionMode: "isolated"},
+			},
+		},
+		output:               io.Discard,
+		logger:               discardLogger(),
+		healthCheckInterval:  50 * time.Millisecond,
+		healthCheckThreshold: 3,
+		backoffInitial:       time.Second,
+		backoffMax:           30 * time.Second,
+		transports:           newTransportCache(30 * time.Minute),
+		forwards:             make(map[string]*portForward),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	svc := m.cfg.Services[0]
+	go m.superviseSingle(ctx, svc)
+
+	// Wait for the forward to reach StateRunning (isolated mode binds immediately).
+	deadline := time.Now().Add(500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		m.mu.RLock()
+		pf := m.forwards[svc.Name]
+		m.mu.RUnlock()
+		if pf != nil {
+			pf.mu.Lock()
+			state := pf.state
+			pf.mu.Unlock()
+			if state == StateRunning {
+				break
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	m.mu.RLock()
+	pf := m.forwards[svc.Name]
+	m.mu.RUnlock()
+
+	if pf == nil {
+		t.Fatal("portForward not registered in manager.forwards")
+	}
+
+	pf.mu.Lock()
+	state := pf.state
+	port := pf.actualPort
+	pf.mu.Unlock()
+
+	if state != StateRunning {
+		t.Fatalf("state = %v, want StateRunning", state)
+	}
+	if port == 0 {
+		t.Fatal("actualPort should be non-zero once isolated forward is running")
+	}
+}
