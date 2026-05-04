@@ -2,7 +2,7 @@
 
 All notable changes to kubeport are documented here. This project uses [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [v0.8.0] - 2026-05-04
 
 ### Added
 - `--delegate` flag on `kubeport start` — starts a lease-holder daemon that hands off all its services to an existing primary daemon via gRPC `AddService` (with `source_config` set to the delegate's config path), runs no local port-forwards itself, and on shutdown calls `ReleaseBySource` on the primary to bulk-remove only the services it contributed. Falls back to a regular start if no primary is running. Delegate instances are tracked in the registry with `Delegate: true` and `PrimarySocket` pointing at the primary, and shown as `ROLE: delegate` in `kubeport instances`.
@@ -125,7 +125,9 @@ Initial public release with core features:
 - Lifecycle hooks (shell, exec, webhook)
 - Shell completions (bash, zsh, fish)
 
-[Unreleased]: https://github.com/rbaliyan/kubeport/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/rbaliyan/kubeport/compare/v0.8.0...HEAD
+[v0.8.0]: https://github.com/rbaliyan/kubeport/compare/v0.7.3...v0.8.0
+[v0.7.3]: https://github.com/rbaliyan/kubeport/compare/v0.7.2...v0.7.3
 [v0.6.1]: https://github.com/rbaliyan/kubeport/compare/v0.6.0...v0.6.1
 [v0.6.0]: https://github.com/rbaliyan/kubeport/compare/v0.5.1...v0.6.0
 [v0.5.1]: https://github.com/rbaliyan/kubeport/compare/v0.5.0...v0.5.1
