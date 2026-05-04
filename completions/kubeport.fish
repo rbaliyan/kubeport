@@ -19,6 +19,7 @@ complete -c kubeport -l sort -d "Sort status output"
 complete -c kubeport -l wait -d "Block until all forwards are connected"
 complete -c kubeport -l timeout -d "Max wait time for --wait" -r
 complete -c kubeport -l offload -d "Add services to an already-running daemon instead of starting a new one"
+complete -c kubeport -l delegate -d "Run as a delegate of an existing primary daemon (hands off services, releases on stop)"
 complete -c kubeport -s h -l help -d "Show help"
 complete -c kubeport -s v -l version -d "Show version"
 

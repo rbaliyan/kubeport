@@ -43,6 +43,8 @@ type app struct {
 	startWait       bool
 	startTimeout    time.Duration
 	offload         bool
+	delegate        bool
+	primarySocket   string
 	statusJSON      bool
 	statusSort      bool
 	remoteHost      string
@@ -92,6 +94,12 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 			a.statusSort = true
 		case arg == "--offload":
 			a.offload = true
+		case arg == "--delegate":
+			a.delegate = true
+		case arg == "--primary-socket":
+			a.primarySocket = parseNextArg(args, &i, arg)
+		case strings.HasPrefix(arg, "--primary-socket="):
+			a.primarySocket = strings.TrimPrefix(arg, "--primary-socket=")
 		case arg == "--wait":
 			a.startWait = true
 		case arg == "--timeout":

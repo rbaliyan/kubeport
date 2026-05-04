@@ -76,7 +76,9 @@ Maintains a flock-protected JSON store of running daemon instances at `~/.config
 
 - **Conflict detection** — when `kubeport start` is called, the registry checks whether another instance is already serving the same config file.
 - **Offload routing** — `kubeport start --offload` looks up an existing instance in the registry and sends the config's services to it via gRPC instead of launching a new daemon.
-- **Instance listing** — `kubeport instances` reads the registry to display all live daemons with their PID, uptime, endpoint, and file paths.
+- **Auto external-conflict scan** — a regular `kubeport start` walks the registry at startup and on every reload (SIGHUP / config-file change). For each service in its own config, it checks whether another running instance already owns that service (matched by service name OR static `local_port`). Conflicting services are marked `external` rather than started locally. **Delegate entries are excluded from this scan** (only primaries can "own" a service); without that exclusion every delegate would itself appear as an owner and freeze the next instance.
+- **Delegate registration** — `kubeport start --delegate` registers an entry with `Delegate: true` and `PrimarySocket: <path>` pointing at the primary it handed services to. The delegate's own services are stored on the primary, not on this entry.
+- **Instance listing** — `kubeport instances` reads the registry to display all live daemons with their PID, uptime, endpoint, role (`primary` or `delegate`), and file paths.
 
 Each entry is keyed by process PID. Stale entries (whose process is no longer alive) are pruned automatically when the list is read. All mutations are guarded by an exclusive `flock` on `instances.lock`.
 
@@ -93,6 +95,31 @@ kubeport supports two SPDY tunnel strategies, selected per-service via `connecti
 **`isolated`** — each incoming client TCP connection gets its own dedicated SPDY connection to the API server. There is no shared stream cap, so concurrency is bounded only by available file descriptors and API server resources. The trade-off is one extra TLS handshake per client connection. This mode is not compatible with `ports: all` / multi-port forwards.
 
 Use `isolated` mode for services that sustain more than ~100 concurrent connections (for example, Redis Sentinel, which opens pub/sub connections, polling connections, and connection pools to every sentinel simultaneously).
+
+## Forward States
+
+Each forward in the manager carries a single state, surfaced through the `ForwardStatus.State` field and the `ForwardState` proto enum. The CLI maps each state to a Unicode indicator (see [CLI Reference — Status indicators](cli.md#status-indicators)):
+
+| State | Meaning |
+|-------|---------|
+| `starting` | Manager has scheduled the forward; the SPDY tunnel is being established. |
+| `running` | Tunnel is healthy; health checks pass. |
+| `failed` | Max restarts exceeded or fatal resolution error. |
+| `stopped` | Cleanly stopped (e.g. `kubeport remove`). |
+| `waiting` | Lazy mode: local port bound but no client has connected yet. |
+| `external` | Service is in this daemon's config but is owned by another running primary instance (annotated with that instance's PID and endpoint). |
+
+## Delegate Mode
+
+A *delegate* instance is a kubeport daemon that runs no local port-forwards of its own. It exists to manage the lifetime of services on a different *primary* daemon:
+
+1. `kubeport start --delegate` looks up an existing primary in the registry. If none is found, it falls back to a regular `start` and registers as `primary`.
+2. The delegate re-execs itself with `--primary-socket <path>` (set automatically — never invoked by users).
+3. The daemon's `Supervisor` is replaced with `noopSupervisor` (no forwards, no chaos, no reload).
+4. For each service in its config, the delegate calls `AddService` on the primary with `source_config` set to the absolute path of its own config file.
+5. On shutdown (SIGTERM, `kubeport stop`, or daemon Stop RPC) the delegate calls `ReleaseBySource(<its-config-path>)` on the primary, which walks the primary's forward map and removes only the entries whose `sourceConfig` matches.
+
+The delegate's registry entry has `Delegate: true` and `PrimarySocket: <path>`. The auto external-conflict scan ignores it, so delegate instances never block another primary from starting.
 
 ## How a Port-Forward Works
 

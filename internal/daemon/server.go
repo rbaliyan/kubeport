@@ -1,3 +1,23 @@
+// Package daemon implements the long-running kubeport daemon: a gRPC server
+// that exposes the DaemonService API (defined in proto/kubeport/v1/daemon.proto)
+// over either a Unix domain socket or a TLS-protected TCP listener.
+//
+// The server is a thin adapter — all port-forward state lives in
+// internal/proxy.Manager, accessed through the [Supervisor] interface so
+// tests can swap in fakes. The CLI (internal/cli) and the client SDK
+// (pkg/proxy) connect to this server to drive add/remove/reload/status/etc.
+//
+// Listen mode is chosen from the resolved [config.ListenConfig]:
+//
+//   - Unix mode (default): the socket is created with mode 0600 so only the
+//     owning user can talk to it.
+//   - TCP mode: a self-signed ECDSA P-256 certificate is loaded from (or
+//     written to) the config directory, and unary requests are gated by the
+//     [grpcauth.ServerInterceptor] using the configured api_key.
+//
+// Lifecycle: callers run [Server.Start] in a goroutine and call
+// [Server.Shutdown] from the signal handler; Shutdown gives in-flight RPCs
+// up to 5 seconds to drain before forcing the gRPC server to stop.
 package daemon
 
 import (
@@ -29,8 +49,19 @@ import (
 
 var _ Supervisor = (*proxy.Manager)(nil)
 
-// Supervisor is the interface the daemon server uses to query and control the manager.
-// It is satisfied by *proxy.Manager.
+// Supervisor is the interface the daemon server uses to query and control
+// the underlying port-forward manager. It is satisfied by *proxy.Manager
+// and by internal/cli.noopSupervisor (the implementation used by delegate
+// instances that own no forwards of their own).
+//
+// All methods must be safe for concurrent use; the gRPC server invokes
+// them from many goroutines.
+//
+// ReleaseBySource bulk-removes every forward whose ServiceConfig.SourceConfig
+// equals the supplied path. It returns the count of top-level services
+// released (multi-port children are released together with their parent).
+// It is the teardown path used by delegate instances when they exit, so
+// only the services that delegate contributed are removed from the primary.
 type Supervisor interface {
 	Status() []proxy.ForwardStatus
 	Stop()
@@ -41,6 +72,7 @@ type Supervisor interface {
 	Mappings(clusterDomain string) []proxy.AddressMapping
 	UpdateChaos(services []string, cfg config.ParsedChaosConfig) (updated, notFound []string)
 	ResetChaos(services []string) (updated, notFound []string)
+	ReleaseBySource(sourceConfig string) (int, error)
 }
 
 // Server wraps a gRPC server that exposes the DaemonService over a Unix domain socket or TCP.
@@ -251,6 +283,7 @@ func (s *Server) AddService(_ context.Context, req *kubeportv1.AddServiceRequest
 	}
 
 	svc := serviceInfoToConfig(req.Service)
+	svc.SourceConfig = req.SourceConfig
 
 	// Apply multi-port config if provided
 	if req.Ports != nil {
@@ -410,6 +443,33 @@ func (s *Server) UpdateChaos(_ context.Context, req *kubeportv1.UpdateChaosReque
 
 	updated, notFound := s.mgr.UpdateChaos(req.Services, cfg)
 	return &kubeportv1.UpdateChaosResponse{Updated: updated, NotFound: notFound}, nil
+}
+
+// ReleaseBySource implements DaemonService.ReleaseBySource.
+//
+// It bulk-removes every forward that was contributed by the given
+// source_config path (the absolute config path of a delegate instance) and
+// returns the count of top-level services that were released. Multi-port
+// expansions are released together with their parent. An empty
+// source_config is rejected with InvalidArgument; an empty result with no
+// matching services is not an error and returns 0.
+//
+// Delegate instances call this RPC at shutdown to clean up exactly the
+// services they handed off to the primary, leaving everything else
+// untouched. See [Supervisor.ReleaseBySource] for the underlying
+// implementation contract.
+func (s *Server) ReleaseBySource(_ context.Context, req *kubeportv1.ReleaseBySourceRequest) (*kubeportv1.ReleaseBySourceResponse, error) {
+	if req.SourceConfig == "" {
+		return nil, status.Error(codes.InvalidArgument, "source_config is required")
+	}
+	n, err := s.mgr.ReleaseBySource(req.SourceConfig)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "release by source: %v", err)
+	}
+	return &kubeportv1.ReleaseBySourceResponse{
+		Success:  true,
+		Released: int32(n), // #nosec G115 -- service count fits int32
+	}, nil
 }
 
 // chaosParamsFromProto resolves the effective ParsedChaosConfig from the request.

@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DaemonService_Status_FullMethodName        = "/kubeport.v1.DaemonService/Status"
-	DaemonService_Stop_FullMethodName          = "/kubeport.v1.DaemonService/Stop"
-	DaemonService_AddService_FullMethodName    = "/kubeport.v1.DaemonService/AddService"
-	DaemonService_RemoveService_FullMethodName = "/kubeport.v1.DaemonService/RemoveService"
-	DaemonService_Reload_FullMethodName        = "/kubeport.v1.DaemonService/Reload"
-	DaemonService_Apply_FullMethodName         = "/kubeport.v1.DaemonService/Apply"
-	DaemonService_Mappings_FullMethodName      = "/kubeport.v1.DaemonService/Mappings"
-	DaemonService_UpdateChaos_FullMethodName   = "/kubeport.v1.DaemonService/UpdateChaos"
+	DaemonService_Status_FullMethodName          = "/kubeport.v1.DaemonService/Status"
+	DaemonService_Stop_FullMethodName            = "/kubeport.v1.DaemonService/Stop"
+	DaemonService_AddService_FullMethodName      = "/kubeport.v1.DaemonService/AddService"
+	DaemonService_RemoveService_FullMethodName   = "/kubeport.v1.DaemonService/RemoveService"
+	DaemonService_Reload_FullMethodName          = "/kubeport.v1.DaemonService/Reload"
+	DaemonService_Apply_FullMethodName           = "/kubeport.v1.DaemonService/Apply"
+	DaemonService_Mappings_FullMethodName        = "/kubeport.v1.DaemonService/Mappings"
+	DaemonService_UpdateChaos_FullMethodName     = "/kubeport.v1.DaemonService/UpdateChaos"
+	DaemonService_ReleaseBySource_FullMethodName = "/kubeport.v1.DaemonService/ReleaseBySource"
 )
 
 // DaemonServiceClient is the client API for DaemonService service.
@@ -41,6 +42,7 @@ type DaemonServiceClient interface {
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
 	Mappings(ctx context.Context, in *MappingsRequest, opts ...grpc.CallOption) (*MappingsResponse, error)
 	UpdateChaos(ctx context.Context, in *UpdateChaosRequest, opts ...grpc.CallOption) (*UpdateChaosResponse, error)
+	ReleaseBySource(ctx context.Context, in *ReleaseBySourceRequest, opts ...grpc.CallOption) (*ReleaseBySourceResponse, error)
 }
 
 type daemonServiceClient struct {
@@ -131,6 +133,16 @@ func (c *daemonServiceClient) UpdateChaos(ctx context.Context, in *UpdateChaosRe
 	return out, nil
 }
 
+func (c *daemonServiceClient) ReleaseBySource(ctx context.Context, in *ReleaseBySourceRequest, opts ...grpc.CallOption) (*ReleaseBySourceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReleaseBySourceResponse)
+	err := c.cc.Invoke(ctx, DaemonService_ReleaseBySource_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DaemonServiceServer is the server API for DaemonService service.
 // All implementations must embed UnimplementedDaemonServiceServer
 // for forward compatibility.
@@ -143,6 +155,7 @@ type DaemonServiceServer interface {
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
 	Mappings(context.Context, *MappingsRequest) (*MappingsResponse, error)
 	UpdateChaos(context.Context, *UpdateChaosRequest) (*UpdateChaosResponse, error)
+	ReleaseBySource(context.Context, *ReleaseBySourceRequest) (*ReleaseBySourceResponse, error)
 	mustEmbedUnimplementedDaemonServiceServer()
 }
 
@@ -176,6 +189,9 @@ func (UnimplementedDaemonServiceServer) Mappings(context.Context, *MappingsReque
 }
 func (UnimplementedDaemonServiceServer) UpdateChaos(context.Context, *UpdateChaosRequest) (*UpdateChaosResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateChaos not implemented")
+}
+func (UnimplementedDaemonServiceServer) ReleaseBySource(context.Context, *ReleaseBySourceRequest) (*ReleaseBySourceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReleaseBySource not implemented")
 }
 func (UnimplementedDaemonServiceServer) mustEmbedUnimplementedDaemonServiceServer() {}
 func (UnimplementedDaemonServiceServer) testEmbeddedByValue()                       {}
@@ -342,6 +358,24 @@ func _DaemonService_UpdateChaos_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DaemonService_ReleaseBySource_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReleaseBySourceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DaemonServiceServer).ReleaseBySource(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DaemonService_ReleaseBySource_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DaemonServiceServer).ReleaseBySource(ctx, req.(*ReleaseBySourceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DaemonService_ServiceDesc is the grpc.ServiceDesc for DaemonService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -380,6 +414,10 @@ var DaemonService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateChaos",
 			Handler:    _DaemonService_UpdateChaos_Handler,
+		},
+		{
+			MethodName: "ReleaseBySource",
+			Handler:    _DaemonService_ReleaseBySource_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

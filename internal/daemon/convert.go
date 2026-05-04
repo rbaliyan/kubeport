@@ -45,7 +45,10 @@ func convertForwardStatus(fs proxy.ForwardStatus) *kubeportv1.ForwardStatusProto
 		ConnBytesOut:          fs.ConnBytesOut,
 		Lazy:                  fs.Lazy,
 		TunnelOpen:            fs.TunnelOpen,
-		ConnectionMode:        fs.ConnectionMode,
+		ConnectionMode:   fs.ConnectionMode,
+		SourceConfig:     fs.SourceConfig,
+		ExternalInstance: fs.ExternalInstance,
+		ExternalPid:      int32(fs.ExternalPID), // #nosec G115 -- PID fits int32 on all supported platforms
 	}
 	if !fs.NextRetry.IsZero() {
 		proto.NextRetry = timestamppb.New(fs.NextRetry)
@@ -88,6 +91,8 @@ func convertState(s proxy.ForwardState) kubeportv1.ForwardState {
 		return kubeportv1.ForwardState_FORWARD_STATE_STOPPED
 	case proxy.StateWaiting:
 		return kubeportv1.ForwardState_FORWARD_STATE_WAITING
+	case proxy.StateExternal:
+		return kubeportv1.ForwardState_FORWARD_STATE_EXTERNAL
 	default:
 		return kubeportv1.ForwardState_FORWARD_STATE_UNSPECIFIED
 	}

@@ -76,6 +76,10 @@ func (m *mockSupervisor) ResetChaos(_ []string) ([]string, []string) {
 	return nil, nil
 }
 
+func (m *mockSupervisor) ReleaseBySource(_ string) (int, error) {
+	return 0, nil
+}
+
 func TestServer_Status(t *testing.T) {
 	mgr := &mockSupervisor{
 		statuses: []proxy.ForwardStatus{
@@ -275,6 +279,32 @@ func TestServer_Stop(t *testing.T) {
 	}
 }
 
+func TestServer_ReleaseBySource(t *testing.T) {
+	mgr := &mockSupervisor{}
+	cfg := &config.Config{Context: "ctx", Namespace: "ns"}
+	srv := &Server{mgr: mgr, cfg: cfg}
+
+	// Empty source_config must be rejected.
+	_, err := srv.ReleaseBySource(context.Background(), &kubeportv1.ReleaseBySourceRequest{})
+	if s, ok := status.FromError(err); !ok || s.Code() != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+
+	// Valid request: mock returns (0, nil) → success with released=0.
+	resp, err := srv.ReleaseBySource(context.Background(), &kubeportv1.ReleaseBySourceRequest{
+		SourceConfig: "/abs/path/to/delegate.yaml",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Success {
+		t.Fatal("expected success=true")
+	}
+	if resp.Released != 0 {
+		t.Fatalf("expected 0 released, got %d", resp.Released)
+	}
+}
+
 func TestConvertState(t *testing.T) {
 	tests := []struct {
 		input proxy.ForwardState
@@ -285,6 +315,7 @@ func TestConvertState(t *testing.T) {
 		{proxy.StateFailed, kubeportv1.ForwardState_FORWARD_STATE_FAILED},
 		{proxy.StateStopped, kubeportv1.ForwardState_FORWARD_STATE_STOPPED},
 		{proxy.StateWaiting, kubeportv1.ForwardState_FORWARD_STATE_WAITING},
+		{proxy.StateExternal, kubeportv1.ForwardState_FORWARD_STATE_EXTERNAL},
 		{proxy.ForwardState(99), kubeportv1.ForwardState_FORWARD_STATE_UNSPECIFIED},
 	}
 
