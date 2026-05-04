@@ -94,6 +94,38 @@ kill <PID>
 
 Or change the local port in your config, or use `local_port: 0` for automatic assignment.
 
+### Service shows as `external` in `kubeport status` / `watch`
+
+**Symptom:** A service from your config file appears with the cyan `⤵` indicator and the label `external [managed by PID X]` instead of the usual green `●` running.
+
+**Cause:** Another kubeport daemon (PID X) is already managing a service with either the same name or the same static `local_port`. To prevent two processes from binding the same port — or from racing on the same logical service — kubeport's startup and reload logic walks the instance registry and marks the conflict as `external` rather than starting a duplicate forward locally. Delegate instances are excluded from this scan; only primary daemons can "own" a service.
+
+**What to do:**
+
+1. **Inspect the owner.** `kubeport instances` shows the running daemons and their config paths — the `PID` column matches the `[managed by PID X]` annotation.
+2. **Use the existing forward.** The service is reachable on whatever local port the owning daemon assigned. Run `kubeport status --host <socket>` against the owning daemon if you need the exact port.
+3. **Reclaim it.** Stop the owning instance (`kubeport stop --config <its-config>`) and your next reload (`kubeport reload`, SIGHUP, or any config file change) will pick the service back up locally.
+4. **Hand it off cleanly.** If you want the service centralised on the owning daemon for as long as your config is active, restart your daemon with `--delegate` instead. Your delegate will register the services on the primary and `ReleaseBySource` them automatically on shutdown. See [Multiple Instances and Delegate Mode](advanced-usage.md#multiple-instances-and-delegate-mode).
+
+### Proxy cannot start — listen address already in use
+
+**Symptom:** `kubeport start` (or `kubeport fg`) prints:
+
+```
+Error: SOCKS proxy cannot start — 127.0.0.1:1080 is already in use.
+Only one kubeport instance may run a proxy on the same address.
+```
+
+(or the equivalent for `127.0.0.1:3128` and the HTTP proxy.)
+
+**Cause:** Before auto-starting the proxy, kubeport dials its configured listen address. Something — usually another kubeport daemon, but it could be any process — already has the address bound. Unlike normal port-forwards, the proxy listeners cannot be shared between instances.
+
+**What to do:**
+
+- `lsof -i :1080` (or `:3128`) — confirm the holder.
+- If it is another kubeport daemon, stop it or set a different `socks.listen` / `http_proxy.listen` in this config (e.g. `127.0.0.1:1081`).
+- If the proxy is non-essential for this instance, set `socks.enabled: false` (or `http_proxy.enabled: false`) in the config and use `kubeport socks` / `kubeport http-proxy` to start it manually on demand.
+
 ## RBAC Permission Errors
 
 ### "forbidden: User cannot create resource pods/portforward"

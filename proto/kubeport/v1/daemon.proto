@@ -13,6 +13,7 @@ service DaemonService {
   rpc Apply(ApplyRequest) returns (ApplyResponse);
   rpc Mappings(MappingsRequest) returns (MappingsResponse);
   rpc UpdateChaos(UpdateChaosRequest) returns (UpdateChaosResponse);
+  rpc ReleaseBySource(ReleaseBySourceRequest) returns (ReleaseBySourceResponse);
 }
 
 enum ForwardState {
@@ -22,6 +23,7 @@ enum ForwardState {
   FORWARD_STATE_FAILED = 3;
   FORWARD_STATE_STOPPED = 4;
   FORWARD_STATE_WAITING = 5;  // lazy mode: local port bound, SPDY tunnel not yet open
+  FORWARD_STATE_EXTERNAL = 6; // service from local config managed by another kubeport instance
 }
 
 message ServiceInfo {
@@ -67,6 +69,9 @@ message ForwardStatusProto {
   bool lazy = 22;                        // true when service is configured in lazy mode
   bool tunnel_open = 23;                 // lazy mode: true when the SPDY tunnel is currently open
   string connection_mode = 24;           // effective connection mode: "mux" (one shared SPDY tunnel, ~128 client cap) or "isolated" (per-client SPDY tunnel, no cap)
+  string source_config = 25;            // absolute path of the delegate config that contributed this service; empty = native
+  string external_instance = 26;        // socket/TCP endpoint of the instance managing this service (set when state=EXTERNAL)
+  int32  external_pid = 27;             // PID of the instance managing this service (set when state=EXTERNAL)
 }
 
 message StatusRequest {}
@@ -84,6 +89,7 @@ message AddServiceRequest {
   ServiceInfo service = 1;
   bool persist = 2;
   PortSpec ports = 3;  // if set, multi-port mode
+  string source_config = 4;  // absolute path of the delegate config contributing this service; empty = none
 }
 message AddServiceResponse {
   bool success = 1;
@@ -152,6 +158,14 @@ message UpdateChaosRequest {
 message UpdateChaosResponse {
   repeated string updated = 1;    // names of services successfully updated
   repeated string not_found = 2;  // names that were not recognised
+}
+
+message ReleaseBySourceRequest {
+  string source_config = 1;  // absolute path of the delegate config whose services should be removed
+}
+message ReleaseBySourceResponse {
+  bool  success  = 1;
+  int32 released = 2;
 }
 
 message MappingsRequest {

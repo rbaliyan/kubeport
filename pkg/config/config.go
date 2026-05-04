@@ -208,6 +208,17 @@ type ServiceConfig struct {
 	ConnectionMode string `yaml:"connection_mode,omitempty" toml:"connection_mode,omitempty"`
 	ParentName      string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
 	PortName        string        `yaml:"-" toml:"-"` // set at runtime for expanded multi-port forwards
+
+	// SourceConfig is set at runtime — never persisted to disk (yaml:"-" toml:"-")
+	// — and carries the absolute path of the delegate config that contributed
+	// this service to a primary daemon. It is empty for services owned natively
+	// by the running daemon. Delegate instances populate it via the
+	// AddService gRPC request's source_config field; the primary keys
+	// ReleaseBySource off this value to remove exactly the services a given
+	// delegate handed off (multi-port children inherit the parent's
+	// SourceConfig). It must remain unexported in YAML/TOML to prevent users
+	// from spoofing ownership through a config file.
+	SourceConfig string `yaml:"-" toml:"-"`
 }
 
 // IsPod returns true if this config targets a pod directly.

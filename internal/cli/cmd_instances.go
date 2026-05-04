@@ -14,16 +14,18 @@ import (
 // KeyID is the operator-visible identifier for the API key: either the user-provided
 // key_id from config, or a short SHA-256 fingerprint derived from the key material.
 type instanceJSON struct {
-	PID         int    `json:"pid"`
-	ConfigFile  string `json:"config_file,omitempty"`
-	PIDFile     string `json:"pid_file,omitempty"`
-	LogFile     string `json:"log_file,omitempty"`
-	Endpoint    string `json:"endpoint"`
-	AuthEnabled bool   `json:"auth_enabled"`
-	KeyID       string `json:"key_id,omitempty"`
-	Version     string `json:"version,omitempty"`
-	Uptime      string `json:"uptime"`
-	StartedAt   string `json:"started_at"`
+	PID           int    `json:"pid"`
+	ConfigFile    string `json:"config_file,omitempty"`
+	PIDFile       string `json:"pid_file,omitempty"`
+	LogFile       string `json:"log_file,omitempty"`
+	Endpoint      string `json:"endpoint"`
+	AuthEnabled   bool   `json:"auth_enabled"`
+	KeyID         string `json:"key_id,omitempty"`
+	Version       string `json:"version,omitempty"`
+	Uptime        string `json:"uptime"`
+	StartedAt     string `json:"started_at"`
+	Delegate      bool   `json:"delegate,omitempty"`
+	PrimarySocket string `json:"primary_socket,omitempty"`
 }
 
 func (a *app) cmdInstances() {
@@ -59,12 +61,17 @@ func (a *app) cmdInstances() {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "PID\tUPTIME\tVERSION\tENDPOINT\tAPI KEY\tCONFIG")
+	_, _ = fmt.Fprintln(w, "PID\tUPTIME\tVERSION\tROLE\tENDPOINT\tAPI KEY\tCONFIG")
 	for _, e := range entries {
-		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\n",
+		role := "primary"
+		if e.Delegate {
+			role = "delegate"
+		}
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			e.PID,
 			formatUptime(time.Since(e.StartedAt)),
 			e.Version,
+			role,
 			entryEndpoint(e),
 			entryAuthLabel(e),
 			entryConfigLabel(e),
@@ -75,11 +82,18 @@ func (a *app) cmdInstances() {
 	// Print path details below the table.
 	fmt.Println()
 	for _, e := range entries {
-		fmt.Printf("%sPID %d%s\n", colorCyan, e.PID, colorReset)
+		label := "primary"
+		if e.Delegate {
+			label = "delegate"
+		}
+		fmt.Printf("%sPID %d%s [%s]\n", colorCyan, e.PID, colorReset, label)
 		if e.ConfigFile != "" {
 			fmt.Printf("  Config:   %s\n", e.ConfigFile)
 		} else {
 			fmt.Printf("  Config:   (in-memory / CLI flags)\n")
+		}
+		if e.Delegate && e.PrimarySocket != "" {
+			fmt.Printf("  Primary:  %s\n", e.PrimarySocket)
 		}
 		if e.PIDFile != "" {
 			fmt.Printf("  PID file: %s\n", e.PIDFile)
@@ -131,16 +145,18 @@ func entryAuthLabel(e registry.Entry) string {
 
 func entryToJSON(e registry.Entry) instanceJSON {
 	return instanceJSON{
-		PID:         e.PID,
-		ConfigFile:  e.ConfigFile,
-		PIDFile:     e.PIDFile,
-		LogFile:     e.LogFile,
-		Endpoint:    entryEndpoint(e),
-		AuthEnabled: e.AuthEnabled,
-		KeyID:       e.KeyID,
-		Version:     e.Version,
-		Uptime:      formatUptime(time.Since(e.StartedAt)),
-		StartedAt:   e.StartedAt.Format(time.RFC3339),
+		PID:           e.PID,
+		ConfigFile:    e.ConfigFile,
+		PIDFile:       e.PIDFile,
+		LogFile:       e.LogFile,
+		Endpoint:      entryEndpoint(e),
+		AuthEnabled:   e.AuthEnabled,
+		KeyID:         e.KeyID,
+		Version:       e.Version,
+		Uptime:        formatUptime(time.Since(e.StartedAt)),
+		StartedAt:     e.StartedAt.Format(time.RFC3339),
+		Delegate:      e.Delegate,
+		PrimarySocket: e.PrimarySocket,
 	}
 }
 

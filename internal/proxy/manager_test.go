@@ -32,6 +32,7 @@ func TestForwardState_String(t *testing.T) {
 		{StateFailed, "failed"},
 		{StateStopped, "stopped"},
 		{StateWaiting, "waiting"},
+		{StateExternal, "external"},
 		{ForwardState(99), "unknown"},
 	}
 	for _, tt := range tests {
@@ -1188,6 +1189,93 @@ func TestResolveConnectionMode_NilConfig(t *testing.T) {
 	got := resolveConnectionMode(nil, config.ServiceConfig{})
 	if got != "mux" {
 		t.Errorf("want mux for nil config, got %q", got)
+	}
+}
+
+func TestSetExternalForwards(t *testing.T) {
+	client := fake.NewClientset()
+
+	m := &Manager{
+		cfg: &config.Config{
+			Context:   "test",
+			Namespace: "default",
+			Services: []config.ServiceConfig{
+				{Name: "svc-a", Service: "a", LocalPort: 18200, RemotePort: 80},
+				{Name: "svc-b", Service: "b", LocalPort: 18201, RemotePort: 443},
+			},
+		},
+		clientset:            client,
+		forwards:             make(map[string]*portForward),
+		externalForwards:     make(map[string]ExternalForward),
+		output:               io.Discard,
+		logger:               discardLogger(),
+		maxRestarts:          1,
+		healthCheckInterval:  10 * time.Second,
+		healthCheckThreshold: 3,
+		readyTimeout:         1 * time.Second,
+		backoffInitial:       5 * time.Millisecond,
+		backoffMax:           10 * time.Millisecond,
+	}
+
+	// Pre-register svc-a as external before Start.
+	extA := ExternalForward{
+		Service:  config.ServiceConfig{Name: "svc-a", Service: "a", LocalPort: 18200, RemotePort: 80},
+		Instance: "/tmp/other.sock",
+		PID:      9999,
+	}
+	newlyExternal := m.SetExternalForwards([]ExternalForward{extA})
+	// Nothing was previously external, so svc-a is newly external.
+	if len(newlyExternal) != 1 || newlyExternal[0] != "svc-a" {
+		t.Fatalf("expected [svc-a] newly external, got %v", newlyExternal)
+	}
+
+	// Start: svc-a must be skipped, svc-b must run.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	m.Start(ctx)
+
+	// svc-a was external so no portForward goroutine was created for it.
+	m.mu.RLock()
+	_, hasSvcA := m.forwards["svc-a"]
+	_, hasSvcB := m.forwards["svc-b"]
+	m.mu.RUnlock()
+
+	if hasSvcA {
+		t.Fatal("svc-a should NOT have a portForward entry (it is external)")
+	}
+	if !hasSvcB {
+		t.Fatal("svc-b should have a portForward entry")
+	}
+
+	// Status must include svc-a as StateExternal.
+	statuses := m.Status()
+	byName := make(map[string]ForwardStatus)
+	for _, s := range statuses {
+		byName[s.Service.Name] = s
+	}
+	if s, ok := byName["svc-a"]; !ok {
+		t.Fatal("svc-a should appear in Status()")
+	} else if s.State != StateExternal {
+		t.Fatalf("svc-a state: want StateExternal, got %v", s.State)
+	} else if s.ExternalPID != 9999 {
+		t.Fatalf("svc-a ExternalPID: want 9999, got %d", s.ExternalPID)
+	}
+
+	// Calling SetExternalForwards with an empty slice makes all services local.
+	// Since manager has already stopped (Start returned), newlyExternal is empty
+	// (the old map is replaced), but the return value reflects the delta.
+	newlyExternal2 := m.SetExternalForwards(nil)
+	// svc-a was in the old external map, so nothing is "newly" external in the new map.
+	if len(newlyExternal2) != 0 {
+		t.Fatalf("expected no newly-external entries after clearing, got %v", newlyExternal2)
+	}
+	// The external map should now be empty.
+	m.externalMu.RLock()
+	extCount := len(m.externalForwards)
+	m.externalMu.RUnlock()
+	if extCount != 0 {
+		t.Fatalf("expected empty externalForwards after clearing, got %d entries", extCount)
 	}
 }
 

@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	version "github.com/rbaliyan/go-version"
+	kubeportv1 "github.com/rbaliyan/kubeport/api/kubeport/v1"
 	"github.com/rbaliyan/kubeport/internal/daemon"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/proxy"
@@ -22,6 +24,110 @@ import (
 	"github.com/rbaliyan/kubeport/pkg/config"
 	pkgproxy "github.com/rbaliyan/kubeport/pkg/proxy"
 )
+
+// detectExternalConflicts queries running instances and returns ExternalForward
+// entries for any service in cfg that is already managed by another instance
+// (matched by service name or static local port).
+// Delegate instances and the current process are excluded from the search.
+func (a *app) detectExternalConflicts(cfg *config.Config) []proxy.ExternalForward {
+	if cfg == nil || len(cfg.Services) == 0 {
+		return nil
+	}
+	reg, err := a.openRegistry()
+	if err != nil {
+		return nil
+	}
+	entries, err := reg.List()
+	if err != nil {
+		return nil
+	}
+
+	myPID := os.Getpid()
+	var candidates []registry.Entry
+	for _, e := range entries {
+		if e.PID != myPID && !e.Delegate {
+			candidates = append(candidates, e)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	live := a.queryLiveInstances(candidates)
+	if len(live) == 0 {
+		return nil
+	}
+
+	type owner struct {
+		instance   string
+		pid        int
+		configFile string
+		actualPort int
+	}
+	byName := make(map[string]owner)
+	byPort := make(map[int]owner)
+
+	for _, inst := range live {
+		ep := inst.entry.Socket
+		if ep == "" {
+			ep = inst.entry.TCPAddress
+		}
+		for _, fw := range inst.forwards {
+			o := owner{
+				instance:   ep,
+				pid:        inst.entry.PID,
+				configFile: inst.entry.ConfigFile,
+				actualPort: int(fw.ActualPort),
+			}
+			if name := fw.GetService().GetName(); name != "" {
+				byName[name] = o
+			}
+			port := int(fw.ActualPort)
+			if port == 0 {
+				port = int(fw.GetService().GetLocalPort())
+			}
+			if port > 0 {
+				byPort[port] = o
+			}
+		}
+	}
+
+	seen := make(map[string]bool)
+	var externals []proxy.ExternalForward
+	for _, svc := range cfg.Services {
+		if seen[svc.Name] {
+			continue
+		}
+		if o, ok := byName[svc.Name]; ok {
+			seen[svc.Name] = true
+			externals = append(externals, proxy.ExternalForward{
+				Service: svc, Instance: o.instance, PID: o.pid,
+				ConfigFile: o.configFile, ActualPort: o.actualPort,
+			})
+			continue
+		}
+		if svc.LocalPort != 0 {
+			if o, ok := byPort[svc.LocalPort]; ok {
+				seen[svc.Name] = true
+				externals = append(externals, proxy.ExternalForward{
+					Service: svc, Instance: o.instance, PID: o.pid,
+					ConfigFile: o.configFile, ActualPort: o.actualPort,
+				})
+			}
+		}
+	}
+	return externals
+}
+
+// isProxyPortInUse returns true when something is already listening on addr.
+func isProxyPortInUse(addr string) bool {
+	conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
 
 func (a *app) cmdForeground(ctx context.Context) {
 	if a.cfg == nil {
@@ -63,6 +169,13 @@ func (a *app) cmdDaemon(ctx context.Context, args []string) {
 			}
 		case "--no-config":
 			a.noConfig = true
+		case "--delegate":
+			a.delegate = true
+		case "--primary-socket":
+			if i+1 < len(args) {
+				i++
+				a.primarySocket = args[i]
+			}
 		}
 	}
 
@@ -121,7 +234,40 @@ func (a *app) watchConfigFile(ctx context.Context, logger *slog.Logger, reload f
 	}
 }
 
+// noopSupervisor satisfies daemon.Supervisor for delegate instances that manage
+// no local port-forwards of their own. cancel is called by Stop() so that the
+// gRPC Stop RPC unblocks the runDelegateProxy select.
+type noopSupervisor struct {
+	cancel context.CancelFunc
+}
+
+func (n *noopSupervisor) Status() []proxy.ForwardStatus { return nil }
+func (n *noopSupervisor) Stop() {
+	if n.cancel != nil {
+		n.cancel()
+	}
+}
+func (n *noopSupervisor) AddService(_ config.ServiceConfig) error {
+	return fmt.Errorf("delegate instance: cannot add services directly — use the primary")
+}
+func (n *noopSupervisor) RemoveService(_ string) error {
+	return fmt.Errorf("delegate instance: service not found")
+}
+func (n *noopSupervisor) Reload(_ *config.Config) (int, int, error)        { return 0, 0, nil }
+func (n *noopSupervisor) Apply(_ []config.ServiceConfig) (int, int, []string) { return 0, 0, nil }
+func (n *noopSupervisor) Mappings(_ string) []proxy.AddressMapping            { return nil }
+func (n *noopSupervisor) UpdateChaos(_ []string, _ config.ParsedChaosConfig) ([]string, []string) {
+	return nil, nil
+}
+func (n *noopSupervisor) ResetChaos(_ []string) ([]string, []string) { return nil, nil }
+func (n *noopSupervisor) ReleaseBySource(_ string) (int, error)      { return 0, nil }
+
 func (a *app) runProxy(ctx context.Context, output io.Writer) {
+	if a.delegate {
+		a.runDelegateProxy(ctx, output)
+		return
+	}
+
 	_, _ = fmt.Fprintf(output, "kubeport %s starting\n", version.Get().Raw)
 	_, _ = fmt.Fprintf(output, "Context:   %s\n", a.cfg.Context)
 	_, _ = fmt.Fprintf(output, "Namespace: %s\n", a.cfg.Namespace)
@@ -193,6 +339,16 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		os.Exit(1)
 	}
 
+	// Detect services already managed by another running instance.
+	// SetExternalForwards is called before Start so those services are never started locally.
+	if externals := a.detectExternalConflicts(a.cfg); len(externals) > 0 {
+		mgr.SetExternalForwards(externals)
+		for _, ef := range externals {
+			_, _ = fmt.Fprintf(output, "Service %q: managed by instance PID %d (%s) — not starting locally\n",
+				ef.Service.Name, ef.PID, ef.Instance)
+		}
+	}
+
 	// Start gRPC daemon server
 	daemonSrv := daemon.NewServer(mgr, a.cfg)
 	go func() {
@@ -224,14 +380,31 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		_, _ = fmt.Fprintf(output, "gRPC server listening on %s\n", listenCfg.Address)
 	}
 
-	// Auto-start SOCKS proxy if enabled
+	// Auto-start SOCKS proxy if enabled. Fail loudly if the port is already in use
+	// — two kubeport instances cannot share the same proxy address.
 	if a.cfg.SOCKS.IsEnabled() {
-		go a.autoStartSOCKS(ctx, logger, output)
+		socksAddr := a.cfg.SOCKS.Listen
+		if socksAddr == "" {
+			socksAddr = "127.0.0.1:1080"
+		}
+		if isProxyPortInUse(socksAddr) {
+			_, _ = fmt.Fprintf(output, "Error: SOCKS proxy cannot start — %s is already in use. Only one kubeport instance may run a proxy on the same address.\n", socksAddr)
+		} else {
+			go a.autoStartSOCKS(ctx, logger, output)
+		}
 	}
 
-	// Auto-start HTTP proxy if enabled
+	// Auto-start HTTP proxy if enabled. Same single-instance constraint.
 	if a.cfg.HTTPProxy.IsEnabled() {
-		go a.autoStartHTTPProxy(ctx, logger, output)
+		httpAddr := a.cfg.HTTPProxy.Listen
+		if httpAddr == "" {
+			httpAddr = "127.0.0.1:3128"
+		}
+		if isProxyPortInUse(httpAddr) {
+			_, _ = fmt.Fprintf(output, "Error: HTTP proxy cannot start — %s is already in use. Only one kubeport instance may run a proxy on the same address.\n", httpAddr)
+		} else {
+			go a.autoStartHTTPProxy(ctx, logger, output)
+		}
 	}
 
 	// Verify namespace access
@@ -240,8 +413,13 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		_, _ = fmt.Fprintf(output, "Continuing anyway (namespace checks may fail for some services)\n\n")
 	}
 
-	// Config reload helper shared by SIGHUP and file watcher
+	// Config reload helper shared by SIGHUP and file watcher.
+	// reloadMu prevents concurrent reloads from interleaving SetExternalForwards
+	// calls (which are not idempotent with respect to the "newly external" delta).
+	var reloadMu sync.Mutex
 	reloadConfig := func(reason string) {
+		reloadMu.Lock()
+		defer reloadMu.Unlock()
 		logger.Info("reloading config", "trigger", reason)
 		newCfg, err := config.Load(a.configFile)
 		if err != nil {
@@ -252,12 +430,27 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 			logger.Error("reload config validation failed", "error", err)
 			return
 		}
+
+		// Re-detect external conflicts with the refreshed config.
+		// Services that became external (another instance took them) are stopped locally.
+		// Services that became local (owner instance stopped) are reclaimed by Reload.
+		newExternals := a.detectExternalConflicts(newCfg)
+		toRemove := mgr.SetExternalForwards(newExternals)
+		for _, name := range toRemove {
+			if rmErr := mgr.RemoveService(name); rmErr != nil {
+				logger.Warn("reload: failed to stop newly-external service", "service", name, "error", rmErr)
+			} else {
+				logger.Info("service is now managed by another instance — stopped locally", "service", name)
+			}
+		}
+
 		added, removed, err := mgr.Reload(newCfg)
 		if err != nil {
 			logger.Error("reload failed", "error", err)
 			return
 		}
-		logger.Info("config reloaded", "trigger", reason, "added", added, "removed", removed)
+		logger.Info("config reloaded", "trigger", reason,
+			"added", added, "removed", removed, "external", len(newExternals))
 	}
 
 	// SIGHUP triggers config reload
@@ -276,6 +469,93 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 
 	_, _ = fmt.Fprintf(output, "Starting port forwards...\n\n")
 	mgr.Start(ctx)
+}
+
+// runDelegateProxy runs a lightweight lease-holder daemon. It registers in the
+// central registry and runs the gRPC server (so kubeport stop works), but
+// manages no local port-forwards. On shutdown it calls ReleaseBySource on the
+// primary to remove the services it contributed.
+func (a *app) runDelegateProxy(ctx context.Context, output io.Writer) {
+	_, _ = fmt.Fprintf(output, "kubeport %s starting (delegate mode)\n", version.Get().Raw)
+	_, _ = fmt.Fprintf(output, "Config:        %s\n", a.cfg.FilePath())
+	_, _ = fmt.Fprintf(output, "Primary:       %s\n\n", a.primarySocket)
+
+	pidFile := a.cfg.PIDFile()
+	if err := os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", os.Getpid())), 0600); err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: failed to write PID file: %v\n", err)
+	}
+
+	reg, err := a.openRegistry()
+	if err != nil {
+		_, _ = fmt.Fprintf(output, "Warning: failed to open instance registry: %v\n", err)
+	} else {
+		listenCfg := a.cfg.ListenAddress()
+		entry := registry.Entry{
+			PID:           os.Getpid(),
+			ConfigFile:    a.cfg.FilePath(),
+			PIDFile:       a.cfg.PIDFile(),
+			LogFile:       a.cfg.LogFile(),
+			Version:       version.Get().Raw,
+			StartedAt:     time.Now(),
+			Delegate:      true,
+			PrimarySocket: a.primarySocket,
+		}
+		if listenCfg.Mode == config.ListenTCP {
+			entry.TCPAddress = listenCfg.Address
+		} else {
+			entry.Socket = listenCfg.Address
+		}
+		if err := reg.Register(entry); err != nil {
+			_, _ = fmt.Fprintf(output, "Warning: failed to register delegate instance: %v\n", err)
+		}
+	}
+
+	stopCtx, stopCancel := context.WithCancel(ctx)
+	noop := &noopSupervisor{cancel: stopCancel}
+	daemonSrv := daemon.NewServer(noop, a.cfg)
+	go func() {
+		if err := daemonSrv.Start(); err != nil {
+			_, _ = fmt.Fprintf(output, "gRPC server error: %v\n", err)
+		}
+	}()
+
+	// On shutdown: release contributed services from primary, then clean up.
+	defer func() {
+		if a.primarySocket != "" && a.cfg.FilePath() != "" {
+			absPath, _ := filepath.Abs(a.cfg.FilePath())
+			releaseCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if dc, dialErr := dialDaemon(a.primarySocket); dialErr == nil && dc != nil {
+				resp, rErr := dc.client.ReleaseBySource(releaseCtx, &kubeportv1.ReleaseBySourceRequest{
+					SourceConfig: absPath,
+				})
+				if rErr == nil && resp != nil {
+					_, _ = fmt.Fprintf(output, "Released %d service(s) from primary\n", resp.Released)
+				}
+				dc.Close()
+			}
+		}
+		daemonSrv.Shutdown()
+		if err := os.Remove(pidFile); err != nil && !os.IsNotExist(err) {
+			_, _ = fmt.Fprintf(output, "Warning: failed to remove PID file: %v\n", err)
+		}
+		if reg != nil {
+			if err := reg.Deregister(os.Getpid()); err != nil {
+				_, _ = fmt.Fprintf(output, "Warning: failed to deregister delegate instance: %v\n", err)
+			}
+		}
+	}()
+
+	listenCfg := a.cfg.ListenAddress()
+	switch listenCfg.Mode {
+	case config.ListenTCP:
+		_, _ = fmt.Fprintf(output, "gRPC server listening on tcp://%s\n", listenCfg.Address)
+	default:
+		_, _ = fmt.Fprintf(output, "gRPC server listening on %s\n", listenCfg.Address)
+	}
+
+	// Block until context cancelled (SIGTERM / gRPC Stop via noopSupervisor.Stop).
+	<-stopCtx.Done()
 }
 
 // autoStartSOCKS starts an embedded SOCKS5 proxy server when socks.enabled is true.

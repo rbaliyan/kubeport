@@ -254,10 +254,13 @@ kubeport chaos disable --all                  # Turn off chaos injection across 
 kubeport instances
 
 # Example output:
-# PID      UPTIME  VERSION  ENDPOINT                                      API KEY  CONFIG
-# 12345    4m32s   v0.7.0   ~/.config/kubeport/myproject-a3f8b2c1.sock   none     ~/myproject/kubeport.yaml
-# 67890    1h5m    v0.7.0   ~/.config/kubeport/infra-d9e1f234.sock        none     ~/infra/kubeport.yaml
+# PID    UPTIME  VERSION  ROLE      ENDPOINT                                     API KEY  CONFIG
+# 12345  4m32s   v0.7.0   primary   ~/.config/kubeport/myproject-a3f8b2c1.sock   none     ~/myproject/kubeport.yaml
+# 67890  1h5m    v0.7.0   primary   ~/.config/kubeport/infra-d9e1f234.sock       none     ~/infra/kubeport.yaml
+# 67891  2m10s   v0.7.0   delegate  ~/.config/kubeport/edge-f0a1b2c3.sock        none     ~/edge/kubeport.yaml
 ```
+
+The `ROLE` column is `primary` for normal daemons and `delegate` for instances started with `--delegate` (which forward their services to a primary daemon — see [Delegating Services](#delegating-services-to-a-primary-daemon)).
 
 ### Offloading Services to a Running Daemon
 
@@ -273,6 +276,33 @@ kubeport start --config ~/other-project/kubeport.yaml --offload
 
 # The services from other-project/kubeport.yaml are added to the running daemon
 ```
+
+### Delegating Services to a Primary Daemon
+
+Use `--delegate` to start a *lease-holder* daemon that forwards its services to an existing **primary** daemon and tears them down on exit. This is similar to `--offload` (services run on the primary), but with two key differences:
+
+- The delegate stays alive as a separate process, registered in `kubeport instances` with `ROLE: delegate` and `Primary: <socket>`.
+- When the delegate stops (via `kubeport stop` or SIGTERM), it calls `ReleaseBySource` on the primary to bulk-remove only the services it contributed — leaving everything else untouched.
+
+```bash
+# Primary daemon already running
+kubeport start
+
+# In a different project, run as a delegate that hands its services to the primary
+kubeport start --config ~/edge/kubeport.yaml --delegate
+
+# kubeport instances now shows two rows:
+#   PID    ROLE      CONFIG
+#   12345  primary   ~/myproject/kubeport.yaml
+#   12399  delegate  ~/edge/kubeport.yaml
+
+# Stopping the delegate cleanly removes its contributed services from the primary
+kubeport stop --config ~/edge/kubeport.yaml
+```
+
+If no primary daemon is running, `--delegate` falls back to a regular `start` and the new instance is registered as `primary`.
+
+By contrast, **auto external-conflict detection** (the default `kubeport start` behaviour) takes a hands-off approach: if another instance is already managing a service with the same name or static `local_port`, the new instance marks that service as `external` rather than starting a duplicate. See [docs/advanced-usage.md](docs/advanced-usage.md#multiple-instances-and-delegate-mode) for a side-by-side comparison.
 
 ### Config Management
 

@@ -55,7 +55,7 @@ _kubeport() {
 
     # Global flags available for most commands
     if [[ "${cur}" == -* ]]; then
-        COMPREPLY=( $(compgen -W "-c --config --no-config --context --kube-context -n --namespace --svc --disable-svc --host --api-key --json --sort --wait --timeout --time --offload -h --help -v --version" -- "${cur}") )
+        COMPREPLY=( $(compgen -W "-c --config --no-config --context --kube-context -n --namespace --svc --disable-svc --host --api-key --json --sort --wait --timeout --time --offload --delegate -h --help -v --version" -- "${cur}") )
         return 0
     fi
 

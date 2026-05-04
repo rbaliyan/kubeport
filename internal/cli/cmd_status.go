@@ -57,6 +57,9 @@ type forwardStatusOutput struct {
 	Lazy               bool   `json:"lazy,omitempty"`
 	TunnelOpen         bool   `json:"tunnel_open,omitempty"`
 	ConnectionMode     string `json:"connection_mode,omitempty"`
+	SourceConfig       string `json:"source_config,omitempty"`
+	ExternalInstance   string `json:"external_instance,omitempty"`
+	ExternalPID        int32  `json:"external_pid,omitempty"`
 }
 
 func (a *app) cmdStatus() {
@@ -256,6 +259,9 @@ func forwardFromProto(fw *kubeportv1.ForwardStatusProto) forwardStatusOutput {
 	out.Lazy = fw.Lazy
 	out.TunnelOpen = fw.TunnelOpen
 	out.ConnectionMode = fw.ConnectionMode
+	out.SourceConfig = fw.SourceConfig
+	out.ExternalInstance = fw.GetExternalInstance()
+	out.ExternalPID = fw.GetExternalPid()
 	return out
 }
 

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -16,7 +18,7 @@ import (
 
 const defaultWaitTimeout = 30 * time.Second
 
-func (a *app) cmdStart(_ context.Context) {
+func (a *app) cmdStart(ctx context.Context) {
 	if a.cfg == nil {
 		fmt.Fprintf(os.Stderr, "%sNo valid config loaded%s\n", colorRed, colorReset)
 		os.Exit(1)
@@ -25,6 +27,12 @@ func (a *app) cmdStart(_ context.Context) {
 	// --offload: send services to an already-running instance instead of starting a new one.
 	if a.offload {
 		a.offloadServicesToInstance()
+		return
+	}
+
+	// --delegate: hand off non-conflicting services to an existing instance.
+	if a.delegate {
+		a.cmdStartDelegate(ctx)
 		return
 	}
 
@@ -60,9 +68,14 @@ func (a *app) cmdStart(_ context.Context) {
 		}
 	}
 
+	a.launchDaemon(ctx)
+}
+
+// launchDaemon re-execs the binary as a background daemon process, polls for
+// readiness, and prints the result. Shared by cmdStart and cmdStartNormal.
+func (a *app) launchDaemon(_ context.Context) {
 	fmt.Print("Starting proxy in background... ")
 
-	// Re-exec ourselves as a daemon
 	exePath, err := os.Executable()
 	if err != nil {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
@@ -112,29 +125,23 @@ func (a *app) cmdStart(_ context.Context) {
 
 	_ = logFile.Close()
 
-	// Capture PID before detaching (accessing cmd.Process after Release is undefined)
 	pid := cmd.Process.Pid
 
-	// Write PID file
 	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(pid)), 0600); err != nil {
 		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
 		fmt.Fprintf(os.Stderr, "Error writing PID file: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Detach from child
 	_ = cmd.Process.Release()
 
-	// Poll for startup: check socket + PID with timeout
 	started := false
 	deadline := time.After(5 * time.Second)
 	for !started {
 		select {
 		case <-deadline:
-			// Timeout
 		case <-time.After(200 * time.Millisecond):
 			if _, running := a.isRunning(); running {
-				// Try to connect to gRPC socket for definitive confirmation
 				if dc, _ := a.dialTarget(); dc != nil {
 					dc.Close()
 					started = true
@@ -148,7 +155,6 @@ func (a *app) cmdStart(_ context.Context) {
 	if started {
 		fmt.Printf("%sstarted%s (PID: %d)\n", colorGreen, colorReset, pid)
 
-		// If --wait, block until all forwards are ready
 		if a.startWait {
 			fmt.Print("Waiting for all forwards to be ready... ")
 			if err := a.waitForReady(); err != nil {
@@ -163,7 +169,6 @@ func (a *app) cmdStart(_ context.Context) {
 			fmt.Println("  stop    - Stop proxy")
 		}
 	} else if _, running := a.isRunning(); running {
-		// PID alive but gRPC not ready yet — slow startup
 		fmt.Printf("%sstarting%s (PID: %d)\n", colorYellow, colorReset, pid)
 		if a.startWait {
 			fmt.Print("Waiting for all forwards to be ready... ")
@@ -179,14 +184,14 @@ func (a *app) cmdStart(_ context.Context) {
 		fmt.Println("\nCheck logs for errors:")
 		a.tailLog(20)
 
-		// Show running instances from registry to help diagnose port conflicts.
 		a.printConflictingInstances()
 
 		os.Exit(1)
 	}
 }
 
-// printConflictingInstances lists any other running kubeport instances from the registry.
+// printConflictingInstances lists other running instances and, when possible,
+// shows which specific ports conflict with the current config.
 func (a *app) printConflictingInstances() {
 	reg, err := a.openRegistry()
 	if err != nil {
@@ -196,6 +201,29 @@ func (a *app) printConflictingInstances() {
 	if err != nil || len(entries) == 0 {
 		return
 	}
+
+	// Try to build a detailed conflict report.
+	if a.cfg != nil && len(a.cfg.Services) > 0 {
+		liveInstances := a.queryLiveInstances(entries)
+		conflicts, _ := buildConflictReport(a.cfg.Services, liveInstances)
+		if len(conflicts) > 0 {
+			fmt.Printf("\n%sPort conflicts with running instances:%s\n", colorYellow, colorReset)
+			fmt.Printf("  %-6s  %-20s  %-20s  %-6s  %s\n", "PORT", "THIS CONFIG", "OWNED BY", "PID", "OWNER CONFIG")
+			for _, c := range conflicts {
+				owner := c.OwnerConfig
+				if owner == "" {
+					owner = "(unknown)"
+				}
+				fmt.Printf("  %-6d  %-20s  %-20s  %-6d  %s\n",
+					c.Port, c.ServiceName, c.OwnedBy, c.OwnerPID, owner)
+			}
+			fmt.Printf("\nTip: use --delegate to hand off non-conflicting services to the running instance.\n")
+			fmt.Println()
+			return
+		}
+	}
+
+	// Fall back to brief listing.
 	fmt.Printf("\n%sOther running kubeport instances (possible port conflict):%s\n", colorYellow, colorReset)
 	for i := range entries {
 		printInstanceBrief(&entries[i])
@@ -399,4 +427,376 @@ func (a *app) waitForReady() error {
 			}
 		}
 	}
+}
+
+// liveInstance holds a registry entry paired with the live status fetched from it.
+type liveInstance struct {
+	entry    registry.Entry
+	forwards []*kubeportv1.ForwardStatusProto
+}
+
+// conflictEntry describes a port clash between the new config and a running instance.
+type conflictEntry struct {
+	Port        int
+	ServiceName string // service name in the new config
+	OwnedBy     string // service name on the existing instance
+	OwnerPID    int
+	OwnerConfig string
+}
+
+// queryLiveInstances dials all registry entries concurrently and fetches their
+// Status. Entries that cannot be reached within 2 seconds are silently skipped.
+func (a *app) queryLiveInstances(entries []registry.Entry) []liveInstance {
+	var (
+		mu   sync.Mutex
+		live []liveInstance
+		wg   sync.WaitGroup
+	)
+	for _, e := range entries {
+		wg.Add(1)
+		e := e
+		go func() {
+			defer wg.Done()
+			dc, err := a.dialEntryWithTimeout(e, 2*time.Second)
+			if err != nil || dc == nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			resp, err := dc.client.Status(ctx, &kubeportv1.StatusRequest{})
+			cancel()
+			dc.Close()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			live = append(live, liveInstance{entry: e, forwards: resp.Forwards})
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return live
+}
+
+// dialEntryWithTimeout dials a registry entry using the appropriate transport
+// (Unix socket or TCP+TLS). Returns (nil, nil) on timeout.
+func (a *app) dialEntryWithTimeout(e registry.Entry, timeout time.Duration) (*daemonClient, error) {
+	if e.TCPAddress != "" {
+		apiKey := a.apiKey
+		if apiKey == "" && e.ConfigFile != "" {
+			if cfg, loadErr := config.Load(e.ConfigFile); loadErr == nil {
+				apiKey = cfg.APIKey
+			}
+		}
+		return dialWithTimeout(func() (*daemonClient, error) {
+			return dialDaemonTCP(e.TCPAddress, apiKey, "")
+		}, timeout)
+	}
+	if e.Socket != "" {
+		return dialDaemonWithTimeout(e.Socket, timeout)
+	}
+	return nil, nil
+}
+
+// buildConflictReport compares new services against live forwards and partitions
+// them into conflicting (port already bound) and clean (no conflict) lists.
+// Only non-zero static local ports are checked; dynamic ports (0) cannot conflict.
+func buildConflictReport(newServices []config.ServiceConfig, live []liveInstance) (conflicts []conflictEntry, clean []config.ServiceConfig) {
+	// Build port ownership map: port → (ownerService, ownerPID, ownerConfig)
+	type owner struct {
+		serviceName string
+		pid         int
+		configFile  string
+	}
+	portOwner := make(map[int]owner)
+	for _, inst := range live {
+		for _, fw := range inst.forwards {
+			port := int(fw.ActualPort)
+			if port == 0 {
+				port = int(fw.GetService().GetLocalPort())
+			}
+			if port == 0 {
+				continue
+			}
+			portOwner[port] = owner{
+				serviceName: fw.GetService().GetName(),
+				pid:         inst.entry.PID,
+				configFile:  inst.entry.ConfigFile,
+			}
+		}
+	}
+
+	for _, svc := range newServices {
+		if svc.LocalPort == 0 || svc.IsMultiPort() {
+			clean = append(clean, svc)
+			continue
+		}
+		if o, clash := portOwner[svc.LocalPort]; clash {
+			conflicts = append(conflicts, conflictEntry{
+				Port:        svc.LocalPort,
+				ServiceName: svc.Name,
+				OwnedBy:     o.serviceName,
+				OwnerPID:    o.pid,
+				OwnerConfig: o.configFile,
+			})
+		} else {
+			clean = append(clean, svc)
+		}
+	}
+	return conflicts, clean
+}
+
+// cmdStartDelegate implements --delegate start mode: scans running instances for
+// port conflicts, hands off non-conflicting services to the primary, then starts
+// a lease-holder daemon.
+func (a *app) cmdStartDelegate(ctx context.Context) {
+	if len(a.cfg.Services) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: no services in config\n")
+		os.Exit(1)
+	}
+
+	fmt.Print("Scanning running instances for port conflicts... ")
+
+	reg, err := a.openRegistry()
+	if err != nil {
+		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	entries, err := reg.List()
+	if err != nil {
+		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Filter out other delegate instances when looking for a primary.
+	var primaryCandidates []registry.Entry
+	for _, e := range entries {
+		if !e.Delegate {
+			primaryCandidates = append(primaryCandidates, e)
+		}
+	}
+
+	if len(primaryCandidates) == 0 {
+		fmt.Printf("%snone found%s\n", colorYellow, colorReset)
+		fmt.Println("No primary instance found — starting normally.")
+		a.delegate = false
+		a.cmdStartNormal(ctx)
+		return
+	}
+
+	live := a.queryLiveInstances(primaryCandidates)
+	if len(live) == 0 {
+		fmt.Printf("%snone reachable%s\n", colorYellow, colorReset)
+		fmt.Println("No reachable primary found — starting normally.")
+		a.delegate = false
+		a.cmdStartNormal(ctx)
+		return
+	}
+	fmt.Printf("%sdone%s\n", colorGreen, colorReset)
+
+	primary := live[0]
+	fmt.Printf("  Found primary: PID %d (%s)\n\n", primary.entry.PID, primary.entry.ConfigFile)
+
+	conflicts, clean := buildConflictReport(a.cfg.Services, live)
+
+	if len(conflicts) > 0 {
+		fmt.Printf("%sPort conflicts detected:%s\n", colorYellow, colorReset)
+		fmt.Printf("  %-6s  %-20s  %-20s  %-6s  %s\n", "PORT", "THIS CONFIG", "OWNED BY", "PID", "OWNER CONFIG")
+		for _, c := range conflicts {
+			owner := c.OwnerConfig
+			if owner == "" {
+				owner = "(unknown)"
+			}
+			fmt.Printf("  %-6d  %-20s  %-20s  %-6d  %s\n",
+				c.Port, c.ServiceName, c.OwnedBy, c.OwnerPID, owner)
+		}
+		fmt.Println()
+	}
+
+	if len(clean) == 0 {
+		fmt.Printf("%sAll services conflict — nothing to hand off.%s\n", colorRed, colorReset)
+		fmt.Println("Use 'kubeport status' to see port ownership.")
+		os.Exit(0)
+	}
+
+	// Determine the primary's socket address.
+	primarySocket := primary.entry.Socket
+	if primarySocket == "" {
+		primarySocket = primary.entry.TCPAddress
+	}
+	a.primarySocket = primarySocket
+
+	// Launch the delegate daemon with an empty service list.
+	// Hand-off to the primary happens from here (CLI parent) after the daemon starts.
+	fmt.Printf("Starting delegate daemon... ")
+
+	exePath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	daemonArgs := []string{"_daemon", "--delegate", "--primary-socket", primarySocket}
+	if a.configFile != "" {
+		daemonArgs = append(daemonArgs, "--config", a.configFile)
+	}
+	if a.cliContext != "" {
+		daemonArgs = append(daemonArgs, "--context", a.cliContext)
+	}
+	if a.cliNamespace != "" {
+		daemonArgs = append(daemonArgs, "--namespace", a.cliNamespace)
+	}
+
+	logFile, err := os.OpenFile(a.cfg.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
+		fmt.Fprintf(os.Stderr, "Error creating log file: %v\n", err)
+		os.Exit(1)
+	}
+
+	cmd := exec.Command(exePath, daemonArgs...) // #nosec G204 -- launching self as daemon with known args
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	if err := cmd.Start(); err != nil {
+		_ = logFile.Close()
+		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+	_ = logFile.Close()
+	pid := cmd.Process.Pid
+	if err := os.WriteFile(a.cfg.PIDFile(), []byte(strconv.Itoa(pid)), 0600); err != nil {
+		fmt.Printf("%sfailed%s\n", colorRed, colorReset)
+		fmt.Fprintf(os.Stderr, "Error writing PID file: %v\n", err)
+		os.Exit(1)
+	}
+	_ = cmd.Process.Release()
+
+	// Poll until the delegate daemon's socket appears.
+	deadline := time.After(5 * time.Second)
+polling:
+	for {
+		select {
+		case <-deadline:
+			break polling
+		case <-time.After(200 * time.Millisecond):
+			if dc, _ := dialDaemon(a.socketPath()); dc != nil {
+				dc.Close()
+				break polling
+			}
+		}
+	}
+	fmt.Printf("%sstarted%s (PID: %d)\n\n", colorGreen, colorReset, pid)
+
+	// Hand off clean services to the primary from this CLI process.
+	absConfig := a.configFile
+	if ap, err2 := filepath.Abs(a.configFile); err2 == nil {
+		absConfig = ap
+	}
+
+	dc, err := dialDaemonWithTimeout(primarySocket, 3*time.Second)
+	if err != nil || dc == nil {
+		fmt.Fprintf(os.Stderr, "%sWarning: could not connect to primary to hand off services: %v%s\n", colorYellow, err, colorReset)
+		return
+	}
+	defer dc.Close()
+
+	if len(conflicts) > 0 {
+		fmt.Printf("Handing off %d non-conflicting service(s) to primary (PID: %d)...\n", len(clean), primary.entry.PID)
+	} else {
+		fmt.Printf("Handing off %d service(s) to primary (PID: %d)...\n", len(clean), primary.entry.PID)
+	}
+
+	handoffCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	ok, failed := 0, 0
+	for _, svc := range clean {
+		req := serviceConfigToProto(svc)
+		req.SourceConfig = absConfig
+		resp, err := dc.client.AddService(handoffCtx, req)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %v\n", colorRed, colorReset, svc.Name, err)
+			failed++
+			continue
+		}
+		if !resp.Success {
+			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %s\n", colorRed, colorReset, svc.Name, resp.Error)
+			failed++
+			continue
+		}
+		fmt.Printf("  %s✓%s %s", colorGreen, colorReset, svc.Name)
+		if resp.ActualPort > 0 {
+			fmt.Printf(" (port %d)", resp.ActualPort)
+		}
+		fmt.Println()
+		ok++
+	}
+
+	if len(conflicts) > 0 {
+		fmt.Printf("\n%d handed off, %d skipped (port conflict), %d failed\n", ok, len(conflicts), failed)
+	} else {
+		fmt.Printf("\n%d service(s) handed off successfully\n", ok)
+	}
+	fmt.Printf("Stop with: kubeport stop --config %s\n", a.configFile)
+}
+
+// cmdStartNormal is used when --delegate falls back to a regular start because
+// no primary instance was found or reachable.
+func (a *app) cmdStartNormal(ctx context.Context) {
+	if pid, running := a.isRunning(); running {
+		if a.startWait {
+			if a.allForwardsReady() {
+				fmt.Printf("%sProxy already running and ready (PID: %d)%s\n", colorGreen, pid, colorReset)
+				return
+			}
+			fmt.Printf("%sProxy running (PID: %d), waiting for all forwards...%s\n", colorYellow, pid, colorReset)
+			if err := a.waitForReady(); err != nil {
+				fmt.Fprintf(os.Stderr, "%s%v%s\n", colorRed, err, colorReset)
+				os.Exit(1)
+			}
+			return
+		}
+		fmt.Printf("%sProxy is already running (PID: %d)%s\n", colorYellow, pid, colorReset)
+		fmt.Println("Use 'status' to check or 'restart' to restart")
+		return
+	}
+	a.launchDaemon(ctx)
+}
+
+// dialWithTimeout calls dialFn in a goroutine and returns its result, or
+// (nil, nil) if timeout elapses first. If the dial completes after the timeout
+// the returned connection is closed to prevent a leak.
+func dialWithTimeout(dialFn func() (*daemonClient, error), timeout time.Duration) (*daemonClient, error) {
+	type result struct {
+		dc  *daemonClient
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		dc, err := dialFn()
+		done <- result{dc, err}
+	}()
+	select {
+	case res := <-done:
+		return res.dc, res.err
+	case <-time.After(timeout):
+		go func() {
+			if res := <-done; res.dc != nil {
+				res.dc.Close()
+			}
+		}()
+		return nil, nil
+	}
+}
+
+// dialDaemonWithTimeout attempts to dial a Unix-socket daemon with the given timeout.
+func dialDaemonWithTimeout(socketPath string, timeout time.Duration) (*daemonClient, error) {
+	return dialWithTimeout(func() (*daemonClient, error) {
+		return dialDaemon(socketPath)
+	}, timeout)
 }

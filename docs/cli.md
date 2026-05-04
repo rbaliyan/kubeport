@@ -11,13 +11,17 @@ kubeport start                  # Start and return immediately
 kubeport start --wait           # Start and wait until all forwards are ready
 kubeport start --wait --timeout 30s
 kubeport start --offload        # Send services to an already-running daemon instead of starting a new one
+kubeport start --delegate       # Run as a delegate of an existing primary daemon
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--wait` | Block until all forwards are connected |
 | `--timeout` | Maximum time to wait for readiness (default: 30s) |
-| `--offload` | Add this config's services to an already-running daemon instead of launching a new process |
+| `--offload` | Add this config's services to an already-running daemon instead of launching a new process. The current process exits after the services are accepted; nothing is owned by it. |
+| `--delegate` | Start a lease-holder daemon that hands off all services to an existing primary daemon, stays alive in the background, and calls `ReleaseBySource` on the primary at shutdown to bulk-remove only the services it contributed. Falls back to a regular `start` if no primary is running. See [Multiple Instances and Delegate Mode](advanced-usage.md#multiple-instances-and-delegate-mode). |
+
+> **Auto external-conflict detection.** A regular `kubeport start` (no flag) scans the instance registry at startup and on every reload (SIGHUP / config file change). If another non-delegate instance already owns a service — matched by service name **or** static `local_port` — that service is marked `external` and **not** started locally. It appears in `kubeport status` / `kubeport watch` as `⤵ external [managed by PID X]`. When the owning instance stops, the next reload reclaims the service.
 
 ### `kubeport stop`
 
@@ -26,6 +30,8 @@ Stop the running daemon and all port-forwards.
 ```bash
 kubeport stop
 ```
+
+For a delegate instance (`kubeport start --delegate`) `stop` also calls `ReleaseBySource` on the primary so the services this delegate handed off are bulk-removed before the delegate process exits. Other services on the primary are not touched.
 
 ### `kubeport status`
 
@@ -200,6 +206,19 @@ kubeport watch --sort           # Sort services by name
 | `--time` | `2s` | Refresh interval (Go duration) |
 | `--sort` | off | Sort services alphabetically |
 
+#### Status indicators
+
+`kubeport watch` (and the per-forward header in `kubeport status`) shows a single Unicode symbol next to each service:
+
+| Symbol | Color | State (`ForwardState`) | Meaning |
+|--------|-------|------------------------|---------|
+| `●` | green | `running` | Forward is healthy and accepting connections |
+| `◌` | yellow | `starting` / `waiting` | Tunnel is being established, or lazy mode is bound but idle |
+| `✗` | red | `failed` | Max restarts exceeded or fatal error |
+| `○` | red | `stopped` | Cleanly stopped (e.g. via `kubeport remove`) |
+| `⤵` | cyan | `external` | Owned by another running kubeport instance — annotated with `[managed by PID X]` |
+| `?` | yellow | `unknown` | Status proto value not recognised by this CLI version |
+
 ### `kubeport instances`
 
 List all running kubeport daemon instances registered in the central instance registry (`~/.config/kubeport/instances.json`). Useful for diagnosing port conflicts and finding socket or log file paths.
@@ -209,7 +228,19 @@ kubeport instances           # Human-readable table
 kubeport instances --json    # JSON output
 ```
 
-Each row shows the PID, uptime, version, gRPC endpoint (Unix socket or TCP address), API key hint, and config file path. A detail block below the table includes the full paths to the PID file and log file for each instance.
+Each row has these columns:
+
+| Column | Meaning |
+|--------|---------|
+| `PID` | Daemon process ID |
+| `UPTIME` | Time since the daemon was registered |
+| `VERSION` | kubeport version of the running daemon |
+| `ROLE` | `primary` (white) — a normal daemon that owns its forwards; `delegate` (yellow) — started with `--delegate`, hands off services to a primary |
+| `ENDPOINT` | Unix socket path or `tcp://host:port` |
+| `API KEY` | `none` if unauthenticated, `yes` or `yes (<key_id>)` otherwise |
+| `CONFIG` | Resolved config file path, or `(in-memory)` for CLI-only daemons |
+
+A detail block below the table prints the full paths to the PID file and log file for each instance. Delegate entries also show `Primary: <socket>` pointing at the primary daemon they registered against.
 
 ### `kubeport chaos`
 
@@ -288,8 +319,12 @@ kubeport version
 | `--wait` | | Wait for readiness (used with `start`) |
 | `--timeout` | | Timeout for `--wait` |
 | `--time` | | Refresh interval for `watch` (default: `2s`) |
+| `--offload` | | (with `start`) Add services to an already-running daemon and exit |
+| `--delegate` | | (with `start`) Run as a delegate of an existing primary daemon — see [Delegate Mode](advanced-usage.md#multiple-instances-and-delegate-mode) |
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
+
+> **Internal flags.** `--primary-socket <path>` is set by kubeport itself when re-execing a delegate daemon and is not intended for direct use. Passing it manually is unsupported.
 
 ## CLI-Only Mode
 

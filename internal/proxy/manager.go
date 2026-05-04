@@ -39,7 +39,8 @@ const (
 	StateRunning
 	StateFailed
 	StateStopped
-	StateWaiting // lazy mode: local port bound, SPDY tunnel not yet open
+	StateWaiting  // lazy mode: local port bound, SPDY tunnel not yet open
+	StateExternal // service from local config managed by another running kubeport instance
 )
 
 func (s ForwardState) String() string {
@@ -54,6 +55,8 @@ func (s ForwardState) String() string {
 		return "stopped"
 	case StateWaiting:
 		return "waiting"
+	case StateExternal:
+		return "external"
 	default:
 		return "unknown"
 	}
@@ -85,24 +88,41 @@ type ForwardStatus struct {
 	Lazy           bool   // true when configured in lazy mode
 	TunnelOpen     bool   // lazy mode: true when the SPDY tunnel to k8s is currently open
 	ConnectionMode string // effective connection mode: "mux" (shared SPDY tunnel) or "isolated" (per-client SPDY tunnel)
+	SourceConfig   string // absolute path of the delegate config that contributed this service; empty = native
+
+	// Set only when State == StateExternal.
+	ExternalInstance string // socket or TCP endpoint of the instance managing this service
+	ExternalPID      int    // PID of the instance managing this service
+}
+
+// ExternalForward describes a service from the local config that is already being
+// managed by another running kubeport instance. It is displayed in Status but not
+// forwarded locally.
+type ExternalForward struct {
+	Service    config.ServiceConfig
+	Instance   string // socket or TCP endpoint of the owning daemon
+	PID        int
+	ConfigFile string
+	ActualPort int // actual local port on the owning instance (0 if unknown)
 }
 
 type portForward struct {
-	svc        config.ServiceConfig
-	namespace  string
-	cancel     context.CancelFunc // cancels the current port-forward attempt (idempotent)
-	state      ForwardState
-	err        error
-	restarts   int
-	lastStart  time.Time
-	actualPort int // Actual port assigned by OS (relevant when local_port is 0)
-	nextRetry  time.Time
-	counter    byteCounter // cumulative bytes across all connection attempts
+	svc          config.ServiceConfig
+	namespace    string
+	cancel       context.CancelFunc // cancels the current port-forward attempt (idempotent)
+	state        ForwardState
+	err          error
+	restarts     int
+	lastStart    time.Time
+	actualPort   int // Actual port assigned by OS (relevant when local_port is 0)
+	nextRetry    time.Time
+	counter      byteCounter // cumulative bytes across all connection attempts
 	currentPod        string     // name of the pod currently being forwarded to
 	currentTargetPort int        // target port for currentPod; used by isolated mode
 	preemptCh         chan string // carries replacement pod name for predictive reconnection
 	tunnelOpen        bool       // lazy mode: true when SPDY tunnel is active
-	mu         sync.Mutex
+	sourceConfig string // absolute path of the delegate config that contributed this service; "" = native
+	mu           sync.Mutex
 
 	// chaosOverride holds the current effective chaos config. It is loaded from
 	// config on each connection attempt (unless hasChaosOverride is true) and
@@ -127,6 +147,15 @@ type resolvedPort struct {
 }
 
 // Manager supervises multiple Kubernetes port forwards.
+//
+// Concurrency: Manager methods are safe for concurrent use. The struct
+// holds two mutexes — `mu` (the main forward map and ordering) and
+// `externalMu` (the externally-owned-services overlay used by the auto
+// external-conflict scan). The lock-ordering rule is **`mu` first,
+// `externalMu` second** — always acquire them in that order, never the
+// reverse. Methods such as Status() that need both follow this ordering
+// explicitly. Holding `externalMu` while calling into anything that may
+// take `mu` is a deadlock waiting to happen.
 type Manager struct {
 	cfg        *config.Config
 	restConfig *rest.Config
@@ -141,6 +170,9 @@ type Manager struct {
 	hooks      *hook.Dispatcher
 	logger     *slog.Logger
 	cmdCh      chan serviceCmd
+
+	externalMu      sync.RWMutex
+	externalForwards map[string]ExternalForward // services deferred to another instance
 
 	// Supervisor tuning (populated from config.SupervisorConfig in NewManager)
 	maxRestarts          int
@@ -218,6 +250,7 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		clientset:            clientset,
 		forwards:             make(map[string]*portForward),
 		children:             make(map[string][]string),
+		externalForwards:     make(map[string]ExternalForward),
 		output:               output,
 		hooks:                o.hooks,
 		logger:               o.logger,
@@ -231,6 +264,30 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		transports:           newTransportCache(transportMaxAge),
 	}
 	return m, nil
+}
+
+// SetExternalForwards records services from the local config that are already
+// managed by another running kubeport instance. Call before Start for initial
+// conflict detection, or before Reload to refresh on SIGHUP/file change.
+// Returns the names of services that just became external (were local before);
+// the caller should call RemoveService for each to stop any running local forward.
+func (m *Manager) SetExternalForwards(externals []ExternalForward) []string {
+	newMap := make(map[string]ExternalForward, len(externals))
+	for _, ef := range externals {
+		newMap[ef.Service.Name] = ef
+	}
+	m.externalMu.Lock()
+	oldMap := m.externalForwards
+	m.externalForwards = newMap
+	m.externalMu.Unlock()
+
+	var newlyExternal []string
+	for name := range newMap {
+		if _, was := oldMap[name]; !was {
+			newlyExternal = append(newlyExternal, name)
+		}
+	}
+	return newlyExternal
 }
 
 // GetContext returns the Kubernetes context name being used.
@@ -260,20 +317,22 @@ func (m *Manager) Start(ctx context.Context) {
 
 	var wg sync.WaitGroup
 	for _, svc := range m.cfg.Services {
-		wg.Add(1)
-		go func(s config.ServiceConfig) {
-			defer wg.Done()
-			m.supervise(ctx, s)
-		}(svc)
+		m.externalMu.RLock()
+		_, isExternal := m.externalForwards[svc.Name]
+		m.externalMu.RUnlock()
+		if isExternal {
+			continue
+		}
+		wg.Go(func() {
+			m.supervise(ctx, svc)
+		})
 	}
 
 	// Event loop: listen for add/remove commands until ctx cancelled.
 	// The event loop is tracked by the WaitGroup so Start blocks until
 	// both the event loop and all service goroutines have finished.
 	cmdCh := m.cmdCh
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-ctx.Done():
@@ -281,11 +340,9 @@ func (m *Manager) Start(ctx context.Context) {
 			case cmd := <-cmdCh:
 				if cmd.add != nil {
 					svc := *cmd.add
-					wg.Add(1)
-					go func() {
-						defer wg.Done()
+					wg.Go(func() {
 						m.supervise(ctx, svc)
-					}()
+					})
 					_ = m.hooks.Fire(ctx, hook.Event{
 						Type:       hook.EventServiceAdded,
 						Time:       time.Now(),
@@ -300,7 +357,7 @@ func (m *Manager) Start(ctx context.Context) {
 				}
 			}
 		}
-	}()
+	})
 
 	wg.Wait()
 }
@@ -509,9 +566,24 @@ func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
 		}
 	}
 
-	// Add new services from config
+	// Remove external forwards that are no longer in the new config.
+	m.externalMu.Lock()
+	for name := range m.externalForwards {
+		if _, ok := desired[name]; !ok {
+			delete(m.externalForwards, name)
+		}
+	}
+	m.externalMu.Unlock()
+
+	// Add new services from config, skipping any that are externally managed.
 	for name, svc := range desired {
 		if !running[name] && !parents[name] {
+			m.externalMu.RLock()
+			_, isExternal := m.externalForwards[name]
+			m.externalMu.RUnlock()
+			if isExternal {
+				continue
+			}
 			if addErr := m.AddService(svc); addErr != nil {
 				m.logger.Warn("reload: failed to add service", "service", name, "error", addErr)
 				continue
@@ -584,14 +656,15 @@ func (m *Manager) superviseMulti(ctx context.Context, svc config.ServiceConfig) 
 		childNames = append(childNames, childName)
 
 		childSvc := config.ServiceConfig{
-			Name:       childName,
-			Service:    svc.Service,
-			Pod:        svc.Pod,
-			LocalPort:  rp.LocalPort,
-			RemotePort: rp.RemotePort,
-			Namespace:  svc.Namespace,
-			ParentName: svc.Name,
-			PortName:   rp.Name,
+			Name:         childName,
+			Service:      svc.Service,
+			Pod:          svc.Pod,
+			LocalPort:    rp.LocalPort,
+			RemotePort:   rp.RemotePort,
+			Namespace:    svc.Namespace,
+			ParentName:   svc.Name,
+			PortName:     rp.Name,
+			SourceConfig: svc.SourceConfig,
 		}
 
 		wg.Add(1)
@@ -766,10 +839,11 @@ func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig)
 	}
 
 	pf := &portForward{
-		svc:       svc,
-		namespace: namespace,
-		state:     StateStarting,
-		preemptCh: make(chan string, 1),
+		svc:          svc,
+		namespace:    namespace,
+		state:        StateStarting,
+		preemptCh:    make(chan string, 1),
+		sourceConfig: svc.SourceConfig,
 	}
 
 	m.mu.Lock()
@@ -1492,10 +1566,26 @@ func (m *Manager) Status() []ForwardStatus {
 			Lazy:                  pf.svc.Lazy,
 			TunnelOpen:            pf.tunnelOpen,
 			ConnectionMode:        resolveConnectionMode(m.cfg, pf.svc),
+			SourceConfig:          pf.sourceConfig,
 		}
 		pf.mu.Unlock()
 		statuses = append(statuses, s)
 	}
+
+	// Append externally-managed services (managed by another kubeport instance).
+	// externalMu is acquired after mu — always observe this ordering.
+	m.externalMu.RLock()
+	for _, ef := range m.externalForwards {
+		statuses = append(statuses, ForwardStatus{
+			Service:          ef.Service,
+			State:            StateExternal,
+			ActualPort:       ef.ActualPort,
+			ExternalInstance: ef.Instance,
+			ExternalPID:      ef.PID,
+		})
+	}
+	m.externalMu.RUnlock()
+
 	return statuses
 }
 
@@ -1549,6 +1639,41 @@ func (m *Manager) ResetChaos(services []string) (updated, notFound []string) {
 		updated = append(updated, name)
 	}
 	return updated, notFound
+}
+
+// ReleaseBySource stops and removes all forwards contributed by the given
+// delegate config path. Returns the count of top-level services removed.
+func (m *Manager) ReleaseBySource(sourceConfig string) (int, error) {
+	m.mu.RLock()
+	childToParent := make(map[string]string)
+	for parent, children := range m.children {
+		for _, child := range children {
+			childToParent[child] = parent
+		}
+	}
+	toRemove := make(map[string]bool)
+	for name, pf := range m.forwards {
+		pf.mu.Lock()
+		sc := pf.sourceConfig
+		pf.mu.Unlock()
+		if sc != sourceConfig {
+			continue
+		}
+		if parent, isChild := childToParent[name]; isChild {
+			toRemove[parent] = true
+		} else {
+			toRemove[name] = true
+		}
+	}
+	m.mu.RUnlock()
+
+	count := 0
+	for name := range toRemove {
+		if err := m.RemoveService(name); err == nil {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // resolveConnectionMode returns the effective connection mode for a service,

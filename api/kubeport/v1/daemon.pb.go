@@ -31,6 +31,7 @@ const (
 	ForwardState_FORWARD_STATE_FAILED      ForwardState = 3
 	ForwardState_FORWARD_STATE_STOPPED     ForwardState = 4
 	ForwardState_FORWARD_STATE_WAITING     ForwardState = 5 // lazy mode: local port bound, SPDY tunnel not yet open
+	ForwardState_FORWARD_STATE_EXTERNAL    ForwardState = 6 // service from local config managed by another kubeport instance
 )
 
 // Enum value maps for ForwardState.
@@ -42,6 +43,7 @@ var (
 		3: "FORWARD_STATE_FAILED",
 		4: "FORWARD_STATE_STOPPED",
 		5: "FORWARD_STATE_WAITING",
+		6: "FORWARD_STATE_EXTERNAL",
 	}
 	ForwardState_value = map[string]int32{
 		"FORWARD_STATE_UNSPECIFIED": 0,
@@ -50,6 +52,7 @@ var (
 		"FORWARD_STATE_FAILED":      3,
 		"FORWARD_STATE_STOPPED":     4,
 		"FORWARD_STATE_WAITING":     5,
+		"FORWARD_STATE_EXTERNAL":    6,
 	}
 )
 
@@ -327,7 +330,10 @@ type ForwardStatusProto struct {
 	ConnBytesOut          int64                  `protobuf:"varint,21,opt,name=conn_bytes_out,json=connBytesOut,proto3" json:"conn_bytes_out,omitempty"`                             // Bytes sent since last reconnect
 	Lazy                  bool                   `protobuf:"varint,22,opt,name=lazy,proto3" json:"lazy,omitempty"`                                                                   // true when service is configured in lazy mode
 	TunnelOpen            bool                   `protobuf:"varint,23,opt,name=tunnel_open,json=tunnelOpen,proto3" json:"tunnel_open,omitempty"`                                     // lazy mode: true when the SPDY tunnel is currently open
-	ConnectionMode        string                 `protobuf:"bytes,24,opt,name=connection_mode,json=connectionMode,proto3" json:"connection_mode,omitempty"`                          // "mux" or "isolated"
+	ConnectionMode        string                 `protobuf:"bytes,24,opt,name=connection_mode,json=connectionMode,proto3" json:"connection_mode,omitempty"`                          // effective connection mode: "mux" (one shared SPDY tunnel, ~128 client cap) or "isolated" (per-client SPDY tunnel, no cap)
+	SourceConfig          string                 `protobuf:"bytes,25,opt,name=source_config,json=sourceConfig,proto3" json:"source_config,omitempty"`                                // absolute path of the delegate config that contributed this service; empty = native
+	ExternalInstance      string                 `protobuf:"bytes,26,opt,name=external_instance,json=externalInstance,proto3" json:"external_instance,omitempty"`                    // socket/TCP endpoint of the instance managing this service (set when state=EXTERNAL)
+	ExternalPid           int32                  `protobuf:"varint,27,opt,name=external_pid,json=externalPid,proto3" json:"external_pid,omitempty"`                                  // PID of the instance managing this service (set when state=EXTERNAL)
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -530,6 +536,27 @@ func (x *ForwardStatusProto) GetConnectionMode() string {
 	return ""
 }
 
+func (x *ForwardStatusProto) GetSourceConfig() string {
+	if x != nil {
+		return x.SourceConfig
+	}
+	return ""
+}
+
+func (x *ForwardStatusProto) GetExternalInstance() string {
+	if x != nil {
+		return x.ExternalInstance
+	}
+	return ""
+}
+
+func (x *ForwardStatusProto) GetExternalPid() int32 {
+	if x != nil {
+		return x.ExternalPid
+	}
+	return 0
+}
+
 type StatusRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -718,7 +745,8 @@ type AddServiceRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Service       *ServiceInfo           `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
 	Persist       bool                   `protobuf:"varint,2,opt,name=persist,proto3" json:"persist,omitempty"`
-	Ports         *PortSpec              `protobuf:"bytes,3,opt,name=ports,proto3" json:"ports,omitempty"` // if set, multi-port mode
+	Ports         *PortSpec              `protobuf:"bytes,3,opt,name=ports,proto3" json:"ports,omitempty"`                                   // if set, multi-port mode
+	SourceConfig  string                 `protobuf:"bytes,4,opt,name=source_config,json=sourceConfig,proto3" json:"source_config,omitempty"` // absolute path of the delegate config contributing this service; empty = none
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -772,6 +800,13 @@ func (x *AddServiceRequest) GetPorts() *PortSpec {
 		return x.Ports
 	}
 	return nil
+}
+
+func (x *AddServiceRequest) GetSourceConfig() string {
+	if x != nil {
+		return x.SourceConfig
+	}
+	return ""
 }
 
 type AddServiceResponse struct {
@@ -1385,6 +1420,102 @@ func (x *UpdateChaosResponse) GetNotFound() []string {
 	return nil
 }
 
+type ReleaseBySourceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	SourceConfig  string                 `protobuf:"bytes,1,opt,name=source_config,json=sourceConfig,proto3" json:"source_config,omitempty"` // absolute path of the delegate config whose services should be removed
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseBySourceRequest) Reset() {
+	*x = ReleaseBySourceRequest{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseBySourceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseBySourceRequest) ProtoMessage() {}
+
+func (x *ReleaseBySourceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseBySourceRequest.ProtoReflect.Descriptor instead.
+func (*ReleaseBySourceRequest) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ReleaseBySourceRequest) GetSourceConfig() string {
+	if x != nil {
+		return x.SourceConfig
+	}
+	return ""
+}
+
+type ReleaseBySourceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Released      int32                  `protobuf:"varint,2,opt,name=released,proto3" json:"released,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReleaseBySourceResponse) Reset() {
+	*x = ReleaseBySourceResponse{}
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReleaseBySourceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReleaseBySourceResponse) ProtoMessage() {}
+
+func (x *ReleaseBySourceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReleaseBySourceResponse.ProtoReflect.Descriptor instead.
+func (*ReleaseBySourceResponse) Descriptor() ([]byte, []int) {
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *ReleaseBySourceResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *ReleaseBySourceResponse) GetReleased() int32 {
+	if x != nil {
+		return x.Released
+	}
+	return 0
+}
+
 type MappingsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ClusterDomain string                 `protobuf:"bytes,1,opt,name=cluster_domain,json=clusterDomain,proto3" json:"cluster_domain,omitempty"` // Custom cluster domain (default: "cluster.local")
@@ -1394,7 +1525,7 @@ type MappingsRequest struct {
 
 func (x *MappingsRequest) Reset() {
 	*x = MappingsRequest{}
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[18]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1406,7 +1537,7 @@ func (x *MappingsRequest) String() string {
 func (*MappingsRequest) ProtoMessage() {}
 
 func (x *MappingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[18]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1419,7 +1550,7 @@ func (x *MappingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MappingsRequest.ProtoReflect.Descriptor instead.
 func (*MappingsRequest) Descriptor() ([]byte, []int) {
-	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{18}
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *MappingsRequest) GetClusterDomain() string {
@@ -1441,7 +1572,7 @@ type MappingsResponse struct {
 
 func (x *MappingsResponse) Reset() {
 	*x = MappingsResponse{}
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[19]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1453,7 +1584,7 @@ func (x *MappingsResponse) String() string {
 func (*MappingsResponse) ProtoMessage() {}
 
 func (x *MappingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kubeport_v1_daemon_proto_msgTypes[19]
+	mi := &file_kubeport_v1_daemon_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1466,7 +1597,7 @@ func (x *MappingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MappingsResponse.ProtoReflect.Descriptor instead.
 func (*MappingsResponse) Descriptor() ([]byte, []int) {
-	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{19}
+	return file_kubeport_v1_daemon_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *MappingsResponse) GetAddrs() map[string]string {
@@ -1519,7 +1650,7 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"port_names\x18\x02 \x03(\tR\tportNames\x12#\n" +
 	"\rexclude_ports\x18\x03 \x03(\tR\fexcludePorts\x12*\n" +
-	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xf9\a\n" +
+	"\x11local_port_offset\x18\x04 \x01(\x05R\x0flocalPortOffset\"\xee\b\n" +
 	"\x12ForwardStatusProto\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12/\n" +
 	"\x05state\x18\x02 \x01(\x0e2\x19.kubeport.v1.ForwardStateR\x05state\x12\x14\n" +
@@ -1549,7 +1680,10 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x04lazy\x18\x16 \x01(\bR\x04lazy\x12\x1f\n" +
 	"\vtunnel_open\x18\x17 \x01(\bR\n" +
 	"tunnelOpen\x12'\n" +
-	"\x0fconnection_mode\x18\x18 \x01(\tR\x0econnectionMode\"\x0f\n" +
+	"\x0fconnection_mode\x18\x18 \x01(\tR\x0econnectionMode\x12#\n" +
+	"\rsource_config\x18\x19 \x01(\tR\fsourceConfig\x12+\n" +
+	"\x11external_instance\x18\x1a \x01(\tR\x10externalInstance\x12!\n" +
+	"\fexternal_pid\x18\x1b \x01(\x05R\vexternalPid\"\x0f\n" +
 	"\rStatusRequest\"\x9f\x01\n" +
 	"\x0eStatusResponse\x12\x18\n" +
 	"\acontext\x18\x01 \x01(\tR\acontext\x12\x1c\n" +
@@ -1558,11 +1692,12 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\aversion\x18\x04 \x01(\tR\aversion\"\r\n" +
 	"\vStopRequest\"(\n" +
 	"\fStopResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\"\x8e\x01\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\"\xb3\x01\n" +
 	"\x11AddServiceRequest\x122\n" +
 	"\aservice\x18\x01 \x01(\v2\x18.kubeport.v1.ServiceInfoR\aservice\x12\x18\n" +
 	"\apersist\x18\x02 \x01(\bR\apersist\x12+\n" +
-	"\x05ports\x18\x03 \x01(\v2\x15.kubeport.v1.PortSpecR\x05ports\"\x88\x01\n" +
+	"\x05ports\x18\x03 \x01(\v2\x15.kubeport.v1.PortSpecR\x05ports\x12#\n" +
+	"\rsource_config\x18\x04 \x01(\tR\fsourceConfig\"\x88\x01\n" +
 	"\x12AddServiceResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x02 \x01(\tR\x05error\x12\x1f\n" +
@@ -1606,7 +1741,12 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x05reset\x18\a \x01(\bR\x05reset\"L\n" +
 	"\x13UpdateChaosResponse\x12\x18\n" +
 	"\aupdated\x18\x01 \x03(\tR\aupdated\x12\x1b\n" +
-	"\tnot_found\x18\x02 \x03(\tR\bnotFound\"8\n" +
+	"\tnot_found\x18\x02 \x03(\tR\bnotFound\"=\n" +
+	"\x16ReleaseBySourceRequest\x12#\n" +
+	"\rsource_config\x18\x01 \x01(\tR\fsourceConfig\"O\n" +
+	"\x17ReleaseBySourceResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x1a\n" +
+	"\breleased\x18\x02 \x01(\x05R\breleased\"8\n" +
 	"\x0fMappingsRequest\x12%\n" +
 	"\x0ecluster_domain\x18\x01 \x01(\tR\rclusterDomain\"\xfd\x01\n" +
 	"\x10MappingsResponse\x12>\n" +
@@ -1617,19 +1757,20 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\n" +
 	"AddrsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xb4\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01*\xd0\x01\n" +
 	"\fForwardState\x12\x1d\n" +
 	"\x19FORWARD_STATE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16FORWARD_STATE_STARTING\x10\x01\x12\x19\n" +
 	"\x15FORWARD_STATE_RUNNING\x10\x02\x12\x18\n" +
 	"\x14FORWARD_STATE_FAILED\x10\x03\x12\x19\n" +
 	"\x15FORWARD_STATE_STOPPED\x10\x04\x12\x19\n" +
-	"\x15FORWARD_STATE_WAITING\x10\x05*\x8b\x01\n" +
+	"\x15FORWARD_STATE_WAITING\x10\x05\x12\x1a\n" +
+	"\x16FORWARD_STATE_EXTERNAL\x10\x06*\x8b\x01\n" +
 	"\vChaosPreset\x12\x1c\n" +
 	"\x18CHAOS_PRESET_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19CHAOS_PRESET_SLOW_NETWORK\x10\x01\x12!\n" +
 	"\x1dCHAOS_PRESET_UNSTABLE_CLUSTER\x10\x02\x12\x1c\n" +
-	"\x18CHAOS_PRESET_PACKET_LOSS\x10\x032\xd4\x04\n" +
+	"\x18CHAOS_PRESET_PACKET_LOSS\x10\x032\xb2\x05\n" +
 	"\rDaemonService\x12A\n" +
 	"\x06Status\x12\x1a.kubeport.v1.StatusRequest\x1a\x1b.kubeport.v1.StatusResponse\x12;\n" +
 	"\x04Stop\x12\x18.kubeport.v1.StopRequest\x1a\x19.kubeport.v1.StopResponse\x12M\n" +
@@ -1639,7 +1780,8 @@ const file_kubeport_v1_daemon_proto_rawDesc = "" +
 	"\x06Reload\x12\x1a.kubeport.v1.ReloadRequest\x1a\x1b.kubeport.v1.ReloadResponse\x12>\n" +
 	"\x05Apply\x12\x19.kubeport.v1.ApplyRequest\x1a\x1a.kubeport.v1.ApplyResponse\x12G\n" +
 	"\bMappings\x12\x1c.kubeport.v1.MappingsRequest\x1a\x1d.kubeport.v1.MappingsResponse\x12P\n" +
-	"\vUpdateChaos\x12\x1f.kubeport.v1.UpdateChaosRequest\x1a .kubeport.v1.UpdateChaosResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
+	"\vUpdateChaos\x12\x1f.kubeport.v1.UpdateChaosRequest\x1a .kubeport.v1.UpdateChaosResponse\x12\\\n" +
+	"\x0fReleaseBySource\x12#.kubeport.v1.ReleaseBySourceRequest\x1a$.kubeport.v1.ReleaseBySourceResponseB9Z7github.com/rbaliyan/kubeport/api/kubeport/v1;kubeportv1b\x06proto3"
 
 var (
 	file_kubeport_v1_daemon_proto_rawDescOnce sync.Once
@@ -1654,44 +1796,46 @@ func file_kubeport_v1_daemon_proto_rawDescGZIP() []byte {
 }
 
 var file_kubeport_v1_daemon_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_kubeport_v1_daemon_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
 var file_kubeport_v1_daemon_proto_goTypes = []any{
-	(ForwardState)(0),             // 0: kubeport.v1.ForwardState
-	(ChaosPreset)(0),              // 1: kubeport.v1.ChaosPreset
-	(*ServiceInfo)(nil),           // 2: kubeport.v1.ServiceInfo
-	(*PortSpec)(nil),              // 3: kubeport.v1.PortSpec
-	(*ForwardStatusProto)(nil),    // 4: kubeport.v1.ForwardStatusProto
-	(*StatusRequest)(nil),         // 5: kubeport.v1.StatusRequest
-	(*StatusResponse)(nil),        // 6: kubeport.v1.StatusResponse
-	(*StopRequest)(nil),           // 7: kubeport.v1.StopRequest
-	(*StopResponse)(nil),          // 8: kubeport.v1.StopResponse
-	(*AddServiceRequest)(nil),     // 9: kubeport.v1.AddServiceRequest
-	(*AddServiceResponse)(nil),    // 10: kubeport.v1.AddServiceResponse
-	(*RemoveServiceRequest)(nil),  // 11: kubeport.v1.RemoveServiceRequest
-	(*RemoveServiceResponse)(nil), // 12: kubeport.v1.RemoveServiceResponse
-	(*ReloadRequest)(nil),         // 13: kubeport.v1.ReloadRequest
-	(*ReloadResponse)(nil),        // 14: kubeport.v1.ReloadResponse
-	(*ApplyRequest)(nil),          // 15: kubeport.v1.ApplyRequest
-	(*ApplyResponse)(nil),         // 16: kubeport.v1.ApplyResponse
-	(*AddressMapping)(nil),        // 17: kubeport.v1.AddressMapping
-	(*UpdateChaosRequest)(nil),    // 18: kubeport.v1.UpdateChaosRequest
-	(*UpdateChaosResponse)(nil),   // 19: kubeport.v1.UpdateChaosResponse
-	(*MappingsRequest)(nil),       // 20: kubeport.v1.MappingsRequest
-	(*MappingsResponse)(nil),      // 21: kubeport.v1.MappingsResponse
-	nil,                           // 22: kubeport.v1.MappingsResponse.AddrsEntry
-	(*timestamppb.Timestamp)(nil), // 23: google.protobuf.Timestamp
+	(ForwardState)(0),               // 0: kubeport.v1.ForwardState
+	(ChaosPreset)(0),                // 1: kubeport.v1.ChaosPreset
+	(*ServiceInfo)(nil),             // 2: kubeport.v1.ServiceInfo
+	(*PortSpec)(nil),                // 3: kubeport.v1.PortSpec
+	(*ForwardStatusProto)(nil),      // 4: kubeport.v1.ForwardStatusProto
+	(*StatusRequest)(nil),           // 5: kubeport.v1.StatusRequest
+	(*StatusResponse)(nil),          // 6: kubeport.v1.StatusResponse
+	(*StopRequest)(nil),             // 7: kubeport.v1.StopRequest
+	(*StopResponse)(nil),            // 8: kubeport.v1.StopResponse
+	(*AddServiceRequest)(nil),       // 9: kubeport.v1.AddServiceRequest
+	(*AddServiceResponse)(nil),      // 10: kubeport.v1.AddServiceResponse
+	(*RemoveServiceRequest)(nil),    // 11: kubeport.v1.RemoveServiceRequest
+	(*RemoveServiceResponse)(nil),   // 12: kubeport.v1.RemoveServiceResponse
+	(*ReloadRequest)(nil),           // 13: kubeport.v1.ReloadRequest
+	(*ReloadResponse)(nil),          // 14: kubeport.v1.ReloadResponse
+	(*ApplyRequest)(nil),            // 15: kubeport.v1.ApplyRequest
+	(*ApplyResponse)(nil),           // 16: kubeport.v1.ApplyResponse
+	(*AddressMapping)(nil),          // 17: kubeport.v1.AddressMapping
+	(*UpdateChaosRequest)(nil),      // 18: kubeport.v1.UpdateChaosRequest
+	(*UpdateChaosResponse)(nil),     // 19: kubeport.v1.UpdateChaosResponse
+	(*ReleaseBySourceRequest)(nil),  // 20: kubeport.v1.ReleaseBySourceRequest
+	(*ReleaseBySourceResponse)(nil), // 21: kubeport.v1.ReleaseBySourceResponse
+	(*MappingsRequest)(nil),         // 22: kubeport.v1.MappingsRequest
+	(*MappingsResponse)(nil),        // 23: kubeport.v1.MappingsResponse
+	nil,                             // 24: kubeport.v1.MappingsResponse.AddrsEntry
+	(*timestamppb.Timestamp)(nil),   // 25: google.protobuf.Timestamp
 }
 var file_kubeport_v1_daemon_proto_depIdxs = []int32{
 	2,  // 0: kubeport.v1.ForwardStatusProto.service:type_name -> kubeport.v1.ServiceInfo
 	0,  // 1: kubeport.v1.ForwardStatusProto.state:type_name -> kubeport.v1.ForwardState
-	23, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
-	23, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
+	25, // 2: kubeport.v1.ForwardStatusProto.last_start:type_name -> google.protobuf.Timestamp
+	25, // 3: kubeport.v1.ForwardStatusProto.next_retry:type_name -> google.protobuf.Timestamp
 	4,  // 4: kubeport.v1.StatusResponse.forwards:type_name -> kubeport.v1.ForwardStatusProto
 	2,  // 5: kubeport.v1.AddServiceRequest.service:type_name -> kubeport.v1.ServiceInfo
 	3,  // 6: kubeport.v1.AddServiceRequest.ports:type_name -> kubeport.v1.PortSpec
 	2,  // 7: kubeport.v1.ApplyRequest.services:type_name -> kubeport.v1.ServiceInfo
 	1,  // 8: kubeport.v1.UpdateChaosRequest.preset:type_name -> kubeport.v1.ChaosPreset
-	22, // 9: kubeport.v1.MappingsResponse.addrs:type_name -> kubeport.v1.MappingsResponse.AddrsEntry
+	24, // 9: kubeport.v1.MappingsResponse.addrs:type_name -> kubeport.v1.MappingsResponse.AddrsEntry
 	17, // 10: kubeport.v1.MappingsResponse.mappings:type_name -> kubeport.v1.AddressMapping
 	5,  // 11: kubeport.v1.DaemonService.Status:input_type -> kubeport.v1.StatusRequest
 	7,  // 12: kubeport.v1.DaemonService.Stop:input_type -> kubeport.v1.StopRequest
@@ -1699,18 +1843,20 @@ var file_kubeport_v1_daemon_proto_depIdxs = []int32{
 	11, // 14: kubeport.v1.DaemonService.RemoveService:input_type -> kubeport.v1.RemoveServiceRequest
 	13, // 15: kubeport.v1.DaemonService.Reload:input_type -> kubeport.v1.ReloadRequest
 	15, // 16: kubeport.v1.DaemonService.Apply:input_type -> kubeport.v1.ApplyRequest
-	20, // 17: kubeport.v1.DaemonService.Mappings:input_type -> kubeport.v1.MappingsRequest
+	22, // 17: kubeport.v1.DaemonService.Mappings:input_type -> kubeport.v1.MappingsRequest
 	18, // 18: kubeport.v1.DaemonService.UpdateChaos:input_type -> kubeport.v1.UpdateChaosRequest
-	6,  // 19: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
-	8,  // 20: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
-	10, // 21: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
-	12, // 22: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
-	14, // 23: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
-	16, // 24: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
-	21, // 25: kubeport.v1.DaemonService.Mappings:output_type -> kubeport.v1.MappingsResponse
-	19, // 26: kubeport.v1.DaemonService.UpdateChaos:output_type -> kubeport.v1.UpdateChaosResponse
-	19, // [19:27] is the sub-list for method output_type
-	11, // [11:19] is the sub-list for method input_type
+	20, // 19: kubeport.v1.DaemonService.ReleaseBySource:input_type -> kubeport.v1.ReleaseBySourceRequest
+	6,  // 20: kubeport.v1.DaemonService.Status:output_type -> kubeport.v1.StatusResponse
+	8,  // 21: kubeport.v1.DaemonService.Stop:output_type -> kubeport.v1.StopResponse
+	10, // 22: kubeport.v1.DaemonService.AddService:output_type -> kubeport.v1.AddServiceResponse
+	12, // 23: kubeport.v1.DaemonService.RemoveService:output_type -> kubeport.v1.RemoveServiceResponse
+	14, // 24: kubeport.v1.DaemonService.Reload:output_type -> kubeport.v1.ReloadResponse
+	16, // 25: kubeport.v1.DaemonService.Apply:output_type -> kubeport.v1.ApplyResponse
+	23, // 26: kubeport.v1.DaemonService.Mappings:output_type -> kubeport.v1.MappingsResponse
+	19, // 27: kubeport.v1.DaemonService.UpdateChaos:output_type -> kubeport.v1.UpdateChaosResponse
+	21, // 28: kubeport.v1.DaemonService.ReleaseBySource:output_type -> kubeport.v1.ReleaseBySourceResponse
+	20, // [20:29] is the sub-list for method output_type
+	11, // [11:20] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name
@@ -1727,7 +1873,7 @@ func file_kubeport_v1_daemon_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kubeport_v1_daemon_proto_rawDesc), len(file_kubeport_v1_daemon_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   21,
+			NumMessages:   23,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

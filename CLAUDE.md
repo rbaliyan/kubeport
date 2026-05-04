@@ -53,6 +53,10 @@ The daemon listens on a Unix socket at `~/.config/kubeport/<instance-id>.sock`. 
 
 **Network/chaos simulation** (`throttle.go`, `chaos.go`): injected at the TCP relay layer between the local port and the SPDY tunnel.
 
+**External-conflict tracking**: `Manager.externalForwards` (guarded by `externalMu`) holds services from the local config that another running instance already owns. `SetExternalForwards` is called at startup and on every reload; it returns the names of services that just transitioned to `external` so the caller can `RemoveService` any local goroutine still running for them. The lock-ordering rule is **`mu` first, `externalMu` second** — never the reverse — and is asserted in the godoc on `Manager`. `Status()` merges entries from `externalForwards` into the result with `State == StateExternal`.
+
+**Delegate teardown**: `Manager.ReleaseBySource(sourceConfig)` walks `forwards`, collects every entry whose `portForward.sourceConfig` equals the supplied path (rolling multi-port children up to their parents via `m.children`), and calls `RemoveService` on each. The daemon server exposes this as the `ReleaseBySource` RPC in `daemon.proto`; delegate instances call it at shutdown to clean up exactly what they contributed.
+
 ### Config system (`pkg/config/`)
 
 Public package (also used by `pkg/proxy` SDK). Key behaviors:
@@ -71,7 +75,7 @@ Config discovery order: `./kubeport.yaml` → `./.kubeport.yaml` → `~/.config/
 
 ### Instance registry (`internal/registry/`)
 
-`~/.config/kubeport/instances.json` (flock-protected) tracks all running daemon instances. Used by `kubeport instances`, the `--offload` flag (route a service to an existing daemon), and stale-entry pruning.
+`~/.config/kubeport/instances.json` (flock-protected) tracks all running daemon instances. Used by `kubeport instances`, the `--offload` flag (route a service to an existing daemon), the `--delegate` flag (entries set `Delegate: true` and `PrimarySocket: <path>`), the auto external-conflict scan (only non-delegate primaries are considered owners), and stale-entry pruning. Delegate teardown calls the primary's `ReleaseBySource` RPC, keyed off the `source_config` runtime field carried on each `ServiceConfig`.
 
 ### Lifecycle hooks (`internal/hook/`)
 

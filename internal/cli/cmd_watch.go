@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -264,6 +265,10 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 		stateColor = colorRed
 		stateText = "stopped"
 		indicator = "○"
+	case kubeportv1.ForwardState_FORWARD_STATE_EXTERNAL:
+		stateColor = colorCyan
+		stateText = "external"
+		indicator = "⤵"
 	default:
 		stateColor = colorYellow
 		stateText = "unknown"
@@ -336,6 +341,17 @@ func writeForwardStatus(w io.Writer, fw *kubeportv1.ForwardStatusProto) {
 	}
 	if fw.ConnectionMode == "isolated" {
 		_, _ = fmt.Fprint(w, " [isolated]")
+	}
+	if fw.SourceConfig != "" {
+		_, _ = fmt.Fprintf(w, " (from: %s)", filepath.Base(fw.SourceConfig))
+	}
+	if fw.State == kubeportv1.ForwardState_FORWARD_STATE_EXTERNAL {
+		if fw.ExternalPid > 0 {
+			_, _ = fmt.Fprintf(w, " [managed by PID %d]", fw.ExternalPid)
+		}
+		if fw.ExternalInstance != "" {
+			_, _ = fmt.Fprintf(w, " [via %s]", fw.ExternalInstance)
+		}
 	}
 
 	if fw.Error != "" {

@@ -26,6 +26,8 @@ kubeport start          # or: kubeport fg (foreground mode)
 kubeport status         # verify forwards are active
 ```
 
+> **Single-instance constraint.** Only one kubeport daemon may bind a given proxy listen address. Before auto-starting SOCKS or HTTP, kubeport dials the configured listen address; if it is already in use, the daemon refuses to start that proxy and prints an explicit error such as `Error: SOCKS proxy cannot start — 127.0.0.1:1080 is already in use. Only one kubeport instance may run a proxy on the same address.` Either point the new daemon at a different port (set `socks.listen` / `http_proxy.listen`), set `enabled: false` to skip auto-start, or stop the daemon currently holding the port. See the [troubleshooting entry](troubleshooting.md#proxy-cannot-start--listen-address-already-in-use) for how to find the holder.
+
 ## SOCKS5 Proxy
 
 ### Quick Start

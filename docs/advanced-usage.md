@@ -203,6 +203,50 @@ kubeport remove "Debug Service"
 
 This is useful for team workflows where the base config is checked into the repo and individuals add their own services on top.
 
+## Multiple Instances and Delegate Mode
+
+When more than one kubeport daemon is running on the same machine, kubeport exposes three distinct ways to combine them. Pick the one that matches your workflow:
+
+| Approach | What it does | Process model | Lifecycle |
+|----------|--------------|---------------|-----------|
+| **Default `kubeport start` (auto external)** | Each project has its own daemon. If a service in your config is already owned by another running daemon (same name *or* static `local_port`), it is marked `external` in your status view and not started locally. The next reload reclaims the service when the other daemon exits. | Two independent primaries. | Each daemon owns its own services and lifetime. |
+| **`kubeport start --offload`** | Sends this config's services to an already-running daemon and exits. Nothing is owned by the calling process. | One process (the existing primary). | Services persist on the primary until removed manually. |
+| **`kubeport start --delegate`** | Starts a lease-holder daemon that hands its services to an existing primary, stays alive in the background, and calls `ReleaseBySource` on the primary at shutdown to bulk-remove only the services it contributed. | Two processes: primary + delegate. | Delegate-contributed services are released automatically when the delegate stops. |
+
+### Auto external-conflict detection (default)
+
+`kubeport start` with no flag is the safe default. At startup and on every reload (SIGHUP or config-file change) the daemon walks the central registry and decides, per service, whether another running primary already owns it. Ownership is matched by service name OR static `local_port`; delegate instances are skipped (they do not "own" services). External services show up in both `kubeport status` and `kubeport watch`:
+
+```
+  ⤵ Postgres: :5432 [external] [managed by PID 12345]
+```
+
+When PID 12345 stops, the next reload picks the service back up locally.
+
+The same single-instance rule applies to the SOCKS and HTTP proxies: only one daemon may bind a given proxy listen address. If the address is already in use, kubeport refuses to auto-start that proxy and prints an explicit error rather than failing silently.
+
+### Delegate mode
+
+Use `--delegate` when you want the convenience of one shared primary daemon (single status view, single set of port-forwards, single proxy) but still want each project to manage the lifetime of its own services:
+
+```bash
+# Primary daemon already running
+kubeport start --config ~/myproject/kubeport.yaml
+
+# In another project, register as a delegate
+kubeport start --config ~/edge/kubeport.yaml --delegate
+
+# kubeport instances now lists both — the delegate row carries Primary: <socket>
+kubeport instances
+
+# Stop only the edge services: the delegate calls ReleaseBySource on the primary
+kubeport stop --config ~/edge/kubeport.yaml
+```
+
+If no primary daemon is running when `--delegate` is invoked, kubeport falls back to a regular `start` and the new instance is registered as `primary`. Internally, the delegate runs a `noopSupervisor` (no local port-forwards) and re-execs itself with `--primary-socket <path>` — that flag is set automatically and is not intended for direct use.
+
+`source_config` (the absolute path of the delegate's config) is set on every service the delegate adds. The primary keys its `ReleaseBySource` lookup off this field so a single RPC removes exactly the delegate's contributions and nothing else.
+
 ## High-Concurrency Forwards
 
 By default, kubeport uses `mux` mode: one shared SPDY connection per port-forward, with all client TCP connections multiplexed over it. Because the Kubernetes API server caps SPDY at 256 streams and each client uses two streams, this limits you to roughly 128 simultaneous clients per forward.

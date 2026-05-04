@@ -49,6 +49,13 @@ namespace = "default"
 # probability = 0.01             # 1% chance of a latency spike per write
 # duration = "5s"                # Duration of each spike
 
+# Multi-instance behavior: if another running kubeport daemon already manages a
+# service with the same name OR the same static local_port, kubeport will mark
+# that service as "external" instead of starting a duplicate forward. The CLI
+# shows it as "⤵ external [managed by PID X]". Use `kubeport instances` to
+# inspect the owner. To centralize lifetime on a primary daemon use
+# `kubeport start --delegate`. See docs/advanced-usage.md for the full picture.
+
 # Forward a Kubernetes service (auto-resolves to a running pod)
 [[services]]
 name = "My API"

@@ -74,6 +74,7 @@ _kubeport() {
         '--wait[Block until all forwards are connected]' \
         '--timeout[Max wait time for --wait]:duration:' \
         '--offload[Add services to an already-running daemon instead of starting a new one]' \
+        '--delegate[Run as a delegate of an existing primary daemon (hands off services, releases on stop)]' \
         '(-h --help)'{-h,--help}'[Show help]' \
         '(-v --version)'{-v,--version}'[Show version]' \
         '1: :->command' \
@@ -146,7 +147,9 @@ _kubeport() {
                     _arguments \
                         '(-c --config)'{-c,--config}'[Configuration file]:file:_files' \
                         '--wait[Block until all forwards are connected]' \
-                        '--timeout[Max wait time]:duration:'
+                        '--timeout[Max wait time]:duration:' \
+                        '--offload[Add services to an already-running daemon instead of starting a new one]' \
+                        '--delegate[Run as a delegate of an existing primary daemon]'
                     ;;
             esac
             ;;

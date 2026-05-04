@@ -13,6 +13,17 @@ import (
 )
 
 func (a *app) cmdStop() {
+	// Note if this is a delegate instance — its shutdown will release contributed
+	// services from the primary automatically.
+	if a.cfg != nil && a.cfg.FilePath() != "" {
+		if reg, err := a.openRegistry(); err == nil {
+			if entry, err := reg.FindByConfig(a.cfg.FilePath()); err == nil && entry != nil && entry.Delegate {
+				fmt.Printf("%sDelegate instance (PID: %d) — will release contributed services from primary on stop.%s\n",
+					colorYellow, entry.PID, colorReset)
+			}
+		}
+	}
+
 	// Try gRPC first
 	dc, err := a.dialTarget()
 	if dc != nil {

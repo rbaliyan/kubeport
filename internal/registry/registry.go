@@ -32,6 +32,8 @@ type Entry struct {
 	KeyID       string `json:"key_id,omitempty"`
 	Version    string    `json:"version,omitempty"`
 	StartedAt  time.Time `json:"started_at"`
+	Delegate      bool   `json:"delegate,omitempty"`       // true if this is a delegate (lease-holder) daemon
+	PrimarySocket string `json:"primary_socket,omitempty"` // socket/addr of the primary for delegate instances
 }
 
 // store is the JSON-serialised shape written to instances.json.
