@@ -1,5 +1,10 @@
 repos:
-  - repo: https://github.com/golangci/golangci-lint
-    rev: v2.11.4
+  - repo: local
     hooks:
       - id: golangci-lint
+        name: golangci-lint
+        description: Run golangci-lint via the mise-managed binary so the Go toolchain matches go.mod.
+        entry: golangci-lint run --fix
+        language: system
+        types: [go]
+        pass_filenames: false
