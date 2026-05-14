@@ -37,6 +37,9 @@ func mergeConfigs(base, override *Config) *Config {
 	if result.LogFilePath == "" {
 		result.LogFilePath = base.LogFilePath
 	}
+	if result.LogLevel == "" {
+		result.LogLevel = base.LogLevel
+	}
 
 	result.Supervisor = mergeSupervisor(base.Supervisor, override.Supervisor)
 	result.Network = ResolveNetwork(base.Network, override.Network)

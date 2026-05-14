@@ -57,6 +57,7 @@ func (a *app) cmdHelp() {
 	fmt.Println("  --timeout <duration>        Max wait time for --wait (default: 30s, implies --wait)")
 	fmt.Println("  --offload                   Add services to an existing instance (for start)")
 	fmt.Println("  --delegate                  Hand off services to an existing primary instance (for start)")
+	fmt.Println("  --verbose                   Enable debug logging (overrides config log_level)")
 	fmt.Println("  --help, -h                  Show this help message")
 	fmt.Println("  --version, -v               Show version information")
 	fmt.Println()

@@ -508,6 +508,7 @@ type Config struct {
 	Context     string           `yaml:"context" toml:"context"`
 	Namespace   string           `yaml:"namespace" toml:"namespace"`
 	LogFilePath string           `yaml:"log_file,omitempty" toml:"log_file,omitempty"`
+	LogLevel    string           `yaml:"log_level,omitempty" toml:"log_level,omitempty"`
 	Listen      string           `yaml:"listen,omitempty" toml:"listen,omitempty"`
 	APIKey      string           `yaml:"api_key,omitempty" toml:"api_key,omitempty"`
 	KeyID       string           `yaml:"key_id,omitempty" toml:"key_id,omitempty"`
@@ -835,6 +836,7 @@ type configTOML struct {
 	Context     string              `toml:"context"`
 	Namespace   string              `toml:"namespace"`
 	LogFilePath string              `toml:"log_file,omitempty"`
+	LogLevel    string              `toml:"log_level,omitempty"`
 	Listen      string              `toml:"listen,omitempty"`
 	APIKey      string              `toml:"api_key,omitempty"`
 	KeyID       string              `toml:"key_id,omitempty"`
@@ -859,6 +861,7 @@ func unmarshalTOML(data []byte, cfg *Config) error {
 	cfg.Context = raw.Context
 	cfg.Namespace = raw.Namespace
 	cfg.LogFilePath = raw.LogFilePath
+	cfg.LogLevel = raw.LogLevel
 	cfg.Listen = raw.Listen
 	cfg.APIKey = raw.APIKey
 	cfg.KeyID = raw.KeyID
@@ -904,6 +907,7 @@ func marshalTOML(c *Config) ([]byte, error) {
 		Context:     c.Context,
 		Namespace:   c.Namespace,
 		LogFilePath: c.LogFilePath,
+		LogLevel:    c.LogLevel,
 		Listen:      c.Listen,
 		APIKey:      c.APIKey,
 		KeyID:       c.KeyID,

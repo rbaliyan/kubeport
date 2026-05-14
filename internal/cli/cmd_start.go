@@ -101,6 +101,9 @@ func (a *app) launchDaemon(_ context.Context) {
 	for _, name := range a.disableServices {
 		daemonArgs = append(daemonArgs, "--disable-svc", name)
 	}
+	if a.verbose {
+		daemonArgs = append(daemonArgs, "--verbose")
+	}
 
 	logFile, err := os.OpenFile(a.cfg.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
@@ -649,6 +652,9 @@ func (a *app) cmdStartDelegate(ctx context.Context) {
 	}
 	if a.cliNamespace != "" {
 		daemonArgs = append(daemonArgs, "--namespace", a.cliNamespace)
+	}
+	if a.verbose {
+		daemonArgs = append(daemonArgs, "--verbose")
 	}
 
 	logFile, err := os.OpenFile(a.cfg.LogFile(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)

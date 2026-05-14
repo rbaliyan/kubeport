@@ -1020,6 +1020,52 @@ services:
 	}
 }
 
+func TestLoad_LogLevel_YAMLAndTOML(t *testing.T) {
+	dir := t.TempDir()
+	yamlPath := filepath.Join(dir, "kubeport.yaml")
+	yamlContent := `context: c
+namespace: n
+log_level: debug
+services:
+  - name: web
+    service: web-svc
+    local_port: 8080
+    remote_port: 80
+`
+	if err := os.WriteFile(yamlPath, []byte(yamlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(yamlPath)
+	if err != nil {
+		t.Fatalf("yaml load: %v", err)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Fatalf("yaml: want log_level=debug, got %q", cfg.LogLevel)
+	}
+
+	tomlPath := filepath.Join(dir, "kubeport.toml")
+	tomlContent := `context = "c"
+namespace = "n"
+log_level = "warn"
+
+[[services]]
+name = "web"
+service = "web-svc"
+local_port = 8080
+remote_port = 80
+`
+	if err := os.WriteFile(tomlPath, []byte(tomlContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(tomlPath)
+	if err != nil {
+		t.Fatalf("toml load: %v", err)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Fatalf("toml: want log_level=warn, got %q", cfg.LogLevel)
+	}
+}
+
 func TestLoadTOML(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "kubeport.toml")
