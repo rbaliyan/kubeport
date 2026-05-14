@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -70,7 +69,7 @@ func (f *proxyFlags) applyConfigDefaults(cfg config.ProxyServerConfig) {
 // connectDaemon builds proxy options and creates a Proxy connected to the daemon.
 func (a *app) connectDaemon(f proxyFlags, cfgSection config.ProxyServerConfig) (proxy.Proxy, error) {
 	var proxyOpts []proxy.Option
-	proxyOpts = append(proxyOpts, proxy.WithLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))))
+	proxyOpts = append(proxyOpts, proxy.WithLogger(a.newLogger(os.Stderr)))
 
 	if cfgSection.FuzzyMatch != nil {
 		proxyOpts = append(proxyOpts, proxy.WithFuzzyMatch(*cfgSection.FuzzyMatch))
@@ -143,7 +142,7 @@ func (a *app) cmdSocks(args []string) {
 		os.Exit(1)
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := a.newLogger(os.Stderr)
 
 	var socksOpts []proxy.SOCKSOption
 	socksOpts = append(socksOpts, proxy.WithSOCKSLogger(logger))
@@ -188,7 +187,7 @@ func (a *app) cmdHTTPProxy(args []string) {
 		os.Exit(1)
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logger := a.newLogger(os.Stderr)
 
 	var httpOpts []proxy.HTTPProxyOption
 	httpOpts = append(httpOpts, proxy.WithHTTPProxyLogger(logger))

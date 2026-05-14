@@ -50,6 +50,7 @@ type app struct {
 	remoteHost      string
 	apiKey          string
 	watchInterval   time.Duration
+	verbose         bool
 }
 
 // Execute runs the CLI with the given context.
@@ -142,6 +143,8 @@ func (a *app) parseArgs(args []string) (command string, remaining []string) {
 				os.Exit(1)
 			}
 			a.watchInterval = d
+		case arg == "--verbose":
+			a.verbose = true
 		case arg == "--help" || arg == "-h":
 			a.cmdHelp()
 			os.Exit(0)

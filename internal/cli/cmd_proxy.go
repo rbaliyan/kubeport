@@ -308,7 +308,8 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		}
 	}
 
-	logger := slog.New(slog.NewTextHandler(output, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	a.warnInvalidLogLevel(output)
+	logger := a.newLogger(output)
 
 	dispatcher := hook.NewDispatcher(logger)
 	for _, hc := range a.cfg.Hooks {
