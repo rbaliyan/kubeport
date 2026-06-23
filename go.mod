@@ -5,7 +5,7 @@ go 1.26.4
 require (
 	github.com/AdamKorcz/go-118-fuzz-build v0.0.0-20250520111509-a70c2aa677fa
 	github.com/google/uuid v1.6.0
-	github.com/pelletier/go-toml/v2 v2.3.1
+	github.com/pelletier/go-toml/v2 v2.4.0
 	github.com/rbaliyan/go-version v1.2.5
 	golang.org/x/term v0.44.0
 	google.golang.org/grpc v1.81.1
