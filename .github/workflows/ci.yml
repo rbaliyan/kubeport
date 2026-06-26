@@ -37,7 +37,9 @@ jobs:
 
   test:
     name: Test
-    needs: changes
+    # Gate the slow -race suite behind the fast smoke job so a broken build fails
+    # fast without burning a full race run.
+    needs: [changes, smoke]
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -54,6 +56,55 @@ jobs:
 
       - name: Test
         run: go test -v -race ./...
+
+  smoke:
+    name: Smoke
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      # Fast, broad pre-merge signal: runs only the labeled TestSmoke* suite.
+      - name: Smoke
+        run: go test -run '^TestSmoke' ./...
+
+  coverage:
+    name: Coverage
+    # Gate behind smoke so the full coverage run only happens once smoke passes.
+    needs: [changes, smoke]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      # Enforce a coverage floor on the filtered total. Exclusions:
+      #   - api/kubeport/v1: generated protobuf
+      #   - main.go: entrypoint (not unit-testable)
+      #   - internal/cli: infra-bound daemon-launch/dial command handlers
+      - name: Coverage gate
+        run: |
+          go test -coverprofile=cover.out ./...
+          grep -vE 'api/kubeport/v1|/main\.go|internal/cli' cover.out > cover.filtered.out
+          TOTAL=$(go tool cover -func=cover.filtered.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "Filtered coverage: ${TOTAL}%"
+          FLOOR=78.0
+          if awk "BEGIN { exit !(${TOTAL} < ${FLOOR}) }"; then
+            echo "Coverage ${TOTAL}% is below floor ${FLOOR}%"
+            exit 1
+          fi
 
   lint:
     name: Lint

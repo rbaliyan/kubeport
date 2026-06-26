@@ -22,3 +22,7 @@ Thumbs.db
 # Go
 vendor/
 .claude/
+
+# Coverage artifacts
+cover.out
+cover.filtered.out
