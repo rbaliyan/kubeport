@@ -99,8 +99,18 @@ func FuzzServiceConfigProtoRoundTrip(f *testing.F) {
 	f.Add("multi", "multi-svc", "", 0, 0, "", true, "", "")
 	f.Add("named", "svc", "", 0, 0, "ns", false, "http", "grpc")
 	f.Add("", "", "", 0, 0, "", false, "", "")
+	// Out-of-int32 ports: exercise the port normalization below.
+	f.Add("big", "svc", "", 2147483648, 4294967296, "", false, "", "")
 
 	f.Fuzz(func(t *testing.T, name, service, pod string, localPort, remotePort int, namespace string, all bool, sel1, sel2 string) {
+		// The proto carries ports as int32 and config validation rejects ports
+		// outside 0-65535 before this conversion ever runs, so a port that does
+		// not fit int32 cannot reach serviceConfigToProto in practice. Constrain
+		// the fuzzed ports to the valid range so the round-trip oracle reflects
+		// real inputs rather than the lossy int->int32 narrowing of an
+		// impossible value.
+		localPort = normalizePort(localPort)
+		remotePort = normalizePort(remotePort)
 		svc := config.ServiceConfig{
 			Name:       name,
 			Service:    service,
@@ -190,6 +200,16 @@ func protoToServiceConfig(req *kubeportv1.AddServiceRequest) config.ServiceConfi
 		svc.LocalPort = 0
 	}
 	return svc
+}
+
+// normalizePort maps any int into the valid TCP port range [0, 65535], the
+// domain serviceConfigToProto's int32 conversion is sound for.
+func normalizePort(p int) int {
+	p %= 65536
+	if p < 0 {
+		p += 65536
+	}
+	return p
 }
 
 func nonEmptyNames(sels []config.PortSelector) []string {
