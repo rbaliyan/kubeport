@@ -2,6 +2,14 @@
 
 All notable changes to kubeport are documented here. This project uses [semantic versioning](https://semver.org/).
 
+## [v0.8.1] - 2026-05-14
+
+### Added
+- `--verbose` flag and `log_level` config field — set daemon log verbosity to `debug`, `info` (default), `warn`, or `error`; `--verbose` forces `debug` regardless of the configured level.
+
+### Fixed
+- `kubeport start --wait` now treats `external` forwards as ready instead of timing out — when a service is owned by another running instance, `--wait` no longer blocks waiting for a local forward that will never start.
+
 ## [v0.8.0] - 2026-05-04
 
 ### Added
@@ -125,7 +133,8 @@ Initial public release with core features:
 - Lifecycle hooks (shell, exec, webhook)
 - Shell completions (bash, zsh, fish)
 
-[Unreleased]: https://github.com/rbaliyan/kubeport/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/rbaliyan/kubeport/compare/v0.8.1...HEAD
+[v0.8.1]: https://github.com/rbaliyan/kubeport/compare/v0.8.0...v0.8.1
 [v0.8.0]: https://github.com/rbaliyan/kubeport/compare/v0.7.3...v0.8.0
 [v0.7.3]: https://github.com/rbaliyan/kubeport/compare/v0.7.2...v0.7.3
 [v0.6.1]: https://github.com/rbaliyan/kubeport/compare/v0.6.0...v0.6.1

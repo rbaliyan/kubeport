@@ -96,7 +96,7 @@ Or change the local port in your config, or use `local_port: 0` for automatic as
 
 ### Service shows as `external` in `kubeport status` / `watch`
 
-**Symptom:** A service from your config file appears with the cyan `⤵` indicator and the label `external [managed by PID X]` instead of the usual green `●` running.
+**Symptom:** A service from your config file appears with the cyan `⤵` indicator and the labels `[external] [managed by PID X]` instead of the usual green `●` running.
 
 **Cause:** Another kubeport daemon (PID X) is already managing a service with either the same name or the same static `local_port`. To prevent two processes from binding the same port — or from racing on the same logical service — kubeport's startup and reload logic walks the instance registry and marks the conflict as `external` rather than starting a duplicate forward locally. Delegate instances are excluded from this scan; only primary daemons can "own" a service.
 
@@ -220,8 +220,9 @@ Port exclusion (`exclude_ports`) matches against the port **name** in the Servic
 If your issue isn't covered here:
 
 1. Check `kubeport logs` for detailed error messages
-2. Run in foreground mode for real-time output: `kubeport fg`
-3. Open an issue on [GitHub](https://github.com/rbaliyan/kubeport/issues) with:
+2. Enable debug-level logging with `kubeport start --verbose` (or set `log_level: debug` in your config)
+3. Run in foreground mode for real-time output: `kubeport fg`
+4. Open an issue on [GitHub](https://github.com/rbaliyan/kubeport/issues) with:
    - kubeport version (`kubeport version`)
    - Kubernetes version (`kubectl version`)
    - Relevant config (redact sensitive values)

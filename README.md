@@ -242,6 +242,7 @@ kubeport mappings           # Show K8s DNS → localhost address mappings
 kubeport socks              # Start SOCKS5 proxy for address translation (default: 127.0.0.1:1080)
 kubeport http-proxy         # Start HTTP/HTTPS proxy for address translation (default: 127.0.0.1:3128)
 kubeport instances          # List all running kubeport daemons (useful for diagnosing port conflicts)
+kubeport update check       # Check whether a newer release is available
 kubeport chaos preset slow-network postgres   # Inject latency on a live tunnel without restarting
 kubeport chaos set postgres --error-rate 0.05 # Apply 5% error injection to a running service
 kubeport chaos disable --all                  # Turn off chaos injection across all services
@@ -255,9 +256,9 @@ kubeport instances
 
 # Example output:
 # PID    UPTIME  VERSION  ROLE      ENDPOINT                                     API KEY  CONFIG
-# 12345  4m32s   v0.7.0   primary   ~/.config/kubeport/myproject-a3f8b2c1.sock   none     ~/myproject/kubeport.yaml
-# 67890  1h5m    v0.7.0   primary   ~/.config/kubeport/infra-d9e1f234.sock       none     ~/infra/kubeport.yaml
-# 67891  2m10s   v0.7.0   delegate  ~/.config/kubeport/edge-f0a1b2c3.sock        none     ~/edge/kubeport.yaml
+# 12345  4m32s   v0.8.1   primary   ~/.config/kubeport/myproject-a3f8b2c1.sock   none     ~/myproject/kubeport.yaml
+# 67890  1h5m    v0.8.1   primary   ~/.config/kubeport/infra-d9e1f234.sock       none     ~/infra/kubeport.yaml
+# 67891  2m10s   v0.8.1   delegate  ~/.config/kubeport/edge-f0a1b2c3.sock        none     ~/edge/kubeport.yaml
 ```
 
 The `ROLE` column is `primary` for normal daemons and `delegate` for instances started with `--delegate` (which forward their services to a primary daemon — see [Delegating Services](#delegating-services-to-a-primary-daemon)).

@@ -55,6 +55,7 @@ Or copy one of the examples in the repository:
 | `context` | string | Kubernetes context from your kubeconfig |
 | `namespace` | string | Default namespace for all services |
 | `log_file` | string | Custom log file path (default: `~/.config/kubeport/logs/<instance-id>.log`) |
+| `log_level` | string | Log verbosity: `debug`, `info` (default), `warn`, `error`. The `--verbose` flag forces `debug` regardless of this setting |
 | `listen` | string | Daemon socket address (default: `~/.config/kubeport/<instance-id>.sock`). Use `sock://` prefix for custom path or `tcp://` for TCP |
 | `api_key` | string | API key for TCP listener authentication (required when using TCP listen) |
 | `key_id` | string | Key identifier sent alongside `api_key` (for token rotation) |
