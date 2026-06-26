@@ -34,6 +34,23 @@ func waitForSocket(t *testing.T, path string) {
 	t.Fatalf("socket %q never appeared", path)
 }
 
+// waitForTCP polls until a TCP listener at addr accepts a connection or the
+// deadline passes. The server is started in a goroutine, so this avoids a
+// "connection refused" race before its listener has bound.
+func waitForTCP(t *testing.T, addr string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		c, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+		if err == nil {
+			_ = c.Close()
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("server at %s never became reachable", addr)
+}
+
 // TestSmoke_DaemonStatusRoundTrip stands up a real daemon server on a Unix
 // socket and confirms a Status RPC round-trips the manager state back to a real
 // gRPC client.
@@ -111,6 +128,8 @@ func TestSmoke_GRPCAuthRejectsBadKey(t *testing.T) {
 	go func() { _ = srv.Start() }()
 	t.Cleanup(srv.Shutdown)
 
+	waitForTCP(t, addr)
+
 	tlsCreds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: true, //nolint:gosec // test; self-signed cert
 		MinVersion:         tls.VersionTLS12,
@@ -164,6 +183,8 @@ func TestSmoke_GRPCAuthAcceptsGoodKey(t *testing.T) {
 	srv.listenCfg = config.ListenConfig{Mode: config.ListenTCP, Address: addr}
 	go func() { _ = srv.Start() }()
 	t.Cleanup(srv.Shutdown)
+
+	waitForTCP(t, addr)
 
 	tlsCreds := credentials.NewTLS(&tls.Config{
 		InsecureSkipVerify: true, //nolint:gosec // test; self-signed cert
