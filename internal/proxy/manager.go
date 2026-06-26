@@ -1626,7 +1626,9 @@ func (m *Manager) Mappings(clusterDomain string) []AddressMapping {
 
 	defaultNS := m.cfg.Namespace
 
-	var mappings []AddressMapping
+	// Each service-backed forward expands into four DNS-name variants; pre-size
+	// to that upper bound to avoid repeated slice growth on large forward sets.
+	mappings := make([]AddressMapping, 0, len(m.order)*4)
 	for _, name := range m.order {
 		pf := m.forwards[name]
 		pf.mu.Lock()

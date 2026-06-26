@@ -26,3 +26,8 @@ vendor/
 # Coverage artifacts
 cover.out
 cover.filtered.out
+
+# Benchmark profile outputs (bench.txt is a committed baseline and is NOT ignored)
+cpu.prof
+mem.prof
+*.test
