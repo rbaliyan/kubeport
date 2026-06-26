@@ -29,6 +29,10 @@ namespace: default
 # Custom log file path (default: ~/.config/kubeport/logs/<instance-id>.log)
 # log_file: /var/log/kubeport.log
 
+# Log verbosity: debug, info (default), warn, error.
+# The --verbose flag forces debug regardless of this setting.
+# log_level: info
+
 # Daemon listen address (default: ~/.config/kubeport/<instance-id>.sock)
 # Use sock:// prefix for a custom Unix socket path
 # listen: sock:///tmp/kubeport.sock

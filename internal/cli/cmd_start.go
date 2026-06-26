@@ -281,11 +281,6 @@ func (a *app) offloadServicesToInstance() {
 			failed++
 			continue
 		}
-		if !resp.Success {
-			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %s\n", colorRed, colorReset, svc.Name, resp.Error)
-			failed++
-			continue
-		}
 		fmt.Printf("  %s✓%s %s", colorGreen, colorReset, svc.Name)
 		if resp.ActualPort > 0 {
 			fmt.Printf(" (local port: %d)", resp.ActualPort)
@@ -452,6 +447,11 @@ type conflictEntry struct {
 // queryLiveInstances dials all registry entries concurrently and fetches their
 // Status. Entries that cannot be reached within 2 seconds are silently skipped.
 func (a *app) queryLiveInstances(entries []registry.Entry) []liveInstance {
+	// Bound concurrent dials so a large registry can't fan out unboundedly; each
+	// dial holds a 2-3s timeout, so an unbounded burst could open many sockets at
+	// once. Small registries are unaffected (sem never blocks).
+	const maxConcurrent = 8
+	sem := make(chan struct{}, maxConcurrent)
 	var (
 		mu   sync.Mutex
 		live []liveInstance
@@ -462,6 +462,8 @@ func (a *app) queryLiveInstances(entries []registry.Entry) []liveInstance {
 		e := e
 		go func() {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			dc, err := a.dialEntryWithTimeout(e, 2*time.Second)
 			if err != nil || dc == nil {
 				return
@@ -729,11 +731,6 @@ polling:
 		resp, err := dc.client.AddService(handoffCtx, req)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %v\n", colorRed, colorReset, svc.Name, err)
-			failed++
-			continue
-		}
-		if !resp.Success {
-			fmt.Fprintf(os.Stderr, "  %s✗%s %s: %s\n", colorRed, colorReset, svc.Name, resp.Error)
 			failed++
 			continue
 		}

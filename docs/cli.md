@@ -293,6 +293,23 @@ Enable or disable chaos injection for the given services using their current par
 
 Revert to the chaos settings defined in the config file (discards any runtime override set via `chaos set` or `chaos preset`).
 
+### `kubeport update`
+
+Check for and apply kubeport updates from GitHub releases.
+
+```bash
+kubeport update          # Download and install the latest release (in place)
+kubeport update check    # Report whether a newer release is available, without installing
+```
+
+`update check` queries the latest GitHub release and prints whether an upgrade is available; it never modifies the binary.
+
+`update` (or `update apply`) performs an in-place self-update, but only for binaries installed from a GitHub release. For other install methods it prints the appropriate upgrade hint and exits without changing anything:
+
+- **Homebrew** → `brew upgrade kubeport`
+- **Package manager** → upgrade via your package manager
+- **Dev builds / `go install`** → self-update is unavailable
+
 ### `kubeport version`
 
 Print the version.
@@ -321,6 +338,7 @@ kubeport version
 | `--time` | | Refresh interval for `watch` (default: `2s`) |
 | `--offload` | | (with `start`) Add services to an already-running daemon and exit |
 | `--delegate` | | (with `start`) Run as a delegate of an existing primary daemon — see [Delegate Mode](advanced-usage.md#multiple-instances-and-delegate-mode) |
+| `--verbose` | | Enable debug logging (forces `debug`, overriding the config `log_level`) |
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
 

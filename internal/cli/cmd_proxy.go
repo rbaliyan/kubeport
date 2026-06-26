@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +28,10 @@ import (
 // entries for any service in cfg that is already managed by another instance
 // (matched by service name or static local port).
 // Delegate instances and the current process are excluded from the search.
+//
+// It only performs the discovery (registry lookup + gRPC Status calls); the
+// conflict-matching decision lives in proxy.DetectExternalConflicts so the
+// daemon and both reload paths share identical semantics.
 func (a *app) detectExternalConflicts(cfg *config.Config) []proxy.ExternalForward {
 	if cfg == nil || len(cfg.Services) == 0 {
 		return nil
@@ -58,65 +61,25 @@ func (a *app) detectExternalConflicts(cfg *config.Config) []proxy.ExternalForwar
 		return nil
 	}
 
-	type owner struct {
-		instance   string
-		pid        int
-		configFile string
-		actualPort int
-	}
-	byName := make(map[string]owner)
-	byPort := make(map[int]owner)
-
+	var remote []proxy.RemoteForward
 	for _, inst := range live {
 		ep := inst.entry.Socket
 		if ep == "" {
 			ep = inst.entry.TCPAddress
 		}
 		for _, fw := range inst.forwards {
-			o := owner{
-				instance:   ep,
-				pid:        inst.entry.PID,
-				configFile: inst.entry.ConfigFile,
-				actualPort: int(fw.ActualPort),
-			}
-			if name := fw.GetService().GetName(); name != "" {
-				byName[name] = o
-			}
-			port := int(fw.ActualPort)
-			if port == 0 {
-				port = int(fw.GetService().GetLocalPort())
-			}
-			if port > 0 {
-				byPort[port] = o
-			}
+			remote = append(remote, proxy.RemoteForward{
+				Instance:    ep,
+				PID:         inst.entry.PID,
+				ConfigFile:  inst.entry.ConfigFile,
+				ServiceName: fw.GetService().GetName(),
+				ActualPort:  int(fw.ActualPort),
+				LocalPort:   int(fw.GetService().GetLocalPort()),
+			})
 		}
 	}
 
-	seen := make(map[string]bool)
-	var externals []proxy.ExternalForward
-	for _, svc := range cfg.Services {
-		if seen[svc.Name] {
-			continue
-		}
-		if o, ok := byName[svc.Name]; ok {
-			seen[svc.Name] = true
-			externals = append(externals, proxy.ExternalForward{
-				Service: svc, Instance: o.instance, PID: o.pid,
-				ConfigFile: o.configFile, ActualPort: o.actualPort,
-			})
-			continue
-		}
-		if svc.LocalPort != 0 {
-			if o, ok := byPort[svc.LocalPort]; ok {
-				seen[svc.Name] = true
-				externals = append(externals, proxy.ExternalForward{
-					Service: svc, Instance: o.instance, PID: o.pid,
-					ConfigFile: o.configFile, ActualPort: o.actualPort,
-				})
-			}
-		}
-	}
-	return externals
+	return proxy.DetectExternalConflicts(cfg, remote)
 }
 
 // isProxyPortInUse returns true when something is already listening on addr.
@@ -241,6 +204,14 @@ type noopSupervisor struct {
 	cancel context.CancelFunc
 }
 
+var _ daemon.Supervisor = (*noopSupervisor)(nil)
+
+// errNoopUnsupported is returned by the noopSupervisor mutation methods that a
+// delegate instance cannot honour: it owns no forwards of its own, so reloading
+// or applying against it would silently do nothing. Returning an explicit error
+// prevents callers from mistaking that no-op for success.
+var errNoopUnsupported = fmt.Errorf("not supported on delegate instance")
+
 func (n *noopSupervisor) Status() []proxy.ForwardStatus { return nil }
 func (n *noopSupervisor) Stop() {
 	if n.cancel != nil {
@@ -253,14 +224,20 @@ func (n *noopSupervisor) AddService(_ config.ServiceConfig) error {
 func (n *noopSupervisor) RemoveService(_ string) error {
 	return fmt.Errorf("delegate instance: service not found")
 }
-func (n *noopSupervisor) Reload(_ *config.Config) (int, int, error)        { return 0, 0, nil }
-func (n *noopSupervisor) Apply(_ []config.ServiceConfig) (int, int, []string) { return 0, 0, nil }
-func (n *noopSupervisor) Mappings(_ string) []proxy.AddressMapping            { return nil }
-func (n *noopSupervisor) UpdateChaos(_ []string, _ config.ParsedChaosConfig) ([]string, []string) {
-	return nil, nil
+func (n *noopSupervisor) Reload(_ *config.Config) (int, int, error) { return 0, 0, errNoopUnsupported }
+func (n *noopSupervisor) Apply(_ []config.ServiceConfig) (int, int, []string) {
+	return 0, 0, []string{errNoopUnsupported.Error()}
 }
-func (n *noopSupervisor) ResetChaos(_ []string) ([]string, []string) { return nil, nil }
-func (n *noopSupervisor) ReleaseBySource(_ string) (int, error)      { return 0, nil }
+func (n *noopSupervisor) Mappings(_ string) []proxy.AddressMapping { return nil }
+
+// UpdateChaos / ResetChaos have no error return; a delegate owns no forwards, so
+// every requested service is reported as not-found (nothing was updated). This
+// surfaces the unsupported operation to the caller instead of a silent success.
+func (n *noopSupervisor) UpdateChaos(services []string, _ config.ParsedChaosConfig) ([]string, []string) {
+	return nil, services
+}
+func (n *noopSupervisor) ResetChaos(services []string) ([]string, []string) { return nil, services }
+func (n *noopSupervisor) ReleaseBySource(_ string) (int, error)      { return 0, errNoopUnsupported }
 
 func (a *app) runProxy(ctx context.Context, output io.Writer) {
 	if a.delegate {
@@ -340,6 +317,11 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		os.Exit(1)
 	}
 
+	// Install the external-conflict detector so mgr.Reload re-detects ownership
+	// on every reload — whether triggered by the Reload RPC, SIGHUP, or the file
+	// watcher — keeping all reload paths consistent.
+	mgr.SetExternalDetector(a.detectExternalConflicts)
+
 	// Detect services already managed by another running instance.
 	// SetExternalForwards is called before Start so those services are never started locally.
 	if externals := a.detectExternalConflicts(a.cfg); len(externals) > 0 {
@@ -414,13 +396,11 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 		_, _ = fmt.Fprintf(output, "Continuing anyway (namespace checks may fail for some services)\n\n")
 	}
 
-	// Config reload helper shared by SIGHUP and file watcher.
-	// reloadMu prevents concurrent reloads from interleaving SetExternalForwards
-	// calls (which are not idempotent with respect to the "newly external" delta).
-	var reloadMu sync.Mutex
+	// Config reload helper shared by SIGHUP and file watcher. The external-conflict
+	// re-detection (services another instance took get stopped locally; services
+	// an exited owner released get reclaimed) happens inside mgr.Reload via the
+	// detector installed above, so the Reload RPC path behaves identically.
 	reloadConfig := func(reason string) {
-		reloadMu.Lock()
-		defer reloadMu.Unlock()
 		logger.Info("reloading config", "trigger", reason)
 		newCfg, err := config.Load(a.configFile)
 		if err != nil {
@@ -432,26 +412,12 @@ func (a *app) runProxy(ctx context.Context, output io.Writer) {
 			return
 		}
 
-		// Re-detect external conflicts with the refreshed config.
-		// Services that became external (another instance took them) are stopped locally.
-		// Services that became local (owner instance stopped) are reclaimed by Reload.
-		newExternals := a.detectExternalConflicts(newCfg)
-		toRemove := mgr.SetExternalForwards(newExternals)
-		for _, name := range toRemove {
-			if rmErr := mgr.RemoveService(name); rmErr != nil {
-				logger.Warn("reload: failed to stop newly-external service", "service", name, "error", rmErr)
-			} else {
-				logger.Info("service is now managed by another instance — stopped locally", "service", name)
-			}
-		}
-
 		added, removed, err := mgr.Reload(newCfg)
 		if err != nil {
 			logger.Error("reload failed", "error", err)
 			return
 		}
-		logger.Info("config reloaded", "trigger", reason,
-			"added", added, "removed", removed, "external", len(newExternals))
+		logger.Info("config reloaded", "trigger", reason, "added", added, "removed", removed)
 	}
 
 	// SIGHUP triggers config reload
