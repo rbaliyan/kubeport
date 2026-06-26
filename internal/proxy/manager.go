@@ -31,6 +31,11 @@ import (
 // current pod is terminating and a replacement pod is available.
 var errPreempted = errors.New("preempted by pod lifecycle event")
 
+// ErrManagerStopped is returned by AddService and RemoveService when the
+// manager's event loop has exited (its context was cancelled). It signals that
+// the command could not be delivered because there is no longer a receiver.
+var ErrManagerStopped = errors.New("manager stopped")
+
 // ForwardState represents the state of a port forward.
 type ForwardState int
 
@@ -170,9 +175,14 @@ type Manager struct {
 	hooks      *hook.Dispatcher
 	logger     *slog.Logger
 	cmdCh      chan serviceCmd
+	doneCh     chan struct{} // closed when the event loop exits; guards sends on cmdCh
 
 	externalMu      sync.RWMutex
 	externalForwards map[string]ExternalForward // services deferred to another instance
+	// externalDetector, when set, recomputes the externally-owned services for a
+	// config. Reload invokes it so the RPC and file-watch reload paths share the
+	// same detect→SetExternalForwards→RemoveService sequence. Guarded by externalMu.
+	externalDetector func(*config.Config) []ExternalForward
 
 	// Supervisor tuning (populated from config.SupervisorConfig in NewManager)
 	maxRestarts          int
@@ -290,6 +300,39 @@ func (m *Manager) SetExternalForwards(externals []ExternalForward) []string {
 	return newlyExternal
 }
 
+// SetExternalDetector installs a function that recomputes the externally-owned
+// services for a given config. When set, Reload calls it and applies the result
+// (via SetExternalForwards plus RemoveService for any service that just became
+// external) before diffing the config, so the RPC reload path and the CLI
+// file-watch/SIGHUP path share identical external-ownership semantics. Pass nil
+// to disable (the default).
+func (m *Manager) SetExternalDetector(detect func(*config.Config) []ExternalForward) {
+	m.externalMu.Lock()
+	m.externalDetector = detect
+	m.externalMu.Unlock()
+}
+
+// refreshExternalForwards re-detects externally-owned services for cfg using the
+// installed detector (if any) and stops any local forward for a service that
+// just transitioned to external. It is a no-op when no detector is set.
+func (m *Manager) refreshExternalForwards(cfg *config.Config) {
+	m.externalMu.RLock()
+	detect := m.externalDetector
+	m.externalMu.RUnlock()
+	if detect == nil {
+		return
+	}
+
+	externals := detect(cfg)
+	for _, name := range m.SetExternalForwards(externals) {
+		if err := m.RemoveService(name); err != nil && !errors.Is(err, config.ErrServiceNotFound) {
+			m.logger.Warn("reload: failed to stop newly-external service", "service", name, "error", err)
+		} else {
+			m.logger.Info("service is now managed by another instance — stopped locally", "service", name)
+		}
+	}
+}
+
 // GetContext returns the Kubernetes context name being used.
 func (m *Manager) GetContext() string {
 	return m.cfg.Context
@@ -313,6 +356,7 @@ func (m *Manager) Start(ctx context.Context) {
 	m.mu.Lock()
 	m.cancel = cancel
 	m.cmdCh = make(chan serviceCmd)
+	m.doneCh = make(chan struct{})
 	m.mu.Unlock()
 
 	var wg sync.WaitGroup
@@ -332,7 +376,11 @@ func (m *Manager) Start(ctx context.Context) {
 	// The event loop is tracked by the WaitGroup so Start blocks until
 	// both the event loop and all service goroutines have finished.
 	cmdCh := m.cmdCh
+	doneCh := m.doneCh
 	wg.Go(func() {
+		// Closing doneCh unblocks any AddService/RemoveService caller that is
+		// trying to send on cmdCh after the loop has exited.
+		defer close(doneCh)
 		for {
 			select {
 			case <-ctx.Done():
@@ -393,6 +441,7 @@ func (m *Manager) AddService(svc config.ServiceConfig) error {
 		}
 	}
 	cmdCh := m.cmdCh
+	doneCh := m.doneCh
 	m.mu.RUnlock()
 
 	if cmdCh == nil {
@@ -400,14 +449,19 @@ func (m *Manager) AddService(svc config.ServiceConfig) error {
 	}
 
 	result := make(chan error, 1)
-	cmdCh <- serviceCmd{add: &svc, result: result}
-	return <-result
+	select {
+	case cmdCh <- serviceCmd{add: &svc, result: result}:
+		return <-result
+	case <-doneCh:
+		return ErrManagerStopped
+	}
 }
 
 // RemoveService stops and removes a service by name. Thread-safe.
 func (m *Manager) RemoveService(name string) error {
 	m.mu.RLock()
 	cmdCh := m.cmdCh
+	doneCh := m.doneCh
 	m.mu.RUnlock()
 
 	if cmdCh == nil {
@@ -415,8 +469,12 @@ func (m *Manager) RemoveService(name string) error {
 	}
 
 	result := make(chan error, 1)
-	cmdCh <- serviceCmd{remove: name, result: result}
-	return <-result
+	select {
+	case cmdCh <- serviceCmd{remove: name, result: result}:
+		return <-result
+	case <-doneCh:
+		return ErrManagerStopped
+	}
 }
 
 // removeSingle cancels and removes a single leaf port-forward entry.
@@ -497,6 +555,11 @@ func (m *Manager) Reload(cfg *config.Config) (added, removed int, err error) {
 	// Serialise concurrent reloads to prevent interleaved remove/add sequences.
 	m.reloadMu.Lock()
 	defer m.reloadMu.Unlock()
+
+	// Re-detect services owned by other live instances first, so a service
+	// another instance now owns is stopped locally and not re-added below.
+	// This keeps the RPC reload path and the CLI file-watch/SIGHUP path in sync.
+	m.refreshExternalForwards(cfg)
 
 	// Build sets of running service names and parent names
 	m.mu.RLock()

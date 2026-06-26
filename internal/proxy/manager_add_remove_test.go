@@ -185,6 +185,162 @@ func TestManager_AddRemove_WithRunningManager(t *testing.T) {
 	wg.Wait()
 }
 
+// TestManager_AddRemove_AfterStop verifies that AddService and RemoveService
+// return ErrManagerStopped (promptly, without blocking forever) once the event
+// loop has exited, instead of blocking on an unbuffered cmdCh with no receiver.
+func TestManager_AddRemove_AfterStop(t *testing.T) {
+	m := newTestManager()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	stopped := make(chan struct{})
+	go func() {
+		m.Start(ctx)
+		close(stopped)
+	}()
+
+	// Wait for cmdCh to be initialized.
+	deadline := time.After(2 * time.Second)
+	for {
+		m.mu.RLock()
+		ch := m.cmdCh
+		m.mu.RUnlock()
+		if ch != nil {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for manager to start")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	// Cancel and wait for the event loop (and all supervisor goroutines) to exit.
+	cancel()
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("manager did not stop after context cancellation")
+	}
+
+	// RemoveService must return ErrManagerStopped without blocking.
+	assertReturnsStopped(t, "RemoveService", func() error {
+		return m.RemoveService("anything")
+	})
+
+	// AddService (past validation) must also return ErrManagerStopped without blocking.
+	assertReturnsStopped(t, "AddService", func() error {
+		return m.AddService(config.ServiceConfig{
+			Name:       "late",
+			Service:    "nginx",
+			RemotePort: 80,
+			LocalPort:  9998,
+		})
+	})
+}
+
+// assertReturnsStopped runs fn in a goroutine and fails if it does not return
+// ErrManagerStopped within a bounded timeout (a blocking send would hang here).
+func assertReturnsStopped(t *testing.T, name string, fn func() error) {
+	t.Helper()
+	errCh := make(chan error, 1)
+	go func() { errCh <- fn() }()
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, ErrManagerStopped) {
+			t.Fatalf("%s: expected ErrManagerStopped, got: %v", name, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("%s blocked after manager stopped (expected ErrManagerStopped)", name)
+	}
+}
+
+// TestManager_Reload_RespectsExternalDetector verifies that Reload re-runs the
+// installed external detector and does not (re-)start a service that another
+// instance owns, regardless of which reload path invoked it.
+func TestManager_Reload_RespectsExternalDetector(t *testing.T) {
+	m := newTestManager()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		m.Start(ctx)
+	}()
+
+	// Wait for cmdCh.
+	deadline := time.After(2 * time.Second)
+	for {
+		m.mu.RLock()
+		ch := m.cmdCh
+		m.mu.RUnlock()
+		if ch != nil {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("timeout waiting for manager to start")
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+
+	// Detector marks "owned" as managed by another instance.
+	m.SetExternalDetector(func(cfg *config.Config) []ExternalForward {
+		var ext []ExternalForward
+		for _, svc := range cfg.Services {
+			if svc.Name == "owned" {
+				ext = append(ext, ExternalForward{Service: svc, Instance: "other", PID: 4242})
+			}
+		}
+		return ext
+	})
+
+	newCfg := &config.Config{
+		Context:   "test",
+		Namespace: "default",
+		Services: []config.ServiceConfig{
+			{Name: "local", Service: "local-svc", RemotePort: 80, LocalPort: 8080},
+			{Name: "owned", Service: "owned-svc", RemotePort: 80, LocalPort: 8081},
+		},
+	}
+
+	if _, _, err := m.Reload(newCfg); err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+
+	time.Sleep(50 * time.Millisecond)
+	m.mu.RLock()
+	_, hasLocal := m.forwards["local"]
+	_, hasOwned := m.forwards["owned"]
+	m.mu.RUnlock()
+
+	if !hasLocal {
+		t.Fatal("expected 'local' to be started")
+	}
+	if hasOwned {
+		t.Fatal("expected 'owned' NOT to be started (managed by another instance)")
+	}
+
+	// And it appears as external in Status.
+	foundExternal := false
+	for _, s := range m.Status() {
+		if s.Service.Name == "owned" && s.State == StateExternal {
+			foundExternal = true
+		}
+	}
+	if !foundExternal {
+		t.Fatal("expected 'owned' to appear as StateExternal in Status")
+	}
+
+	cancel()
+	wg.Wait()
+}
+
 func TestManager_Apply(t *testing.T) {
 	m := newTestManager()
 
