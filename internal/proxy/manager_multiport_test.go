@@ -490,6 +490,9 @@ func TestSuperviseMulti_ExpandsToChildren(t *testing.T) {
 		Ports:   config.PortsConfig{All: true},
 	}
 
+	if _, reserveErr := m.reserveForward(cfg); reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
 	m.superviseMulti(ctx, cfg)
 
 	m.mu.RLock()
@@ -542,6 +545,9 @@ func TestSuperviseMulti_FailedResolution(t *testing.T) {
 		Ports:   config.PortsConfig{All: true},
 	}
 
+	if _, reserveErr := m.reserveForward(cfg); reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
 	m.superviseMulti(ctx, cfg)
 
 	m.mu.RLock()
@@ -603,6 +609,9 @@ func TestSuperviseMulti_ChildNaming(t *testing.T) {
 		Ports:   config.PortsConfig{All: true},
 	}
 
+	if _, reserveErr := m.reserveForward(cfg); reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
 	m.superviseMulti(ctx, cfg)
 
 	m.mu.RLock()
@@ -747,7 +756,11 @@ func TestSupervise_RoutesMultiPort(t *testing.T) {
 		Ports:   config.PortsConfig{All: true},
 	}
 
-	m.supervise(ctx, cfg)
+	pf, reserveErr := m.reserveForward(cfg)
+	if reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
+	m.supervise(ctx, cfg, pf)
 
 	m.mu.RLock()
 	_, hasChildren := m.children["my-api"]
