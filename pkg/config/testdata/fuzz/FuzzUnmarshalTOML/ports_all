@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[[services]]\nname = \"web\"\npod = \"web-0\"\nports = \"all\"\nlocal_port_offset = 10000\n")

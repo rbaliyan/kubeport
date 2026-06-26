@@ -1,0 +1,10 @@
+go test fuzz v1
+string("both")
+string("svc")
+string("pod")
+int(0)
+int(70000)
+string("")
+bool(false)
+int(-5)
+int(99999)

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("extends: base.yaml\nservices:\n  - name: redis\n    service: redis-svc\n    remote_port: 6379\n    connection_mode: isolated\n")

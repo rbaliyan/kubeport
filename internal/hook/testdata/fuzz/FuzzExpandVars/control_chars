@@ -1,0 +1,8 @@
+go test fuzz v1
+string("a\nb")
+string("c\rd")
+string("e\x00f")
+int(0)
+int(0)
+int(0)
+string("g{h}i")

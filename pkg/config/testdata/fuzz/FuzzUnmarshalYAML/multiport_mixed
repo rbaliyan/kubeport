@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("services:\n  - name: m\n    service: m-svc\n    ports:\n      - name: http\n        local_port: 9090\n      - grpc\n")

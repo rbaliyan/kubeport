@@ -1,0 +1,116 @@
+# libFuzzer dictionary of kubeport config, hook, and flag tokens.
+# Used only by the libFuzzer binaries built in build.sh; native Go testing.F
+# does not consume dictionaries.
+
+# Top-level config keys
+"extends"
+"context"
+"namespace"
+"log_file"
+"log_level"
+"listen"
+"api_key"
+"key_id"
+"host"
+"services"
+"hooks"
+"supervisor"
+"network"
+"chaos"
+"socks"
+"http_proxy"
+
+# Service keys
+"name"
+"service"
+"pod"
+"local_port"
+"remote_port"
+"ports"
+"exclude_ports"
+"local_port_offset"
+"connection_mode"
+"lazy"
+
+# Polymorphic / enum values
+"all"
+"mux"
+"isolated"
+"true"
+"false"
+
+# Supervisor keys
+"max_restarts"
+"health_check_interval"
+"health_check_threshold"
+"ready_timeout"
+"backoff_initial"
+"backoff_max"
+"max_connection_age"
+
+# Network / chaos keys
+"latency"
+"jitter"
+"bandwidth"
+"enabled"
+"error_rate"
+"latency_spike"
+"probability"
+"duration"
+
+# Hook keys and types
+"type"
+"events"
+"timeout"
+"fail_mode"
+"shell"
+"webhook"
+"exec"
+"command"
+"url"
+"headers"
+"body_template"
+"filter_services"
+"open"
+"closed"
+
+# Hook event names (colon and legacy underscore forms)
+"manager:starting"
+"manager:stopped"
+"forward:connected"
+"forward:disconnected"
+"forward:failed"
+"forward:stopped"
+"health:check_failed"
+"service:added"
+"service:removed"
+"manager_starting"
+"forward_connected"
+
+# Template variables
+"${EVENT}"
+"${SERVICE}"
+"${PARENT_NAME}"
+"${PORT_NAME}"
+"${PORT}"
+"${REMOTE_PORT}"
+"${POD}"
+"${RESTARTS}"
+"${ERROR}"
+"${TIME}"
+
+# Listen schemes
+"sock://"
+"tcp://"
+
+# --svc flag tokens
+"svc/"
+"pod/"
+
+# Duration / bandwidth literals
+"30s"
+"10s"
+"1s"
+"50ms"
+"5mbps"
+"1gbps"

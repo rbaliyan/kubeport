@@ -1,0 +1,2 @@
+go test fuzz v1
+string("db:pod/postgres-0:5432:5432")

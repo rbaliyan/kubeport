@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("context: dev\nservices:\n  - name: api\n    service: api-svc\n    remote_port: 8080\n")

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("extends = \"base.toml\"\n\n[[services]]\nname = \"redis\"\nservice = \"redis-svc\"\nremote_port = 6379\nconnection_mode = \"isolated\"\n")
