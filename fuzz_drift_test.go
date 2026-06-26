@@ -61,9 +61,15 @@ func TestFuzzTargetsRegisteredInClusterFuzzLite(t *testing.T) {
 	}
 
 	for name, path := range found {
-		// build.sh registers targets by exact function name as the second
-		// argument to compile_native_go_fuzzer.
-		if !strings.Contains(script, " "+name+" ") {
+		// build.sh registers each target on a compile_native_go_fuzzer line of
+		// the form:
+		//   compile_native_go_fuzzer <import-path> <FuzzName> <output-name>
+		// Match that exact shape so a target whose name is a prefix of another
+		// (e.g. FuzzResolve vs FuzzResolveAddr) cannot false-pass on a loose
+		// substring. \b before/after the name anchors it as a whole word and
+		// requires the trailing space (the third argument follows it).
+		registered := regexp.MustCompile(`(?m)^compile_native_go_fuzzer\s+\S+\s+` + regexp.QuoteMeta(name) + `\s`)
+		if !registered.MatchString(script) {
 			t.Errorf("fuzz target %s (defined in %s) is not registered in .clusterfuzzlite/build.sh; add a compile_native_go_fuzzer line for it", name, path)
 		}
 	}

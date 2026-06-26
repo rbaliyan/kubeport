@@ -239,12 +239,73 @@ context: dev
 		dir := t.TempDir()
 		path := filepath.Join(dir, "kubeport.yaml")
 		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Skipf("write temp config: %v", err)
+			// A temp-file write failure is an environment bug, not a property of
+			// the fuzz input — fail loudly rather than silently skipping coverage.
+			t.Fatalf("write temp config: %v", err)
 		}
 		// A self-referential extends ("./kubeport.yaml") must be caught by cycle
 		// detection rather than recursing forever; Load must always return.
 		_, _ = Load(path)
+
+		fuzzMergeDeterminism(t, dir, data)
 	})
+}
+
+// fuzzMergeDeterminism treats the fuzzed bytes as a parent config and loads a
+// fixed, well-formed child that `extends` it. When the child loads successfully
+// (the parent parsed and the chain merged), it asserts two guarantees that
+// mergeConfigs actually makes:
+//
+//  1. Determinism: loading the child twice yields identical Configs. mergeConfigs
+//     is a pure function of its inputs, so repeated loads of the same files must
+//     not diverge (map iteration order, slice aliasing, etc.).
+//  2. Child-wins: the child sets a sentinel Context that the parent cannot
+//     contain (it is rejected by YAML quoting), so the merged Context must equal
+//     the child's value — override beats base for a scalar field set in the
+//     child.
+//
+// Anything that fails to load (malformed parent, cycle, missing field) is simply
+// skipped; the no-panic guarantee for those paths is covered by the single-file
+// Load call above.
+func fuzzMergeDeterminism(t *testing.T, dir string, parentData []byte) {
+	t.Helper()
+
+	const childContext = "fuzz-child-ctx"
+
+	parentPath := filepath.Join(dir, "parent.yaml")
+	if err := os.WriteFile(parentPath, parentData, 0o600); err != nil {
+		t.Fatalf("write parent config: %v", err)
+	}
+
+	// A fixed, well-formed child extending the fuzzed parent. The child sets its
+	// own Context so we can assert override-wins after the merge.
+	childData := "extends: parent.yaml\ncontext: " + childContext + "\n"
+	childPath := filepath.Join(dir, "child.yaml")
+	if err := os.WriteFile(childPath, []byte(childData), 0o600); err != nil {
+		t.Fatalf("write child config: %v", err)
+	}
+
+	cfg1, err := Load(childPath)
+	if err != nil {
+		return // parent did not parse / merge cleanly — nothing to assert
+	}
+
+	// Determinism: a second identical load must produce an identical Config.
+	cfg2, err := Load(childPath)
+	if err != nil {
+		t.Fatalf("second Load of an extends chain that loaded once failed: %v", err)
+	}
+	if !reflect.DeepEqual(cfg1, cfg2) {
+		t.Fatalf("extends merge is not deterministic:\nfirst:  %#v\nsecond: %#v\nparent:\n%s", cfg1, cfg2, parentData)
+	}
+
+	// Child-wins: the child's Context must survive the merge regardless of what
+	// the parent set. The env override path is not triggered here because
+	// K8S_CONTEXT is unset under `go test` unless the caller exports it; the
+	// child's literal value is the expected result.
+	if os.Getenv("K8S_CONTEXT") == "" && cfg1.Context != childContext {
+		t.Fatalf("child Context %q did not win the merge; got %q\nparent:\n%s", childContext, cfg1.Context, parentData)
+	}
 }
 
 func FuzzValidateService(f *testing.F) {

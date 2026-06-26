@@ -12,6 +12,7 @@ compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/cli FuzzParseSvcF
 compile_native_go_fuzzer github.com/rbaliyan/kubeport/internal/cli FuzzServiceConfigProtoRoundTrip fuzz_service_config_proto_round_trip
 compile_native_go_fuzzer github.com/rbaliyan/kubeport/pkg/proxy FuzzResolveAddr fuzz_resolve_addr
 compile_native_go_fuzzer github.com/rbaliyan/kubeport/pkg/proxy FuzzHTTPCheckAuth fuzz_http_check_auth
+compile_native_go_fuzzer github.com/rbaliyan/kubeport/pkg/grpcauth FuzzGRPCAuthInterceptor fuzz_grpc_auth_interceptor
 
 # Stage a libFuzzer dictionary of config/hook tokens for each target that benefits
 # from grammar-aware mutation. Native Go (testing.F) ignores dictionaries, so this

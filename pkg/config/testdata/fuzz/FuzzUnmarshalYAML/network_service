@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("context: prod\nnamespace: team-a\nservices:\n  - name: db\n    service: db-svc\n    remote_port: 5432\n    local_port: 15432\nnetwork:\n  latency: 20ms\n  jitter: 5ms\n")

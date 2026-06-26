@@ -22,7 +22,8 @@ code-change run (`.github/workflows/cflite_pr.yml`) and a monthly batch run
 | `FuzzParseSvcFlag` | `internal/cli` | A successful `--svc` parse only fails validation for the two deferred checks (name, port range) |
 | `FuzzServiceConfigProtoRoundTrip` | `internal/cli` | `serviceConfigToProto` preserves the semantically meaningful fields on round-trip |
 | `FuzzResolveAddr` | `pkg/proxy` | Address translation returns the input or a mapping value — never garbage |
-| `FuzzHTTPCheckAuth` | `pkg/proxy` | `checkAuth` tolerates any `Proxy-Authorization` header and only accepts matching credentials |
+| `FuzzHTTPCheckAuth` | `pkg/proxy` | `checkAuth` tolerates any `Proxy-Authorization` header and only accepts credentials that decode to exactly `username:password` |
+| `FuzzGRPCAuthInterceptor` | `pkg/grpcauth` | **Security:** the Bearer-token server interceptor accepts a request iff the header is exactly `Bearer <key>`; every other input is rejected with `codes.Unauthenticated` |
 
 ## Running
 
@@ -54,6 +55,39 @@ input:
 ```bash
 go test -run='FuzzExpandVars/<hash>' ./internal/hook/
 ```
+
+### Replaying a ClusterFuzzLite reproducer from a PR run
+
+When the per-PR run (`.github/workflows/cflite_pr.yml`, the **Fuzz (PR)** check)
+finds a crash, the `run_fuzzers` action fails the check and uploads the
+crashing input as a workflow **artifact** named `artifacts` on that run; the
+step log also prints the testcase and a stack trace.
+
+To download and replay it locally:
+
+1. Open the failed **Fuzz (PR)** check → **Summary** page for the run and
+   download the `artifacts` artifact (or use the CLI:
+   `gh run download <run-id> -n artifacts -D ./cflite-crash`). It unpacks to a
+   set of `crash-<hash>` reproducer files.
+2. Identify which target crashed from the step log (the `compile_native_go_fuzzer`
+   output name, e.g. `fuzz_http_check_auth`, maps to the `Fuzz*` function and its
+   package via `.clusterfuzzlite/build.sh`).
+3. Convert the raw reproducer into a Go corpus file and drop it under that
+   target's `testdata/fuzz/<FuzzName>/`. The libFuzzer reproducer is the raw
+   serialized corpus entry — copy it in and re-run the single input:
+
+   ```bash
+   cp ./cflite-crash/crash-<hash> pkg/proxy/testdata/fuzz/FuzzHTTPCheckAuth/repro-<hash>
+   go test -run='FuzzHTTPCheckAuth/repro-<hash>' ./pkg/proxy/
+   ```
+
+   If the file is not already in `go test fuzz v1` format (libFuzzer may emit a
+   raw byte blob for single-`[]byte` targets), reproduce it instead by feeding
+   the bytes through the target's corpus directory after wrapping them, or run
+   the OSS-Fuzz-style `reproduce` action locally per the ClusterFuzzLite docs.
+
+A reproducer that replays as a `PASS` no longer triggers the bug (already fixed
+or environment-specific); one that `FAIL`s reproduces the crash for debugging.
 
 A reported oracle violation is one of two things:
 

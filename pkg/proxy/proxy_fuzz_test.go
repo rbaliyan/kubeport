@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"encoding/base64"
 	"net"
 	"net/http"
 	"strings"
@@ -57,8 +58,11 @@ func FuzzResolveAddr(f *testing.F) {
 }
 
 // FuzzHTTPCheckAuth fuzzes checkAuth over arbitrary Proxy-Authorization header
-// values. Oracle: no panic; checkAuth must tolerate any header bytes (malformed
-// base64, missing scheme, missing colon, control characters) and return a bool.
+// values. Oracles: (1) no panic — checkAuth must tolerate any header bytes
+// (malformed base64, missing scheme, missing colon, control characters); and
+// (2) differential — when checkAuth accepts a header, that header's base64
+// payload must decode to exactly "<username>:<password>" for the configured
+// credentials, so the function cannot accept a non-matching header.
 func FuzzHTTPCheckAuth(f *testing.F) {
 	f.Add("Basic dXNlcjpwYXNz", "user", "pass")
 	f.Add("Basic !!!notbase64", "user", "pass")
@@ -77,12 +81,27 @@ func FuzzHTTPCheckAuth(f *testing.F) {
 		}
 		got := s.checkAuth(req)
 
-		// Sanity oracle: when auth succeeds, the header must have decoded to the
-		// exact configured credentials. This guards against checkAuth returning
-		// true on a non-matching header.
+		// Differential oracle: when checkAuth accepts a header, that header must
+		// be a Basic credential whose base64 payload decodes to exactly
+		// "<username>:<password>" for the configured credentials (see
+		// checkAuth in httpproxy.go). The canonical header the proxy expects is
+		// "Basic " + base64(username + ":" + password); we assert equivalence
+		// against the canonical encoding while tolerating that the fuzzed input
+		// may have used a non-canonical base64 alphabet/padding that decodes to
+		// the same bytes — so we compare decoded payloads, not raw header bytes.
 		if got {
-			if !strings.HasPrefix(header, "Basic ") {
-				t.Fatalf("checkAuth returned true for non-Basic header %q", header)
+			want := "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
+			encoded, ok := strings.CutPrefix(header, "Basic ")
+			if !ok {
+				t.Fatalf("checkAuth accepted non-Basic header %q for creds %q:%q", header, username, password)
+			}
+			decoded, err := base64.StdEncoding.DecodeString(encoded)
+			if err != nil {
+				t.Fatalf("checkAuth accepted header %q whose payload is not valid base64: %v", header, err)
+			}
+			if string(decoded) != username+":"+password {
+				t.Fatalf("checkAuth accepted header %q decoding to %q, want exactly %q (canonical header %q)",
+					header, decoded, username+":"+password, want)
 			}
 		}
 	})
