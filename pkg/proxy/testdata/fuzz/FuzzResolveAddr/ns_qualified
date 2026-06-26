@@ -1,0 +1,5 @@
+go test fuzz v1
+string("api.prod.svc.cluster.local:443")
+string("api.prod")
+string("127.0.0.1:8443")
+bool(true)

@@ -1,0 +1,10 @@
+go test fuzz v1
+string("web")
+string("nginx")
+string("")
+int(80)
+int(8080)
+string("default")
+bool(false)
+string("")
+string("")

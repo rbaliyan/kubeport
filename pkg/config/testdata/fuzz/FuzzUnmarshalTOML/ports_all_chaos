@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[[services]]\nname = \"multi\"\nservice = \"multi-svc\"\nports = \"all\"\n\n[chaos]\nenabled = true\nerror_rate = 0.25\n")

@@ -57,6 +57,28 @@ jobs:
       - name: Test
         run: go test -v -race ./...
 
+  bench:
+    name: Benchmarks
+    # Smoke-run the benchmarks (one iteration each) so they stay compiling and
+    # runnable. No regression threshold is enforced here: hosted-runner timing
+    # variance makes that flaky. For local regression checks, run the suite with
+    # a higher -benchtime/-count and compare against the committed bench.txt
+    # baseline with benchstat (golang.org/x/perf/cmd/benchstat).
+    needs: [changes, smoke]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run benchmarks
+        run: go test -run='^$' -bench=. -benchtime=1x -benchmem ./...
+
   smoke:
     name: Smoke
     needs: changes

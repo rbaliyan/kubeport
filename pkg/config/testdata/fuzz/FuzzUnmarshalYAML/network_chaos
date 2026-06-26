@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("network:\n  latency: 50ms\n  jitter: 10ms\n  bandwidth: 5mbps\nchaos:\n  enabled: true\n  error_rate: 0.1\n  latency_spike:\n    probability: 0.5\n    duration: 2s\n")

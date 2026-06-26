@@ -1,0 +1,5 @@
+go test fuzz v1
+string("redis-0.redis.dev.svc.cluster.local:6379")
+string("redis-0.dev")
+string("127.0.0.1:16379")
+bool(true)

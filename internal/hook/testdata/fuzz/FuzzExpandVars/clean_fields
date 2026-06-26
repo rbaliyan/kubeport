@@ -1,0 +1,8 @@
+go test fuzz v1
+string("payments")
+string("payments")
+string("grpc")
+int(9090)
+int(443)
+int(0)
+string("")

@@ -1,0 +1,10 @@
+go test fuzz v1
+string("selector")
+string("sel-svc")
+string("")
+int(0)
+int(0)
+string("ns")
+bool(false)
+int(0)
+int(5432)

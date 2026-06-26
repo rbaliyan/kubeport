@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("context = \"prod\"\nnamespace = \"team-a\"\n\n[[services]]\nname = \"db\"\nservice = \"db-svc\"\nremote_port = 5432\nlocal_port = 15432\n\n[network]\nlatency = \"20ms\"\n")

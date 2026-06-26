@@ -1,0 +1,10 @@
+go test fuzz v1
+string("api")
+string("api-svc")
+string("")
+int(8080)
+int(80)
+string("default")
+bool(false)
+int(0)
+int(0)

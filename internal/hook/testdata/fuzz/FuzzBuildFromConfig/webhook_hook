@@ -1,0 +1,9 @@
+go test fuzz v1
+string("notify")
+string("webhook")
+string("forward:failed")
+string("10s")
+string("open")
+string("")
+string("https://hooks.example.com/x")
+string("")

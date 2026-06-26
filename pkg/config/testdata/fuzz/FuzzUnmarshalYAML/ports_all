@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("services:\n  - name: web\n    pod: web-0\n    ports: all\n    local_port_offset: 10000\n    exclude_ports:\n      - 22\n")

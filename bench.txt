@@ -1,0 +1,456 @@
+# kubeport benchmark baseline
+#
+# Generated with:
+#   go test -run='^$' -bench=. -benchmem -count=6 ./...
+#
+# -count=6 records six samples per benchmark so benchstat can estimate variance
+# and so sub-microsecond rows are statistically trustworthy (a single -benchtime=10x
+# sample is dominated by timer noise at that scale). This keeps regeneration
+# reasonably fast; for a tighter local regression run, use a higher -count
+# (e.g. -count=10 or -count=20) and compare against this file with benchstat:
+#   go test -run='^$' -bench=. -benchmem -count=10 ./... | tee new.txt
+#   benchstat bench.txt new.txt
+#
+# Hardware/toolchain are recorded in the goos/goarch/cpu lines below and will
+# differ from CI and other machines; treat absolute numbers as relative.
+PASS
+ok  	github.com/rbaliyan/kubeport	0.538s
+?   	github.com/rbaliyan/kubeport/api/kubeport/v1	[no test files]
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/cli	1.356s
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/daemon	0.739s
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/hook	0.179s
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/netutil	0.495s
+goos: darwin
+goarch: arm64
+pkg: github.com/rbaliyan/kubeport/internal/proxy
+cpu: Apple M4
+BenchmarkRateLimiterWait-10            	25047070	        43.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWait-10            	28208744	        43.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWait-10            	28106280	        52.48 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWait-10            	27454324	        43.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWait-10            	27695556	        43.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWait-10            	27586312	        43.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWaitParallel-10    	 9454690	       128.4 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWaitParallel-10    	 9618650	       129.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWaitParallel-10    	 9663757	       126.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWaitParallel-10    	 9386568	       130.6 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWaitParallel-10    	 9380187	       129.9 ns/op	       0 B/op	       0 allocs/op
+BenchmarkRateLimiterWaitParallel-10    	 9671640	       132.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/disabled-10  	638720854	         1.864 ns/op	2197078.28 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/disabled-10  	648588609	         1.868 ns/op	2192279.30 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/disabled-10  	636652764	         1.953 ns/op	2097623.02 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/disabled-10  	648530335	         1.858 ns/op	2204201.91 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/disabled-10  	637598802	         1.943 ns/op	2108601.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/disabled-10  	627361729	         1.941 ns/op	2110067.74 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/enabled-no-injection-10         	477346905	         2.511 ns/op	1631229.13 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/enabled-no-injection-10         	475146849	         2.532 ns/op	1617582.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/enabled-no-injection-10         	474901850	         2.519 ns/op	1625781.73 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/enabled-no-injection-10         	476647658	         2.537 ns/op	1614561.88 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/enabled-no-injection-10         	478148688	         2.515 ns/op	1628362.70 MB/s	       0 B/op	       0 allocs/op
+BenchmarkChaosStreamWrite/enabled-no-injection-10         	479066140	         2.515 ns/op	1628838.97 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=1024-10                	467277740	         2.577 ns/op	397422.86 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=1024-10                	465150609	         2.598 ns/op	394163.54 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=1024-10                	451914350	         2.687 ns/op	381026.64 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=1024-10                	466172469	         2.623 ns/op	390429.75 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=1024-10                	462877988	         2.621 ns/op	390678.82 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=1024-10                	467481925	         2.563 ns/op	399478.08 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=1024-10                 	457239238	         2.584 ns/op	396249.40 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=1024-10                 	463371526	         2.558 ns/op	400367.85 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=1024-10                 	472474813	         2.561 ns/op	399896.89 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=1024-10                 	470576701	         2.564 ns/op	399382.43 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=1024-10                 	466916002	         2.576 ns/op	397536.02 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=1024-10                 	465529780	         2.563 ns/op	399507.09 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=65536-10               	469977954	         2.541 ns/op	25791779.35 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=65536-10               	476711328	         2.534 ns/op	25866799.69 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=65536-10               	468853094	         2.556 ns/op	25636114.12 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=65536-10               	460404346	         2.557 ns/op	25632027.31 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=65536-10               	475164018	         2.695 ns/op	24313908.32 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Write/size=65536-10               	366775302	         2.737 ns/op	23941608.81 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=65536-10                	467917284	         2.578 ns/op	25420594.03 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=65536-10                	423095862	         2.683 ns/op	24430415.35 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=65536-10                	447868704	         2.619 ns/op	25019740.07 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=65536-10                	468077215	         2.575 ns/op	25452247.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=65536-10                	467331728	         2.601 ns/op	25193840.80 MB/s	       0 B/op	       0 allocs/op
+BenchmarkCountingStream/Read/size=65536-10                	400084573	         2.771 ns/op	23646721.16 MB/s	       0 B/op	       0 allocs/op
+BenchmarkManagerMappings/forwards=1-10                    	 4748548	       256.0 ns/op	     328 B/op	       9 allocs/op
+BenchmarkManagerMappings/forwards=1-10                    	 4684438	       256.4 ns/op	     328 B/op	       9 allocs/op
+BenchmarkManagerMappings/forwards=1-10                    	 4331881	       272.2 ns/op	     328 B/op	       9 allocs/op
+BenchmarkManagerMappings/forwards=1-10                    	 4655929	       267.5 ns/op	     328 B/op	       9 allocs/op
+BenchmarkManagerMappings/forwards=1-10                    	 4523224	       256.8 ns/op	     328 B/op	       9 allocs/op
+BenchmarkManagerMappings/forwards=1-10                    	 4557726	       263.6 ns/op	     328 B/op	       9 allocs/op
+BenchmarkManagerMappings/forwards=10-10                   	  512053	      2447 ns/op	    3410 B/op	      81 allocs/op
+BenchmarkManagerMappings/forwards=10-10                   	  471688	      2446 ns/op	    3410 B/op	      81 allocs/op
+BenchmarkManagerMappings/forwards=10-10                   	  493383	      2531 ns/op	    3410 B/op	      81 allocs/op
+BenchmarkManagerMappings/forwards=10-10                   	  469814	      2453 ns/op	    3410 B/op	      81 allocs/op
+BenchmarkManagerMappings/forwards=10-10                   	  500719	      2453 ns/op	    3410 B/op	      81 allocs/op
+BenchmarkManagerMappings/forwards=10-10                   	  501968	      2470 ns/op	    3410 B/op	      81 allocs/op
+BenchmarkManagerMappings/forwards=100-10                  	   48327	     25187 ns/op	   34829 B/op	     801 allocs/op
+BenchmarkManagerMappings/forwards=100-10                  	   47415	     24718 ns/op	   34829 B/op	     801 allocs/op
+BenchmarkManagerMappings/forwards=100-10                  	   47578	     24853 ns/op	   34829 B/op	     801 allocs/op
+BenchmarkManagerMappings/forwards=100-10                  	   48054	     24658 ns/op	   34829 B/op	     801 allocs/op
+BenchmarkManagerMappings/forwards=100-10                  	   47742	     25270 ns/op	   34829 B/op	     801 allocs/op
+BenchmarkManagerMappings/forwards=100-10                  	   49156	     25035 ns/op	   34829 B/op	     801 allocs/op
+BenchmarkManagerMappings/forwards=500-10                  	    9391	    125391 ns/op	  170357 B/op	    4001 allocs/op
+BenchmarkManagerMappings/forwards=500-10                  	    9832	    125954 ns/op	  170357 B/op	    4001 allocs/op
+BenchmarkManagerMappings/forwards=500-10                  	    9634	    127351 ns/op	  170356 B/op	    4001 allocs/op
+BenchmarkManagerMappings/forwards=500-10                  	    9768	    123479 ns/op	  170357 B/op	    4001 allocs/op
+BenchmarkManagerMappings/forwards=500-10                  	    9703	    125052 ns/op	  170356 B/op	    4001 allocs/op
+BenchmarkManagerMappings/forwards=500-10                  	    9606	    126177 ns/op	  170357 B/op	    4001 allocs/op
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/proxy	88.240s
+goos: darwin
+goarch: arm64
+pkg: github.com/rbaliyan/kubeport/internal/registry
+cpu: Apple M4
+BenchmarkRegistryList/entries=1-10      	    6548	    153695 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=1-10      	    7861	    148770 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=1-10      	    8125	    151613 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=1-10      	    7929	    156437 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=1-10      	    8268	    262521 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=1-10      	    8296	    153200 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=10-10     	    8221	    148749 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=10-10     	    7840	    153063 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=10-10     	    7792	    163618 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=10-10     	    6781	    155090 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=10-10     	    8222	    150418 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=10-10     	    7558	    156341 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=50-10     	    6405	    157099 ns/op	    3338 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=50-10     	    7802	    154077 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=50-10     	    8062	    151247 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=50-10     	    8068	    148865 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=50-10     	    8272	    158919 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryList/entries=50-10     	    8384	    152171 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryRegister/entries=1-10  	    7734	    149306 ns/op	    3156 B/op	      30 allocs/op
+BenchmarkRegistryRegister/entries=1-10  	    8133	    151516 ns/op	    3156 B/op	      30 allocs/op
+BenchmarkRegistryRegister/entries=1-10  	    7893	    159694 ns/op	    3155 B/op	      30 allocs/op
+BenchmarkRegistryRegister/entries=1-10  	    7764	    173653 ns/op	    3155 B/op	      30 allocs/op
+BenchmarkRegistryRegister/entries=1-10  	    8005	    148367 ns/op	    3155 B/op	      30 allocs/op
+BenchmarkRegistryRegister/entries=1-10  	    8450	    156439 ns/op	    3155 B/op	      30 allocs/op
+BenchmarkRegistryRegister/entries=10-10 	    6954	    176668 ns/op	   16360 B/op	      61 allocs/op
+BenchmarkRegistryRegister/entries=10-10 	    6477	    214151 ns/op	   16365 B/op	      61 allocs/op
+BenchmarkRegistryRegister/entries=10-10 	    7039	    169017 ns/op	   16360 B/op	      61 allocs/op
+BenchmarkRegistryRegister/entries=10-10 	    7572	    169437 ns/op	   16359 B/op	      61 allocs/op
+BenchmarkRegistryRegister/entries=10-10 	    7220	    168362 ns/op	   16365 B/op	      61 allocs/op
+BenchmarkRegistryRegister/entries=10-10 	    6691	    177007 ns/op	   16362 B/op	      61 allocs/op
+BenchmarkRegistryRegister/entries=50-10 	    4570	    264476 ns/op	   67105 B/op	     183 allocs/op
+BenchmarkRegistryRegister/entries=50-10 	    4740	    245299 ns/op	   67129 B/op	     183 allocs/op
+BenchmarkRegistryRegister/entries=50-10 	    4912	    261394 ns/op	   67086 B/op	     183 allocs/op
+BenchmarkRegistryRegister/entries=50-10 	    4858	    244800 ns/op	   67115 B/op	     183 allocs/op
+BenchmarkRegistryRegister/entries=50-10 	    4761	    256844 ns/op	   67100 B/op	     183 allocs/op
+BenchmarkRegistryRegister/entries=50-10 	    4345	    260608 ns/op	   67105 B/op	     183 allocs/op
+BenchmarkRegistryFindByConfig/entries=1-10         	    8211	    157114 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=1-10         	    7326	    173011 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=1-10         	    6930	    152780 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=1-10         	    8070	    148276 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=1-10         	    7808	    149952 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=1-10         	    7977	    149252 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=10-10        	    8245	    150394 ns/op	    3333 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=10-10        	    8145	    148179 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=10-10        	    7922	    148652 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=10-10        	    8124	    148135 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=10-10        	    8096	    150612 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=10-10        	    8120	    149128 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=50-10        	    8198	    149191 ns/op	    3336 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=50-10        	    7906	    147921 ns/op	    3331 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=50-10        	    8017	    150804 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=50-10        	    8167	    150298 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=50-10        	    7856	    159110 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryFindByConfig/entries=50-10        	    6712	    165240 ns/op	    3332 B/op	      31 allocs/op
+BenchmarkRegistryRegisterParallel-10               	    7260	    166606 ns/op	   16490 B/op	      61 allocs/op
+BenchmarkRegistryRegisterParallel-10               	    6482	    163545 ns/op	   16482 B/op	      61 allocs/op
+BenchmarkRegistryRegisterParallel-10               	    6638	    165298 ns/op	   16487 B/op	      61 allocs/op
+BenchmarkRegistryRegisterParallel-10               	    6438	    200270 ns/op	   16508 B/op	      61 allocs/op
+BenchmarkRegistryRegisterParallel-10               	    6177	    173474 ns/op	   16504 B/op	      61 allocs/op
+BenchmarkRegistryRegisterParallel-10               	    6272	    174588 ns/op	   16477 B/op	      61 allocs/op
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/registry	74.882s
+PASS
+ok  	github.com/rbaliyan/kubeport/internal/update	0.627s
+goos: darwin
+goarch: arm64
+pkg: github.com/rbaliyan/kubeport/pkg/config
+cpu: Apple M4
+BenchmarkLoad/yaml-flat-10         	   38767	     30353 ns/op	   23688 B/op	     332 allocs/op
+BenchmarkLoad/yaml-flat-10         	   39556	     31043 ns/op	   23688 B/op	     332 allocs/op
+BenchmarkLoad/yaml-flat-10         	   38586	     30495 ns/op	   23688 B/op	     332 allocs/op
+BenchmarkLoad/yaml-flat-10         	   40040	     30812 ns/op	   23688 B/op	     332 allocs/op
+BenchmarkLoad/yaml-flat-10         	   39578	     29992 ns/op	   23688 B/op	     332 allocs/op
+BenchmarkLoad/yaml-flat-10         	   40111	     30526 ns/op	   23688 B/op	     332 allocs/op
+BenchmarkLoad/toml-flat-10         	   84766	     14030 ns/op	    8106 B/op	      33 allocs/op
+BenchmarkLoad/toml-flat-10         	   86722	     14020 ns/op	    8105 B/op	      33 allocs/op
+BenchmarkLoad/toml-flat-10         	   86796	     14997 ns/op	    8104 B/op	      33 allocs/op
+BenchmarkLoad/toml-flat-10         	   83701	     14623 ns/op	    8106 B/op	      33 allocs/op
+BenchmarkLoad/toml-flat-10         	   82591	     16294 ns/op	    8104 B/op	      33 allocs/op
+BenchmarkLoad/toml-flat-10         	   81039	     15922 ns/op	    8106 B/op	      33 allocs/op
+BenchmarkLoad/yaml-extends-chain-10         	   17714	     64162 ns/op	   39528 B/op	     334 allocs/op
+BenchmarkLoad/yaml-extends-chain-10         	   19970	     58377 ns/op	   39528 B/op	     334 allocs/op
+BenchmarkLoad/yaml-extends-chain-10         	   21513	     55460 ns/op	   39528 B/op	     334 allocs/op
+BenchmarkLoad/yaml-extends-chain-10         	   23425	     51187 ns/op	   39528 B/op	     334 allocs/op
+BenchmarkLoad/yaml-extends-chain-10         	   23162	     52554 ns/op	   39528 B/op	     334 allocs/op
+BenchmarkLoad/yaml-extends-chain-10         	   23305	     54505 ns/op	   39528 B/op	     334 allocs/op
+BenchmarkLoad/large-50-services-10          	    6981	    164164 ns/op	  154257 B/op	    2630 allocs/op
+BenchmarkLoad/large-50-services-10          	    6255	    171386 ns/op	  154257 B/op	    2630 allocs/op
+BenchmarkLoad/large-50-services-10          	    7275	    163782 ns/op	  154257 B/op	    2630 allocs/op
+BenchmarkLoad/large-50-services-10          	    7393	    163573 ns/op	  154257 B/op	    2630 allocs/op
+BenchmarkLoad/large-50-services-10          	    7062	    165411 ns/op	  154257 B/op	    2630 allocs/op
+BenchmarkLoad/large-50-services-10          	    7377	    167159 ns/op	  154257 B/op	    2630 allocs/op
+BenchmarkLoadWithInheritance-10             	   22950	     51936 ns/op	   39608 B/op	     334 allocs/op
+BenchmarkLoadWithInheritance-10             	   22395	     53228 ns/op	   39608 B/op	     334 allocs/op
+BenchmarkLoadWithInheritance-10             	   21678	     55715 ns/op	   39608 B/op	     334 allocs/op
+BenchmarkLoadWithInheritance-10             	   21957	     54846 ns/op	   39608 B/op	     334 allocs/op
+BenchmarkLoadWithInheritance-10             	   22686	     55710 ns/op	   39608 B/op	     334 allocs/op
+BenchmarkLoadWithInheritance-10             	   23295	     52037 ns/op	   39608 B/op	     334 allocs/op
+BenchmarkUnmarshalTOML/services=5-10        	  345982	      3511 ns/op	    6597 B/op	      27 allocs/op
+BenchmarkUnmarshalTOML/services=5-10        	  353600	      3501 ns/op	    6597 B/op	      27 allocs/op
+BenchmarkUnmarshalTOML/services=5-10        	  346174	      3495 ns/op	    6597 B/op	      27 allocs/op
+BenchmarkUnmarshalTOML/services=5-10        	  350323	      3435 ns/op	    6597 B/op	      27 allocs/op
+BenchmarkUnmarshalTOML/services=5-10        	  331341	      3486 ns/op	    6597 B/op	      27 allocs/op
+BenchmarkUnmarshalTOML/services=5-10        	  352846	      3421 ns/op	    6598 B/op	      27 allocs/op
+BenchmarkUnmarshalTOML/services=50-10       	   36034	     32197 ns/op	   62727 B/op	     210 allocs/op
+BenchmarkUnmarshalTOML/services=50-10       	   37136	     31932 ns/op	   62728 B/op	     210 allocs/op
+BenchmarkUnmarshalTOML/services=50-10       	   38724	     30841 ns/op	   62725 B/op	     210 allocs/op
+BenchmarkUnmarshalTOML/services=50-10       	   35133	     33269 ns/op	   62725 B/op	     210 allocs/op
+BenchmarkUnmarshalTOML/services=50-10       	   37897	     33038 ns/op	   62728 B/op	     210 allocs/op
+BenchmarkUnmarshalTOML/services=50-10       	   35074	     32470 ns/op	   62731 B/op	     210 allocs/op
+BenchmarkMergeConfigs/services=5-10         	 1665937	       721.0 ns/op	    5248 B/op	       7 allocs/op
+BenchmarkMergeConfigs/services=5-10         	 1679739	       719.1 ns/op	    5248 B/op	       7 allocs/op
+BenchmarkMergeConfigs/services=5-10         	 1673398	       725.5 ns/op	    5248 B/op	       7 allocs/op
+BenchmarkMergeConfigs/services=5-10         	 1677326	       719.8 ns/op	    5248 B/op	       7 allocs/op
+BenchmarkMergeConfigs/services=5-10         	 1646019	       726.1 ns/op	    5248 B/op	       7 allocs/op
+BenchmarkMergeConfigs/services=5-10         	 1656847	       719.9 ns/op	    5248 B/op	       7 allocs/op
+BenchmarkMergeConfigs/services=50-10        	  174409	      7229 ns/op	   53008 B/op	      58 allocs/op
+BenchmarkMergeConfigs/services=50-10        	  164666	      7094 ns/op	   53008 B/op	      58 allocs/op
+BenchmarkMergeConfigs/services=50-10        	  174436	      6969 ns/op	   53008 B/op	      58 allocs/op
+BenchmarkMergeConfigs/services=50-10        	  171753	      7036 ns/op	   53008 B/op	      58 allocs/op
+BenchmarkMergeConfigs/services=50-10        	  172671	      7090 ns/op	   53008 B/op	      58 allocs/op
+BenchmarkMergeConfigs/services=50-10        	  168441	      7071 ns/op	   53008 B/op	      58 allocs/op
+BenchmarkConfigResolvers/NetworkConfig.Parse-10         	25139664	        46.11 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/NetworkConfig.Parse-10         	25680786	        46.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/NetworkConfig.Parse-10         	25250974	        47.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/NetworkConfig.Parse-10         	25315676	        48.15 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/NetworkConfig.Parse-10         	24785983	        47.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/NetworkConfig.Parse-10         	23983171	        47.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ChaosConfig.Parse-10           	96607662	        12.23 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ChaosConfig.Parse-10           	98355955	        12.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ChaosConfig.Parse-10           	99368940	        12.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ChaosConfig.Parse-10           	98477359	        12.05 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ChaosConfig.Parse-10           	94647793	        12.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ChaosConfig.Parse-10           	100000000	        12.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/parseBandwidth-10              	53127022	        21.75 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/parseBandwidth-10              	54609784	        21.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/parseBandwidth-10              	57042242	        21.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/parseBandwidth-10              	57205168	        21.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/parseBandwidth-10              	57615673	        22.09 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/parseBandwidth-10              	56664802	        21.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveNetwork-10              	325312827	         3.640 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveNetwork-10              	342064164	         3.505 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveNetwork-10              	341204331	         3.551 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveNetwork-10              	336034324	         3.598 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveNetwork-10              	326871492	         3.644 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveNetwork-10              	327345412	         3.626 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveConnectionMode-10       	195683812	         6.327 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveConnectionMode-10       	194377888	         6.161 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveConnectionMode-10       	196886552	         6.110 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveConnectionMode-10       	182502669	         6.536 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveConnectionMode-10       	192284079	         6.193 ns/op	       0 B/op	       0 allocs/op
+BenchmarkConfigResolvers/ResolveConnectionMode-10       	191078935	         6.219 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/rbaliyan/kubeport/pkg/config	101.547s
+PASS
+ok  	github.com/rbaliyan/kubeport/pkg/grpcauth	0.664s
+goos: darwin
+goarch: arm64
+pkg: github.com/rbaliyan/kubeport/pkg/proxy
+cpu: Apple M4
+BenchmarkRelay/chunk=1KiB-10 	  641098	      1728 ns/op	 592.74 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1KiB-10 	  762295	      1570 ns/op	 652.14 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1KiB-10 	  783564	      1773 ns/op	 577.58 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1KiB-10 	  512979	      2009 ns/op	 509.72 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1KiB-10 	  660723	      1590 ns/op	 644.04 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1KiB-10 	  763149	      1603 ns/op	 638.66 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=64KiB-10         	  149221	      7871 ns/op	8326.01 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=64KiB-10         	  197782	      5970 ns/op	10977.27 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=64KiB-10         	  201201	      5808 ns/op	11283.30 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=64KiB-10         	  192998	      6100 ns/op	10743.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=64KiB-10         	  203642	      6561 ns/op	9989.42 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=64KiB-10         	  200056	     11559 ns/op	5669.83 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1MiB-10          	    6076	    171791 ns/op	6103.79 MB/s	       1 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1MiB-10          	   12855	     93039 ns/op	11270.27 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1MiB-10          	   10000	    103174 ns/op	10163.21 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1MiB-10          	   12639	     94404 ns/op	11107.37 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1MiB-10          	   10000	    100389 ns/op	10445.17 MB/s	       0 B/op	       0 allocs/op
+BenchmarkRelay/chunk=1MiB-10          	   12051	     98962 ns/op	10595.79 MB/s	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1-10         	181065752	         6.595 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1-10         	177865568	         6.657 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1-10         	141689852	         7.897 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1-10         	180271646	         6.650 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1-10         	182638358	         6.611 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1-10         	173658008	         6.837 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1-10     	28163862	        40.53 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1-10     	29558590	        40.81 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1-10     	29938033	        40.56 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1-10     	30108169	        39.78 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1-10     	29381788	        41.61 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1-10     	31066452	        40.21 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1-10         	20623088	        57.76 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1-10         	19839492	        58.95 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1-10         	19036023	        66.55 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1-10         	19907911	        61.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1-10         	20965825	        60.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1-10         	19802864	        60.73 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1-10            	27897406	        44.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1-10            	26234955	        43.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1-10            	28286458	        42.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1-10            	28059864	        43.34 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1-10            	27386864	        44.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1-10            	27490306	        43.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1-10               	15311020	        77.56 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1-10               	15117205	        75.54 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1-10               	16410208	        75.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1-10               	15824384	        76.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1-10               	15917079	        75.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1-10               	16087479	        74.64 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1-10                 	57357151	        20.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1-10                 	58672653	        20.45 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1-10                 	62278082	        20.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1-10                 	58835425	        20.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1-10                 	57726651	        20.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1-10                 	60841513	        21.20 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=10-10                     	153176082	         7.907 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=10-10                     	154052848	         7.509 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=10-10                     	176369154	         6.852 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=10-10                     	172113624	         6.954 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=10-10                     	172721638	         6.892 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=10-10                     	174271921	         6.856 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=10-10                 	28662192	        38.72 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=10-10                 	31283605	        38.44 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=10-10                 	31278984	        40.40 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=10-10                 	29805178	        39.47 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=10-10                 	29987005	        38.99 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=10-10                 	31484769	        38.42 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=10-10        	21873926	        55.42 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=10-10        	20845773	        56.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=10-10        	21129860	        56.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=10-10        	20259019	        56.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=10-10        	22228860	        54.29 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=10-10        	18797863	        54.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=10-10           	31162794	        38.14 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=10-10           	30572404	        38.90 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=10-10           	30233965	        37.37 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=10-10           	31408095	        38.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=10-10           	31674944	        37.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=10-10           	31837134	        38.01 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=10-10              	17362356	        70.18 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=10-10              	16794128	        68.52 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=10-10              	16886552	        67.82 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=10-10              	17339766	        68.47 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=10-10              	17882932	        67.98 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=10-10              	17769386	        68.13 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=10-10                	74286542	        16.80 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=10-10                	71925020	        16.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=10-10                	73353555	        16.68 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=10-10                	71937770	        16.44 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=10-10                	71014143	        17.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=10-10                	73937722	        16.30 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=100-10                    	174085888	         6.907 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=100-10                    	173644732	         6.990 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=100-10                    	172405690	         7.101 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=100-10                    	166141215	         7.111 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=100-10                    	174256568	         6.885 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=100-10                    	172882844	         6.936 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=100-10                	27502407	        44.23 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=100-10                	27596568	        43.74 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=100-10                	27672111	        43.17 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=100-10                	28452480	        43.82 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=100-10                	25178412	        46.18 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=100-10                	27773517	        44.27 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=100-10       	22043138	        54.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=100-10       	21580566	        54.84 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=100-10       	21600052	        54.97 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=100-10       	21774994	        59.06 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=100-10       	21644550	        54.39 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=100-10       	21810118	        54.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=100-10          	30417865	        40.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=100-10          	28077481	        41.67 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=100-10          	28977720	        40.59 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=100-10          	30864296	        40.33 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=100-10          	30136902	        39.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=100-10          	29825922	        41.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=100-10             	13864884	        79.04 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=100-10             	15149290	        77.49 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=100-10             	15177121	        76.89 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=100-10             	16080590	        76.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=100-10             	15330181	        77.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=100-10             	15517776	        78.24 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=100-10               	66928647	        16.79 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=100-10               	74013345	        18.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=100-10               	68471654	        17.07 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=100-10               	63460302	        17.03 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=100-10               	72900501	        16.77 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=100-10               	72306758	        16.85 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1000-10                   	171082770	         7.083 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1000-10                   	170781400	         7.049 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1000-10                   	170150246	         7.062 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1000-10                   	169629768	         7.046 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1000-10                   	171146322	         7.016 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/exact-hit/size=1000-10                   	166407501	         7.146 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1000-10               	30234474	        39.70 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1000-10               	30560401	        39.95 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1000-10               	30484544	        38.85 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1000-10               	31308736	        39.51 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1000-10               	30806553	        39.99 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/host-only-hit/size=1000-10               	30062284	        39.58 ns/op	      24 B/op	       1 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1000-10      	21782883	        54.27 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1000-10      	22246872	        54.50 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1000-10      	21966789	        54.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1000-10      	21399130	        55.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1000-10      	22275124	        54.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/ns-qualified-fuzzy-hit/size=1000-10      	22017894	        54.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1000-10         	28692345	        38.00 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1000-10         	31673794	        38.10 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1000-10         	31367696	        37.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1000-10         	32075126	        39.66 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1000-10         	31385642	        38.86 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/short-pod-fuzzy-hit/size=1000-10         	32209647	        37.83 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1000-10            	17871925	        67.19 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1000-10            	17850490	        67.87 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1000-10            	17936571	        67.31 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1000-10            	17795902	        66.91 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1000-10            	17786659	        66.93 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/miss-fallthrough/size=1000-10            	17867001	        71.46 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1000-10              	72616332	        16.60 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1000-10              	73264362	        16.26 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1000-10              	73908691	        16.17 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1000-10              	74261634	        16.25 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1000-10              	69299067	        16.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkResolveAddr/fuzzy-disabled/size=1000-10              	75156183	        16.41 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1-10                    	154008783	         7.784 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1-10                    	153049144	         7.858 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1-10                    	152315682	         7.899 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1-10                    	150101935	         7.915 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1-10                    	150874893	         7.942 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1-10                    	150843046	         7.932 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=10-10                   	144976305	         8.267 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=10-10                   	144551666	         8.270 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=10-10                   	145174833	         8.324 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=10-10                   	145423381	         8.258 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=10-10                   	145625809	         8.258 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=10-10                   	138578570	         8.639 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=100-10                  	146055814	         8.238 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=100-10                  	145260724	         8.265 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=100-10                  	146026119	         8.221 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=100-10                  	145045618	         8.275 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=100-10                  	142513497	         8.364 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=100-10                  	146164268	         8.218 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1000-10                 	140398819	         8.483 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1000-10                 	145226649	         8.259 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1000-10                 	142279125	         8.379 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1000-10                 	145231526	         8.253 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1000-10                 	142410632	         8.351 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTranslateAddr/exact-hit/size=1000-10                 	145914358	         8.232 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	github.com/rbaliyan/kubeport/pkg/proxy	224.049s

@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("[[services]]\nname = \"m\"\nservice = \"m-svc\"\nports = [\"http\", \"grpc\"]\n\n[network]\nlatency = \"50ms\"\n")

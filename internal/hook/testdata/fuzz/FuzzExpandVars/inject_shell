@@ -1,0 +1,8 @@
+go test fuzz v1
+string("svc`id`")
+string("$(reboot)")
+string("a|b&c;d")
+int(8080)
+int(80)
+int(0)
+string("err<x>")

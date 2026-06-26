@@ -1,0 +1,4 @@
+go test fuzz v1
+string("Basic !!!notbase64")
+string("user")
+string("pass")

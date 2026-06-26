@@ -1,0 +1,4 @@
+go test fuzz v1
+string("Basic YTpiOmM=")
+string("a:b")
+string("c")

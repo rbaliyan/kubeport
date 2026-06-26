@@ -28,9 +28,40 @@ test-race:
 test-cover:
     go test -cover ./...
 
+# Run the benchmark suite (no unit tests; report allocations)
+bench:
+    go test -run='^$' -bench=. -benchmem ./...
+
+# Run benchmarks and capture CPU/memory profiles for one package.
+# Usage: just bench-profile PKG=./internal/proxy BENCH=BenchmarkManagerMappings
+# Inspect with: go tool pprof cpu.prof  (or mem.prof)
+# Compare two runs with benchstat (golang.org/x/perf/cmd/benchstat):
+#   go test -run='^$' -bench=. -benchmem -count=10 ./... | tee new.txt
+#   benchstat bench.txt new.txt
+bench-profile PKG="./..." BENCH=".":
+    go test -run='^$' -bench={{BENCH}} -benchmem -cpuprofile=cpu.prof -memprofile=mem.prof {{PKG}}
+
 # Run the labeled smoke suite (fast, broad sanity checks)
 smoke:
     go test -run '^TestSmoke' ./...
+
+# Run a single fuzz target for a fixed duration.
+# Usage: just fuzz FuzzUnmarshalYAML [TIME=30s]
+fuzz TARGET TIME="30s":
+    go test -run='^$' -fuzz='^{{TARGET}}$' -fuzztime={{TIME}} ./...
+
+# Run every fuzz target briefly in sequence (smoke-level fuzzing).
+# Targets are discovered by grepping for `func Fuzz` so new ones are picked up
+# automatically. Override per-target duration with TIME (e.g. just fuzz-all 30s).
+fuzz-all TIME="15s":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    targets=$(grep -rhoE '^func Fuzz[A-Za-z0-9_]*\(' --include='*_test.go' . | sed -E 's/^func (Fuzz[A-Za-z0-9_]*)\(/\1/' | sort -u)
+    for t in $targets; do
+        pkg=$(dirname "$(grep -rl "func ${t}(" --include='*_test.go' . | head -1)")
+        echo "==> fuzzing ${t} in ${pkg} for {{TIME}}"
+        go test -run='^$' -fuzz="^${t}\$" -fuzztime={{TIME}} "./${pkg}/"
+    done
 
 # Coverage gate: write a profile, strip generated/entrypoint/infra-bound lines,
 # and print the filtered total. Exclusions:

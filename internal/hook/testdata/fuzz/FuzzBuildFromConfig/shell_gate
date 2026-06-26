@@ -1,0 +1,9 @@
+go test fuzz v1
+string("h")
+string("shell")
+string("manager:starting")
+string("30s")
+string("closed")
+string("echo hi")
+string("")
+string("")
