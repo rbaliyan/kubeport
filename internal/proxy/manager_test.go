@@ -596,7 +596,11 @@ func TestSupervise_ContextCancellation(t *testing.T) {
 	cancel() // Cancel immediately
 
 	svc := m.cfg.Services[0]
-	m.supervise(ctx, svc)
+	reserved, reserveErr := m.reserveForward(svc)
+	if reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
+	m.supervise(ctx, svc, reserved)
 
 	m.mu.RLock()
 	pf := m.forwards["test-svc"]
@@ -651,7 +655,11 @@ func TestSupervise_MaxRestarts(t *testing.T) {
 	defer cancel()
 
 	svc := m.cfg.Services[0]
-	m.supervise(ctx, svc)
+	reserved, reserveErr := m.reserveForward(svc)
+	if reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
+	m.supervise(ctx, svc, reserved)
 
 	m.mu.RLock()
 	pf := m.forwards["test-svc"]
@@ -708,7 +716,11 @@ func TestSupervise_UnlimitedRestarts(t *testing.T) {
 	defer cancel()
 
 	svc := m.cfg.Services[0]
-	m.supervise(ctx, svc)
+	reserved, reserveErr := m.reserveForward(svc)
+	if reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
+	m.supervise(ctx, svc, reserved)
 
 	m.mu.RLock()
 	pf := m.forwards["test-svc"]
@@ -1095,9 +1107,21 @@ func TestStart_ContextCancellation_Cleanup(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Cancel after a short delay
+	// Once all three forwards have registered, cancel the context to drive the
+	// cleanup path. Polling (rather than a fixed delay) makes the trigger
+	// deterministic regardless of scheduling. A bounded deadline guarantees the
+	// context is cancelled even if registration stalls, so m.Start always returns.
 	go func() {
-		time.Sleep(150 * time.Millisecond)
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			m.mu.RLock()
+			registered := len(m.forwards) == 3
+			m.mu.RUnlock()
+			if registered {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 		cancel()
 	}()
 
@@ -1302,7 +1326,11 @@ func TestSuperviseSingle_IsolatedMode_BindsAndRunsForward(t *testing.T) {
 	defer cancel()
 
 	svc := m.cfg.Services[0]
-	go m.superviseSingle(ctx, svc)
+	reserved, reserveErr := m.reserveForward(svc)
+	if reserveErr != nil {
+		t.Fatalf("reserveForward: %v", reserveErr)
+	}
+	go m.superviseSingle(ctx, svc, reserved)
 
 	// Wait for the forward to reach StateRunning (isolated mode binds immediately).
 	deadline := time.Now().Add(500 * time.Millisecond)

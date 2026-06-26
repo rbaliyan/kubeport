@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,10 +22,11 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
+	"k8s.io/streaming/pkg/httpstream"
 
-	"github.com/rbaliyan/kubeport/pkg/config"
 	"github.com/rbaliyan/kubeport/internal/hook"
 	"github.com/rbaliyan/kubeport/internal/netutil"
+	"github.com/rbaliyan/kubeport/pkg/config"
 )
 
 // errPreempted is returned by runPortForward when a pod watcher detects the
@@ -194,14 +196,25 @@ type Manager struct {
 	maxConnectionAge     time.Duration
 
 	transports *transportCache // reuses SPDY transports across forwards
+
+	// dialerFactory builds the httpstream.Dialer used by the mux runner to open
+	// the SPDY tunnel to the API server. It defaults to defaultDialer (a
+	// spdy-backed factory) and is overridable via WithDialerFactory for tests.
+	dialerFactory dialerFactory
 }
+
+// dialerFactory builds an httpstream.Dialer for a port-forward request URL.
+// The default implementation wraps client-go's SPDY round-tripper; tests
+// substitute an in-process fake to exercise the relay without a real cluster.
+type dialerFactory func(restConfig *rest.Config, reqURL *url.URL) (httpstream.Dialer, error)
 
 // Option configures optional Manager behavior.
 type Option func(*managerOptions)
 
 type managerOptions struct {
-	hooks  *hook.Dispatcher
-	logger *slog.Logger
+	hooks         *hook.Dispatcher
+	logger        *slog.Logger
+	dialerFactory dialerFactory
 }
 
 // WithHooks sets the hook dispatcher for lifecycle events.
@@ -215,6 +228,16 @@ func WithHooks(d *hook.Dispatcher) Option {
 func WithLogger(l *slog.Logger) Option {
 	return func(o *managerOptions) {
 		o.logger = l
+	}
+}
+
+// WithDialerFactory overrides the factory used by the mux runner to build the
+// SPDY dialer for a port-forward request. When unset, the manager uses a
+// spdy-backed factory that reproduces client-go's standard behavior. It exists
+// to let tests inject an in-process fake dialer.
+func WithDialerFactory(f func(restConfig *rest.Config, reqURL *url.URL) (httpstream.Dialer, error)) Option {
+	return func(o *managerOptions) {
+		o.dialerFactory = f
 	}
 }
 
@@ -273,7 +296,24 @@ func NewManager(cfg *config.Config, output io.Writer, opts ...Option) (*Manager,
 		maxConnectionAge:     sup.MaxConnectionAge,
 		transports:           newTransportCache(transportMaxAge),
 	}
+	m.dialerFactory = o.dialerFactory
+	if m.dialerFactory == nil {
+		m.dialerFactory = m.defaultDialer
+	}
 	return m, nil
+}
+
+// defaultDialer is the production dialer factory. It reproduces the exact SPDY
+// construction the mux runner performed inline before the factory seam existed:
+// a pooled spdy.RoundTripperFor transport plus spdy.NewDialerForStreaming.
+func (m *Manager) defaultDialer(restConfig *rest.Config, reqURL *url.URL) (httpstream.Dialer, error) {
+	entry, err := m.transports.getOrCreate(restConfig.Host, func() (http.RoundTripper, spdy.Upgrader, error) {
+		return spdy.RoundTripperFor(restConfig)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create SPDY transport: %w", err)
+	}
+	return spdy.NewDialerForStreaming(entry.upgrader, entry.client, http.MethodPost, reqURL), nil
 }
 
 // SetExternalForwards records services from the local config that are already
@@ -367,8 +407,16 @@ func (m *Manager) Start(ctx context.Context) {
 		if isExternal {
 			continue
 		}
+		// Configured service names are unique, so reserveForward never conflicts
+		// here; registering synchronously keeps m.forwards/m.order consistent with
+		// the serial command path that AddService/RemoveService use.
+		pf, err := m.reserveForward(svc)
+		if err != nil {
+			m.logger.Warn("skipping service with duplicate registration", "service", svc.Name, "error", err)
+			continue
+		}
 		wg.Go(func() {
-			m.supervise(ctx, svc)
+			m.supervise(ctx, svc, pf)
 		})
 	}
 
@@ -388,8 +436,16 @@ func (m *Manager) Start(ctx context.Context) {
 			case cmd := <-cmdCh:
 				if cmd.add != nil {
 					svc := *cmd.add
+					// Reserve (existence check + registration) synchronously on
+					// the serial command path before acking the caller, so a
+					// subsequent RemoveService always observes the entry.
+					pf, err := m.reserveForward(svc)
+					if err != nil {
+						cmd.result <- err
+						continue
+					}
 					wg.Go(func() {
-						m.supervise(ctx, svc)
+						m.supervise(ctx, svc, pf)
 					})
 					_ = m.hooks.Fire(ctx, hook.Event{
 						Type:       hook.EventServiceAdded,
@@ -411,35 +467,18 @@ func (m *Manager) Start(ctx context.Context) {
 }
 
 // AddService adds a service to the running manager. Thread-safe.
+//
+// The existence and local-port-conflict checks are performed atomically with
+// registration by reserveForward on the serial command path (see Start's event
+// loop); doing them here would be racy because the caller-side check could pass
+// before another concurrent add registers the same name. AddService therefore
+// only validates and forwards the request.
 func (m *Manager) AddService(svc config.ServiceConfig) error {
 	if err := config.ValidateService(svc); err != nil {
 		return err
 	}
 
 	m.mu.RLock()
-	if _, exists := m.forwards[svc.Name]; exists {
-		m.mu.RUnlock()
-		return fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
-	}
-	// Also check if a multi-port parent with this name already exists
-	if _, exists := m.children[svc.Name]; exists {
-		m.mu.RUnlock()
-		return fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
-	}
-	if !svc.IsMultiPort() && svc.LocalPort != 0 {
-		for _, pf := range m.forwards {
-			pf.mu.Lock()
-			port := pf.svc.LocalPort
-			if port == 0 {
-				port = pf.actualPort
-			}
-			pf.mu.Unlock()
-			if port == svc.LocalPort {
-				m.mu.RUnlock()
-				return fmt.Errorf("local port %d already in use by %q", svc.LocalPort, pf.svc.Name)
-			}
-		}
-	}
 	cmdCh := m.cmdCh
 	doneCh := m.doneCh
 	m.mu.RUnlock()
@@ -672,16 +711,77 @@ func (m *Manager) Apply(services []config.ServiceConfig) (added, skipped int, wa
 	return added, skipped, warnings
 }
 
-func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig) {
+// reserveForward performs the existence/port-conflict check and the
+// registration atomically under m.mu, eliminating the window between the
+// caller-side check and the asynchronous registration that supervise used to
+// do. It is the single authoritative add gate and runs only on the serial
+// command path (the event loop and initial Start), so two concurrent adds of
+// the same name are serialised through it and exactly one wins.
+//
+// For a multi-port service it reserves the parent (children are resolved
+// asynchronously and registered later) and returns (nil, nil). For a
+// single-port service it creates and registers the placeholder portForward —
+// the same struct superviseSingle then drives — and returns it. On conflict it
+// returns the same error AddService returned previously.
+func (m *Manager) reserveForward(svc config.ServiceConfig) (*portForward, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.forwards[svc.Name]; exists {
+		return nil, fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
+	}
+	if _, exists := m.children[svc.Name]; exists {
+		return nil, fmt.Errorf("service %q: %w", svc.Name, config.ErrServiceExists)
+	}
+	if !svc.IsMultiPort() && svc.LocalPort != 0 {
+		for _, pf := range m.forwards {
+			pf.mu.Lock()
+			port := pf.svc.LocalPort
+			if port == 0 {
+				port = pf.actualPort
+			}
+			name := pf.svc.Name
+			pf.mu.Unlock()
+			if port == svc.LocalPort {
+				return nil, fmt.Errorf("local port %d already in use by %q", svc.LocalPort, name)
+			}
+		}
+	}
+
+	if svc.IsMultiPort() {
+		// Reserve the parent; children are registered later by superviseMulti
+		// once their ports have been resolved against the k8s API.
+		m.children[svc.Name] = nil
+		return nil, nil
+	}
+
+	namespace := svc.Namespace
+	if namespace == "" {
+		namespace = m.cfg.Namespace
+	}
+	pf := &portForward{
+		svc:          svc,
+		namespace:    namespace,
+		state:        StateStarting,
+		preemptCh:    make(chan string, 1),
+		sourceConfig: svc.SourceConfig,
+	}
+	m.forwards[svc.Name] = pf
+	m.order = append(m.order, svc.Name)
+	return pf, nil
+}
+
+func (m *Manager) supervise(ctx context.Context, svc config.ServiceConfig, pf *portForward) {
 	if svc.IsMultiPort() {
 		m.superviseMulti(ctx, svc)
 		return
 	}
-	m.superviseSingle(ctx, svc)
+	m.superviseSingle(ctx, svc, pf)
 }
 
 // superviseMulti resolves all ports from a multi-port service and spawns a
-// superviseSingle goroutine for each expanded port.
+// superviseSingle goroutine for each expanded port. The parent reservation
+// (m.children[svc.Name] = nil) is created by reserveForward before this runs.
 func (m *Manager) superviseMulti(ctx context.Context, svc config.ServiceConfig) {
 	namespace := svc.Namespace
 	if namespace == "" {
@@ -694,7 +794,9 @@ func (m *Manager) superviseMulti(ctx context.Context, svc config.ServiceConfig) 
 			"service", svc.Name,
 			"error", err,
 		)
-		// Register parent as failed so status shows something
+		// Register the parent's own forward entry as failed so status shows
+		// something, but only if the parent reservation still exists (it may
+		// have been removed during resolution) and no entry was already added.
 		pf := &portForward{
 			svc:       svc,
 			namespace: namespace,
@@ -702,15 +804,18 @@ func (m *Manager) superviseMulti(ctx context.Context, svc config.ServiceConfig) 
 			err:       err,
 		}
 		m.mu.Lock()
-		m.forwards[svc.Name] = pf
-		m.order = append(m.order, svc.Name)
-		m.children[svc.Name] = nil // register as parent so Reload can retry
+		if _, reserved := m.children[svc.Name]; reserved {
+			if _, hasFwd := m.forwards[svc.Name]; !hasFwd {
+				m.forwards[svc.Name] = pf
+				m.order = append(m.order, svc.Name)
+			}
+		}
 		m.mu.Unlock()
 		return
 	}
 
 	var childNames []string
-	var wg sync.WaitGroup
+	var childPFs []*portForward
 	for _, rp := range resolved {
 		childName := svc.Name + "/" + rp.Name
 		if rp.Name == "" {
@@ -729,17 +834,43 @@ func (m *Manager) superviseMulti(ctx context.Context, svc config.ServiceConfig) 
 			PortName:     rp.Name,
 			SourceConfig: svc.SourceConfig,
 		}
-
-		wg.Add(1)
-		go func(s config.ServiceConfig) {
-			defer wg.Done()
-			m.superviseSingle(ctx, s)
-		}(childSvc)
+		childPFs = append(childPFs, &portForward{
+			svc:          childSvc,
+			namespace:    namespace,
+			state:        StateStarting,
+			preemptCh:    make(chan string, 1),
+			sourceConfig: childSvc.SourceConfig,
+		})
 	}
 
+	// Register children and finalise the parent's child list atomically. Re-check
+	// the parent reservation under mu: a RemoveService during port resolution
+	// deletes m.children[svc.Name], and re-registering here would leak orphan
+	// children that doRemove can no longer reach.
 	m.mu.Lock()
+	if _, reserved := m.children[svc.Name]; !reserved {
+		m.mu.Unlock()
+		return
+	}
+	for i, pf := range childPFs {
+		name := childNames[i]
+		if _, exists := m.forwards[name]; exists {
+			continue
+		}
+		m.forwards[name] = pf
+		m.order = append(m.order, name)
+	}
 	m.children[svc.Name] = childNames
 	m.mu.Unlock()
+
+	var wg sync.WaitGroup
+	for i := range childPFs {
+		wg.Add(1)
+		go func(s config.ServiceConfig, pf *portForward) {
+			defer wg.Done()
+			m.superviseSingle(ctx, s, pf)
+		}(childPFs[i].svc, childPFs[i])
+	}
 
 	wg.Wait()
 }
@@ -895,24 +1026,12 @@ func computeLocalPort(overrides map[string]config.PortSelector, portName string,
 	return 0
 }
 
-func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig) {
-	namespace := svc.Namespace
-	if namespace == "" {
-		namespace = m.cfg.Namespace
-	}
-
-	pf := &portForward{
-		svc:          svc,
-		namespace:    namespace,
-		state:        StateStarting,
-		preemptCh:    make(chan string, 1),
-		sourceConfig: svc.SourceConfig,
-	}
-
-	m.mu.Lock()
-	m.forwards[svc.Name] = pf
-	m.order = append(m.order, svc.Name)
-	m.mu.Unlock()
+// superviseSingle drives the supervision lifecycle for an already-registered
+// single-port forward. The pf placeholder is created and inserted into
+// m.forwards/m.order by reserveForward on the serial command path before this
+// runs, so superviseSingle never registers; it only consumes pf.
+func (m *Manager) superviseSingle(ctx context.Context, svc config.ServiceConfig, pf *portForward) {
+	namespace := pf.namespace
 
 	// Start pod watcher for service-backed forwards (not direct pod targets).
 	if !svc.IsPod() && m.clientset != nil {
@@ -1097,14 +1216,14 @@ func (m *Manager) runPortForward(ctx context.Context, pf *portForward) error {
 		SubResource("portforward").
 		URL()
 
-	entry, err := m.transports.getOrCreate(m.restConfig.Host, func() (http.RoundTripper, spdy.Upgrader, error) {
-		return spdy.RoundTripperFor(m.restConfig)
-	})
-	if err != nil {
-		return fmt.Errorf("create SPDY transport: %w", err)
+	factory := m.dialerFactory
+	if factory == nil {
+		factory = m.defaultDialer
 	}
-
-	rawDialer := spdy.NewDialerForStreaming(entry.upgrader, entry.client, http.MethodPost, reqURL)
+	rawDialer, err := factory(m.restConfig, reqURL)
+	if err != nil {
+		return err
+	}
 
 	// Resolve effective network simulation config (global merged with per-service).
 	netCfg, netErr := config.ResolveNetwork(m.cfg.Network, pf.svc.Network).Parse()

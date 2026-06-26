@@ -36,6 +36,11 @@ type mockSupervisor struct {
 	applyAdded    int
 	applySkipped  int
 	applyWarnings []string
+	mappings      []proxy.AddressMapping
+	lastChaosCfg  config.ParsedChaosConfig
+	lastChaosSvcs []string
+	chaosUpdated  []string
+	chaosNotFound []string
 }
 
 func (m *mockSupervisor) Status() []proxy.ForwardStatus {
@@ -65,11 +70,13 @@ func (m *mockSupervisor) Apply(_ []config.ServiceConfig) (int, int, []string) {
 }
 
 func (m *mockSupervisor) Mappings(_ string) []proxy.AddressMapping {
-	return nil
+	return m.mappings
 }
 
-func (m *mockSupervisor) UpdateChaos(_ []string, _ config.ParsedChaosConfig) ([]string, []string) {
-	return nil, nil
+func (m *mockSupervisor) UpdateChaos(services []string, cfg config.ParsedChaosConfig) ([]string, []string) {
+	m.lastChaosSvcs = services
+	m.lastChaosCfg = cfg
+	return m.chaosUpdated, m.chaosNotFound
 }
 
 func (m *mockSupervisor) ResetChaos(_ []string) ([]string, []string) {
@@ -272,8 +279,14 @@ func TestServer_Stop(t *testing.T) {
 		t.Fatal("expected success=true")
 	}
 
-	// Stop is deferred to a goroutine with 100ms delay
-	time.Sleep(200 * time.Millisecond)
+	// Stop is deferred to a goroutine after a short delay; poll until it lands.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if mgr.stopCalls.Load() == 1 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	if got := mgr.stopCalls.Load(); got != 1 {
 		t.Fatalf("expected 1 stop call, got %d", got)
 	}

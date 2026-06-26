@@ -82,3 +82,30 @@ func TestServerInterceptor_MissingBearerPrefix(t *testing.T) {
 		t.Fatalf("expected Unauthenticated, got %v", err)
 	}
 }
+
+func TestClientInterceptor(t *testing.T) {
+	interceptor := ClientInterceptor("client-key")
+
+	var captured context.Context
+	invoker := func(ctx context.Context, _ string, _, _ any, _ *grpc.ClientConn, _ ...grpc.CallOption) error {
+		captured = ctx
+		return nil
+	}
+
+	err := interceptor(context.Background(), "/svc/Method", nil, nil, nil, invoker)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	md, ok := metadata.FromOutgoingContext(captured)
+	if !ok {
+		t.Fatal("expected outgoing metadata on the invoked context")
+	}
+	vals := md.Get("authorization")
+	if len(vals) != 1 {
+		t.Fatalf("authorization header count = %d, want 1", len(vals))
+	}
+	if vals[0] != "Bearer client-key" {
+		t.Fatalf("authorization = %q, want 'Bearer client-key'", vals[0])
+	}
+}

@@ -28,6 +28,20 @@ test-race:
 test-cover:
     go test -cover ./...
 
+# Run the labeled smoke suite (fast, broad sanity checks)
+smoke:
+    go test -run '^TestSmoke' ./...
+
+# Coverage gate: write a profile, strip generated/entrypoint/infra-bound lines,
+# and print the filtered total. Exclusions:
+#   - api/kubeport/v1: generated protobuf
+#   - main.go: entrypoint (not unit-testable)
+#   - internal/cli: infra-bound daemon-launch/dial command handlers
+cover:
+    go test -coverprofile=cover.out ./...
+    @grep -vE 'api/kubeport/v1|/main\.go|internal/cli' cover.out > cover.filtered.out
+    @go tool cover -func=cover.filtered.out | tail -1
+
 # Format code
 fmt:
     go fmt ./...
